@@ -1,0 +1,24 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "GenerativeAISupport",
+	"Description": "Adds support for gpt4, claude sonnet 3.5, dalle, grok 2 etc apis in unreal",
+	"Category": "Other",
+	"CreatedBy": "Prajwal Shetty",
+	"CreatedByURL": "https://prajwalshetty.com/",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": true,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "GenerativeAISupport",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
