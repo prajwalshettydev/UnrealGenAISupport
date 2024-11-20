@@ -25,7 +25,7 @@ public class GenerativeAISupport : ModuleRules
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"Core",
+				"Core"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
@@ -38,6 +38,8 @@ public class GenerativeAISupport : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
+				"Json",
+				"Http"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);
