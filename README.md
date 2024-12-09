@@ -12,7 +12,7 @@ setx PS_OPENAIAPIKEY "your api key"
 1. Add the Plugin Repository as a Submodule in your project's repository.
 
    ```cmd
-   git submodule add <PLUGIN_REPO_URL> Plugins/<PLUGIN_NAME>
+   git submodule add https://github.com/prajwalshettydev/UnrealGenAISupport Plugins/GenerativeAISupport
    ```
 
 2. Regenerate Project Files:
