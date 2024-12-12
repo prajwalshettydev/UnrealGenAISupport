@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright Prajwal Shetty 2024. All rights Reserved. https://prajwalshetty.com/terms
 
 
 #include "GenOAIChat.h"
@@ -8,6 +8,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Engine/Engine.h"  // For GEngine and screen logging
+#include "Utilities/GenGlobalDefinitions.h"
 
 UGenOAIChat::UGenOAIChat()
 {
@@ -81,7 +82,7 @@ void UGenOAIChat::OnResponse(FHttpRequestPtr Request, FHttpResponsePtr Response,
 {
     if (!bWasSuccessful || !Response.IsValid())
     {
-        UE_LOG(LogTemp, Error, TEXT("Failed to get response from server"));
+        UE_LOG(LogGenAI, Error, TEXT("Failed to get response from server"));
         if (GEngine)
         {
             GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("Failed to get response from server"));
@@ -90,7 +91,7 @@ void UGenOAIChat::OnResponse(FHttpRequestPtr Request, FHttpResponsePtr Response,
         return;
     }
 
-    UE_LOG(LogTemp, Log, TEXT("Received response: %s"), *Response->GetContentAsString());
+    UE_LOG(LogGenAI, Log, TEXT("Received response: %s"), *Response->GetContentAsString());
     if (GEngine)
     {
         GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, FString::Printf(TEXT("Received response: %s"), *Response->GetContentAsString()));
@@ -103,7 +104,7 @@ void UGenOAIChat::OnResponse(FHttpRequestPtr Request, FHttpResponsePtr Response,
         if (JsonResponse->HasField("error"))
         {
             FString ErrorMessage = JsonResponse->GetStringField("error");
-            UE_LOG(LogTemp, Error, TEXT("API Error: %s"), *ErrorMessage);
+            UE_LOG(LogGenAI, Error, TEXT("API Error: %s"), *ErrorMessage);
             if (GEngine)
             {
                 GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("API Error: %s"), *ErrorMessage));
@@ -123,7 +124,7 @@ void UGenOAIChat::OnResponse(FHttpRequestPtr Request, FHttpResponsePtr Response,
                     {
                         FString Content = MessageObject->GetStringField("content");
 
-                        UE_LOG(LogTemp, Log, TEXT("Assistant Response: %s"), *Content);
+                        UE_LOG(LogGenAI, Log, TEXT("Assistant Response: %s"), *Content);
                         if (GEngine)
                         {
                             GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, FString::Printf(TEXT("Assistant Response: %s"), *Content));
@@ -140,7 +141,7 @@ void UGenOAIChat::OnResponse(FHttpRequestPtr Request, FHttpResponsePtr Response,
         }
     }
 
-    UE_LOG(LogTemp, Error, TEXT("Unexpected response format"));
+    UE_LOG(LogGenAI, Error, TEXT("Unexpected response format"));
     if (GEngine)
     {
         GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("Unexpected response format"));
@@ -155,7 +156,7 @@ void UGenOAIChat::AppendMessage(const FString& Role, const FString& Content)
     NewMessage.Content = Content;
     ChatSettings.Messages.Add(NewMessage);
 
-    UE_LOG(LogTemp, Log, TEXT("Appended message - Role: %s, Content: %s"), *Role, *Content);
+    UE_LOG(LogGenAI, Log, TEXT("Appended message - Role: %s, Content: %s"), *Role, *Content);
     if (GEngine)
     {
         GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan, FString::Printf(TEXT("Appended message - Role: %s, Content: %s"), *Role, *Content));

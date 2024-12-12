@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright Prajwal Shetty 2024. All rights Reserved. https://prajwalshetty.com/terms
 
 #pragma once
 
@@ -7,33 +7,6 @@
 #include "Kismet/BlueprintAsyncActionBase.h"
 #include "GenOAIChat.generated.h"
 
-
-USTRUCT(BlueprintType)
-struct FGenChatMessage
-{
-    GENERATED_BODY()
-
-    UPROPERTY(BlueprintReadWrite, Category = "Chat")
-    FString Role;
-
-    UPROPERTY(BlueprintReadWrite, Category = "Chat")
-    FString Content;
-};
-
-USTRUCT(BlueprintType)
-struct FGenChatSettings
-{
-    GENERATED_BODY()
-
-    UPROPERTY(BlueprintReadWrite, Category = "Chat")
-    TArray<FGenChatMessage> Messages;
-
-    UPROPERTY(BlueprintReadWrite, Category = "Chat")
-    int32 MaxTokens;
-
-    UPROPERTY(BlueprintReadWrite, Category = "Chat")
-    FString Model;
-};
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FGenChatCompletionDelegate, const FString&, ResponseContent, const FString&, ErrorMessage, bool, bSuccess);
 

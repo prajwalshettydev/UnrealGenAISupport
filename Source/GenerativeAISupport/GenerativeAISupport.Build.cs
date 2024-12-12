@@ -39,7 +39,7 @@ public class GenerativeAISupport : ModuleRules
 				"Slate",
 				"SlateCore",
 				"Json",
-				"Http"
+				"HTTP"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

@@ -1,4 +1,4 @@
-// Copyright Prajwal Shetty 2024. All rights Reserved.
+// Copyright Prajwal Shetty 2024. All rights Reserved. https://prajwalshetty.com/terms
 
 #pragma once
 
