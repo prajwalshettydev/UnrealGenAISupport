@@ -2,6 +2,9 @@
 
 #pragma once
 
+#include "CoreMinimal.h"
+#include "GenOAIChatStructs.generated.h"
+
 USTRUCT(BlueprintType)
 struct FMessage
 {

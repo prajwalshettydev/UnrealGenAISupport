@@ -26,10 +26,15 @@ UE_LOG(LogGenPerformance, Display, TEXT("%s took: %f ms"), Description, ElapsedT
 #define LOG_TIME_ELAPSED(StartTimePerf, Description) do {} while(0)
 #endif
 
+#include "CoreMinimal.h"
+#include "GenGlobalDefinitions.generated.h" // Include at the end
+
 // Disable logs by default
 USTRUCT()
 struct FLogInitializer
 {
+	GENERATED_BODY()
+	
 	FLogInitializer()
 	{
 		//DISABLE_LOG(LogGenAI);
@@ -40,4 +45,4 @@ struct FLogInitializer
 	}
 };
 
-static FLogInitializer LogInitializer;
+static const FLogInitializer LogInitializer;

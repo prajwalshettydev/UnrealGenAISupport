@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Data/OpenAI/GenOAIChatStructs.h"
 #include "Interfaces/IHttpRequest.h"
 #include "Kismet/BlueprintAsyncActionBase.h"
 #include "GenOAIChat.generated.h"

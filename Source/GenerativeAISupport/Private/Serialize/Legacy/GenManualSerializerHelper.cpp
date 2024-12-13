@@ -11,7 +11,7 @@
 #include "Utilities/GenGlobalDefinitions.h"
 
 
-void UGenManualSerializerHelper::HandleJsonResponse(FHttpResponsePtr Response, FGenChatSettings& ChatSettings, FOnChatCompletion& Finished)
+void UGenManualSerializerHelper::HandleJsonResponse(FHttpResponsePtr Response, FGenChatSettings& ChatSettings, FGenChatCompletionDelegateLegacy& Finished)
 {
     TSharedPtr<FJsonObject> JsonResponse;
     TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Response->GetContentAsString());

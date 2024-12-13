@@ -4,6 +4,7 @@
 #include "GenOAIChat.h"
 #include "GenSecureKey.h"
 #include "Http.h"
+#include "Data/OpenAI/GenOAIChatStructs.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
