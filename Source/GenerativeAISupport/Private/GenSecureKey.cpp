@@ -1,4 +1,4 @@
-// Copyright Prajwal Shetty 2024. All rights Reserved.
+// Copyright Prajwal Shetty 2024. All rights Reserved. https://prajwalshetty.com/terms
 
 #include "GenSecureKey.h"
 #include "Modules/ModuleManager.h"
@@ -6,6 +6,8 @@
 // Static variables for storing API key and environment usage flag
 static FString GenerativeAIApiKey = TEXT("");
 static bool bUseApiKeyFromEnv = true;
+
+// todo: storing encrypted keys FOR builds. testing. 
 
 void UGenSecureKey::SetGenerativeAIApiKey(FString apiKey)
 {
