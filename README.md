@@ -1,4 +1,4 @@
-## Unreal Engine Generative AI Support Plugin
+# Unreal Engine Generative AI Support Plugin
 
 Warning: This plugin is in development and is not yet ready for production use.
 
@@ -6,7 +6,7 @@ This plugin is an attempt to build a community ecosystem around the Unreal Engin
 APIs. Will only focus on the APIs that can be useful for game development and interactive experiences. Any suggestions and contributions are welcome.
 Currently working on OpenAI API support with real-time chat/audio completions.
 
-Current Progress:
+## Current Progress:
 
 - OpenAI API Support:
     - OpenAI Chat API ✅
@@ -52,7 +52,7 @@ Current Progress:
 - Plugin Documentation 🛠️
 - Plugin Examples 🚧
 
-### Quick Links:
+## Quick Links:
 
 - [OpenAI API Documentation](https://platform.openai.com/docs/api-reference)
 - [Anthropic API Documentation](https://docs.anthropic.com/en/docs/about-claude/models)
@@ -60,8 +60,9 @@ Current Progress:
 - [Google Gemini API Documentation](https://ai.google.dev/gemini-api/docs/models/gemini)
 - [Meta AI API Documentation](https://docs.llama-api.com/quickstart#available-models)
 
-### Set API Key:
+## Setting API Key:
 
+### For Editor:
 Set the environment variable `PS_OPENAIAPIKEY` to your API key.
 In windows you can use[:]()
 
@@ -69,9 +70,13 @@ In windows you can use[:]()
 setx PS_OPENAIAPIKEY "your api key"
 ```
 
-### Adding the plugin to your project:
+### For Packaged Builds:
 
-#### With Git:
+Still in development..
+
+## Adding the plugin to your project:
+
+### With Git:
 
 1. Add the Plugin Repository as a Submodule in your project's repository.
 
@@ -89,13 +94,13 @@ setx PS_OPENAIAPIKEY "your api key"
    PrivateDependencyModuleNames.AddRange(new string[] { "GenerativeAISupport" });
    ```
 
-#### With Perforce:
+### With Perforce:
 
 Still in development..
 
-### Fetching the Latest Plugin Changes:
+## Fetching the Latest Plugin Changes:
 
-#### With Git:
+### With Git:
 
 you can pull the latest changes with:
 
@@ -110,13 +115,13 @@ Or update all submodules in the project:
 git submodule update --recursive --remote
 ```
 
-#### With Perforce:
+### With Perforce:
 
 Still in development..
 
-### Usage:
+## Usage:
 
-#### OpenAI:
+### OpenAI:
 
 Function `GetGenerativeAIApiKey` by default responds with OpenAI API key, that you have securely set in the local
 environment variable
