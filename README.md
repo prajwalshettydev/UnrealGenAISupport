@@ -71,7 +71,7 @@ setx PS_OPENAIAPIKEY "your api key"
 
 ### Adding the plugin to your project:
 
-## With Git:
+#### With Git:
 
 1. Add the Plugin Repository as a Submodule in your project's repository.
 
@@ -89,13 +89,13 @@ setx PS_OPENAIAPIKEY "your api key"
    PrivateDependencyModuleNames.AddRange(new string[] { "GenerativeAISupport" });
    ```
 
-## With Perforce:
+#### With Perforce:
 
 Still in development..
 
 ### Fetching the Latest Plugin Changes:
 
-## With Git:
+#### With Git:
 
 you can pull the latest changes with:
 
@@ -110,7 +110,7 @@ Or update all submodules in the project:
 git submodule update --recursive --remote
 ```
 
-## With Perforce:
+#### With Perforce:
 
 Still in development..
 
