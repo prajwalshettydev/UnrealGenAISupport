@@ -58,8 +58,9 @@ struct FGenChatSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FString AgentID;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FString SystemMessage;
+	// SystemMessage no longer needed, as it is embedded in the messages array
+	// UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	// FString SystemMessage;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Chat")
 	TArray<FGenChatMessage> Messages;
@@ -68,6 +69,6 @@ struct FGenChatSettings
 	int32 MaxTokens;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Chat")
-	FString Model;
+	FString Model; //can be gpt-4o-mini, 
     
 };

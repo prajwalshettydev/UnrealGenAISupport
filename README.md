@@ -1,6 +1,6 @@
 # Unreal Engine Generative AI Support Plugin
 
-Warning: This plugin is in development and is not yet ready for production use.
+[!WARNING]  This plugin is in development and is not yet ready for production use.
 
 This plugin is an attempt to build a community ecosystem around the Unreal Engine support for various Generative AI
 APIs. Will only focus on the APIs that can be useful for game development and interactive experiences. Any suggestions and contributions are welcome.
@@ -43,14 +43,23 @@ Currently working on OpenAI API support with real-time chat/audio completions.
     - Multi-Modal Vision API 🚧
         - `llama3.2-90b-vision` Model 🚧
     - Local Llama API 🚧
+- Deepseek API Support: 
+    - Deepseek Chat API 🚧
+        - `deepseek-chat` (DeepSeek-V3) Model 🚧
 - API Key Management ✅
     - Cross-Platform Secure Key Storage ✅
     - Encrypted Key Storage 🛠️
     - Cross Platform Testing 🚧
     - Build System Integration 🛠️
     - Keys in Build Configuration 🛠️
+- Unreal Engine Integration 
+    - Blueprint Support 🛠️
+    - C++ Support 🛠️
+    - C++ Latent Functions For Blueprints 🛠️
+    - Packaged Build Support 🛠️
 - Plugin Documentation 🛠️
 - Plugin Examples 🚧
+- LTS Build Support 🚧
 
 ## Quick Links:
 
@@ -126,28 +135,27 @@ Still in development..
 Function `GetGenerativeAIApiKey` by default responds with OpenAI API key, that you have securely set in the local
 environment variable
 
-1. Chat:
+1. Chat: 
+
+C++ Example:
 
 ```cpp
-	// Get the API key from the plugin
-	FString ApiKey = UGenSecureKey::GetGenerativeAIApiKey();
+void SomeDebugSubsystem::CallGPT(const FString& Prompt, const TFunction<void(const FString&, const FString&, bool)>& Callback)
+{
+    FGenChatSettings ChatSettings;
+    ChatSettings.Model = TEXT("gpt-4o-mini");
+    ChatSettings.MaxTokens = 500;
+    ChatSettings.Messages.Add(FGenChatMessage{ TEXT("system"), Prompt });
 
-	// Define chat settings for testing
-	FGenChatSettings ChatSettings;
-	ChatSettings.Model = TEXT("gpt-4o");
-	ChatSettings.MaxTokens = 100;
-    
-	// Add initial user message
-	FGenChatMessage UserMessage;
-	UserMessage.Role = TEXT("user");
-	UserMessage.Content = TEXT("Hello, AI! How are you?");
-	ChatSettings.Messages.Add(UserMessage);
+    FOnChatCompletionResponse OnComplete = FOnChatCompletionResponse::CreateLambda([Callback](const FString& Response, const FString& ErrorMessage, bool bSuccess)
+    {
+        Callback(Response, ErrorMessage, bSuccess);
+    });
 
-	// Create the chat node and initiate the request
-	UGenOAIChat* ChatNode = UGenOAIChat::CallOpenAIChat(this, ChatSettings);
-	if (ChatNode)
-	{
-		ChatNode->Finished.AddDynamic(this, &Aunreal_llm_api_testGameMode::OnChatCompletion);
-		ChatNode->Activate();
-	}
+    UGenOAIChat::SendChatRequest(ChatSettings, OnComplete);
+}
 ```
+
+Blueprint Example:
+
+<img src="Docs/BpExampleOAIChat.png" width="782"/>
