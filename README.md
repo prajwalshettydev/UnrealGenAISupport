@@ -1,6 +1,7 @@
 # Unreal Engine Generative AI Support Plugin
 
-[!WARNING]  This plugin is in development and is not yet ready for production use.
+> [!WARNING]  
+> This plugin is in development and is not yet ready for production use.
 
 This plugin is an attempt to build a community ecosystem around the Unreal Engine support for various Generative AI
 APIs. Will only focus on the APIs that can be useful for game development and interactive experiences. Any suggestions and contributions are welcome.
