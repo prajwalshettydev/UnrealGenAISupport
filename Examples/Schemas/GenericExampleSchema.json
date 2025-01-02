@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "example_field": {
+      "type": "string",
+      "description": "An example string field for demonstration."
+    },
+    "example_list": {
+      "type": "array",
+      "description": "A list of example items.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "example_number": {
+      "type": "integer",
+      "description": "An example integer field."
+    }
+  },
+  "required": ["example_field", "example_list", "example_number"]
+}

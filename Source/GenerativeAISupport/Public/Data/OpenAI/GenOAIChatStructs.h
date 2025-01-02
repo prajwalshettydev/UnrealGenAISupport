@@ -72,3 +72,27 @@ struct FGenChatSettings
 	FString Model; //can be gpt-4o-mini, 
     
 };
+
+/**
+ * Structured Output Chat Settings
+ */
+USTRUCT(BlueprintType)
+struct GENERATIVEAISUPPORT_API FGenOAIStructuredChatSettings
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "GenAI")
+	FGenChatSettings ChatSettings;
+
+	// Use schema for structured outputs
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "GenAI")
+	bool bUseSchema = true;
+
+	// name
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "GenAI")
+	FString Name;
+
+	// JSON schema for structured outputs
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "GenAI")
+	FString SchemaJson;
+};

@@ -3,9 +3,11 @@
 > [!WARNING]  
 > This plugin is currently under development and not ready for production use.
 
-This plugin is an attempt to build a community ecosystem around the Unreal Engine support for various Generative AI
-APIs. Will only focus on the APIs that can be useful for game development and interactive experiences. Any suggestions and contributions are welcome.
-Currently working on OpenAI API support with real-time chat/audio completions.
+This project aims to build a long-term support (LTS) plugin for various cutting-edge LLM/GenAI models & foster a
+community around it. It currently includes OpenAI's GPT4o & GPT4o-mini for Unreal Engine 5.1 or higher, with plans to add Claude
+Sonnet 3.5, real-time APIs, Deepseek, Gemini, & Grok 2 APIs soon. Will only focus on the APIs that can be useful for
+game development and interactive experiences. Any suggestions
+and contributions are welcome. Currently working on OpenAI API support with real-time chat/audio completions.
 
 ## Current Progress:
 
@@ -18,6 +20,7 @@ Currently working on OpenAI API support with real-time chat/audio completions.
     - OpenAI DALL-E API 🛠️
     - OpenAI Vision API 🚧
     - OpenAI Realtime API 🛠️
+    - OpenAI Structured Outputs ✅
     - OpenAI Text-To-Speech API 🚧
     - OpenAI Whisper API 🚧
 - Anthropic Claude API Support:
@@ -44,23 +47,35 @@ Currently working on OpenAI API support with real-time chat/audio completions.
     - Multi-Modal Vision API 🚧
         - `llama3.2-90b-vision` Model 🚧
     - Local Llama API 🚧
-- Deepseek API Support: 
+- Deepseek API Support:
     - Deepseek Chat API 🚧
         - `deepseek-chat` (DeepSeek-V3) Model 🚧
-- API Key Management ✅
+- API Key Management 
     - Cross-Platform Secure Key Storage ✅
     - Encrypted Key Storage 🛠️
     - Cross Platform Testing 🚧
     - Build System Integration 🛠️
     - Keys in Build Configuration 🛠️
-- Unreal Engine Integration 
+- Unreal Engine Integration
     - Blueprint Support 🛠️
     - C++ Support 🛠️
     - C++ Latent Functions For Blueprints 🛠️
     - Packaged Build Support 🛠️
 - Plugin Documentation 🛠️
 - Plugin Examples 🚧
+- Version Control Support
+    - Perforce Support 🚧
+    - Git Submodule Support ✅ 
 - LTS Build Support 🚧
+- Lightweight Plugin (In Builds) 
+  - No External Dependencies ✅
+    - Build Flags to enable/disable APIs 🚧
+    - Submodules per API Organization 🚧
+- Testing 
+    - Automated Testing 🚧
+    - Build Testing 🚧
+    - Different Platforms 🚧
+    - Different Engine Versions 🚧
 
 ## Quick Links:
 
@@ -69,15 +84,23 @@ Currently working on OpenAI API support with real-time chat/audio completions.
 - [XAI API Documentation](https://docs.x.ai/api)
 - [Google Gemini API Documentation](https://ai.google.dev/gemini-api/docs/models/gemini)
 - [Meta AI API Documentation](https://docs.llama-api.com/quickstart#available-models)
+- [Deepseek API Documentation](https://api-docs.deepseek.com/)
 
 ## Setting API Key:
 
 ### For Editor:
+
 Set the environment variable `PS_OPENAIAPIKEY` to your API key.
-In windows you can use[:]()
+In windows you can use:
 
 ```cmd
 setx PS_OPENAIAPIKEY "your api key"
+```
+
+In Linux/MacOS you can use:
+
+```bash
+export PS_OPENAIAPIKEY="your api key"
 ```
 
 ### For Packaged Builds:
@@ -136,27 +159,106 @@ Still in development..
 Function `GetGenerativeAIApiKey` by default responds with OpenAI API key, that you have securely set in the local
 environment variable
 
-1. Chat: 
+1. Chat:
 
-C++ Example:
-
-```cpp
-void SomeDebugSubsystem::CallGPT(const FString& Prompt, const TFunction<void(const FString&, const FString&, bool)>& Callback)
-{
-    FGenChatSettings ChatSettings;
-    ChatSettings.Model = TEXT("gpt-4o-mini");
-    ChatSettings.MaxTokens = 500;
-    ChatSettings.Messages.Add(FGenChatMessage{ TEXT("system"), Prompt });
-
-    FOnChatCompletionResponse OnComplete = FOnChatCompletionResponse::CreateLambda([Callback](const FString& Response, const FString& ErrorMessage, bool bSuccess)
+   C++ Example:
+    ```cpp
+    void SomeDebugSubsystem::CallGPT(const FString& Prompt, 
+        const TFunction<void(const FString&, const FString&, bool)>& Callback)
     {
-        Callback(Response, ErrorMessage, bSuccess);
-    });
+        FGenChatSettings ChatSettings;
+        ChatSettings.Model = TEXT("gpt-4o-mini");
+        ChatSettings.MaxTokens = 500;
+        ChatSettings.Messages.Add(FGenChatMessage{ TEXT("system"), Prompt });
+    
+        FOnChatCompletionResponse OnComplete = FOnChatCompletionResponse::CreateLambda(
+            [Callback](const FString& Response, const FString& ErrorMessage, bool bSuccess)
+        {
+            Callback(Response, ErrorMessage, bSuccess);
+        });
+    
+        UGenOAIChat::SendChatRequest(ChatSettings, OnComplete);
+    }
+    ```
 
-    UGenOAIChat::SendChatRequest(ChatSettings, OnComplete);
-}
-```
+   Blueprint Example:
 
-Blueprint Example:
+    <img src="Docs/BpExampleOAIChat.png" width="782"/>
+2. Structured Outputs:
+   C++ Example 1:
+   Sending a custom schema json directly to function call
+   ```cpp
+   FString MySchemaJson = R"({
+   "type": "object",
+   "properties": {
+       "count": {
+           "type": "integer",
+           "description": "The total number of users."
+       },
+       "users": {
+           "type": "array",
+           "items": {
+               "type": "object",
+               "properties": {
+                   "name": { "type": "string", "description": "The user's name." },
+                   "heading_to": { "type": "string", "description": "The user's destination." }
+               },
+               "required": ["name", "role", "age", "heading_to"]
+           }
+       }
+   },
+   "required": ["count", "users"]
+   })";
+   
+   UGenAISchemaService::RequestStructuredOutput(
+       TEXT("Generate a list of users and their details"),
+       MySchemaJson,
+       [](const FString& Response, const FString& Error, bool Success) {
+          if (Success)
+          {
+              UE_LOG(LogTemp, Log, TEXT("Structured Output: %s"), *Response);
+          }
+          else
+          {
+              UE_LOG(LogTemp, Error, TEXT("Error: %s"), *Error);
+          }
+       }
+   );
+   ```
+   C++ Example 2:
+   Sending a custom schema json from a file
+   ```cpp
+   #include "Misc/FileHelper.h"
+   #include "Misc/Paths.h"
+   FString SchemaFilePath = FPaths::Combine(
+       FPaths::ProjectDir(),
+       TEXT("Source/:ProjectName/Public/AIPrompts/SomeSchema.json")
+   );
+   
+   FString MySchemaJson;
+   if (FFileHelper::LoadFileToString(MySchemaJson, *SchemaFilePath))
+   {
+       UGenAISchemaService::RequestStructuredOutput(
+           TEXT("Generate a list of users and their details"),
+           MySchemaJson,
+           [](const FString& Response, const FString& Error, bool Success) {
+              if (Success)
+              {
+                  UE_LOG(LogTemp, Log, TEXT("Structured Output: %s"), *Response);
+              }
+              else
+              {
+                  UE_LOG(LogTemp, Error, TEXT("Error: %s"), *Error);
+              }
+           }
+       );
+   }
+   ```
+## Contribution Guidelines:
+### Project Structure:
 
-<img src="Docs/BpExampleOAIChat.png" width="782"/>
+
+## References:
+
+* Env Var set logic
+  from: [OpenAI-Api-Unreal by KellanM](https://github.com/KellanM/OpenAI-Api-Unreal/blob/main/Source/OpenAIAPI/Private/OpenAIUtils.cpp)
