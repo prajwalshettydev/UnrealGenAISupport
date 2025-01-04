@@ -87,7 +87,7 @@ void UGenOAIStructuredOpService::MakeRequest(const FGenOAIStructuredChatSettings
         {
             // in api documentation, it is mentioned that the system message should be appended with "Generate Response in JSON only."
             // todo, we can move this outside this scope, but that doesnt guarantee the callee will append the message
-            JsonMessage->SetStringField(TEXT("content"), Message.Content + TEXT(" Generate Response in JSON only."));
+            JsonMessage->SetStringField(TEXT("content"), Message.Content + TEXT(" Generate Response in JSON only. Use proper JSON formatting and avoid introducing line breaks inside string values."));
         }
         
         MessagesArray.Add(MakeShareable(new FJsonValueObject(JsonMessage)));

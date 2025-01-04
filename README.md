@@ -66,9 +66,11 @@ and contributions are welcome. Currently working on OpenAI API support with real
 - Version Control Support
     - Perforce Support 🚧
     - Git Submodule Support ✅ 
-- LTS Build Support 🚧
+- LTS Branching 🚧
+    - Stable Branch with Bug Fixes 🚧
+    - Dedicated Contributor for LTS 🚧
 - Lightweight Plugin (In Builds) 
-  - No External Dependencies ✅
+    - No External Dependencies ✅
     - Build Flags to enable/disable APIs 🚧
     - Submodules per API Organization 🚧
 - Testing 
