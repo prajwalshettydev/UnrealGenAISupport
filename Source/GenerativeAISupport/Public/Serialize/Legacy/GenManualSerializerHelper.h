@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
-#include "GenOAIChat.h" 
+#include "Data/OpenAI/GenOAIChat.h"
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "GenManualSerializerHelper.generated.h"

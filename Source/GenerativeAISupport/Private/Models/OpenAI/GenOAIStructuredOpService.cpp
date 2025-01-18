@@ -67,7 +67,7 @@ void UGenOAIStructuredOpService::MakeRequest(const FGenOAIStructuredChatSettings
     TSharedRef<TJsonReader<>> SchemaReader = TJsonReaderFactory<>::Create(StructuredChatSettings.SchemaJson);
     if (!FJsonSerializer::Deserialize(SchemaReader, SchemaObject) || !SchemaObject.IsValid())
     {
-        UE_LOG(LogGenAI, Error, TEXT("Failed to parse schema JSON."));
+        UE_LOG(LogGenAI, Error, TEXT("Failed to parse schema JSON: %s"), *StructuredChatSettings.SchemaJson);
         return;
     }
     RootSchemaObject->SetObjectField(TEXT("schema"), SchemaObject);
@@ -105,6 +105,8 @@ void UGenOAIStructuredOpService::MakeRequest(const FGenOAIStructuredChatSettings
     HttpRequest->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
     HttpRequest->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *ApiKey));
     HttpRequest->SetContentAsString(PayloadString);
+    
+	//UE_LOG(LogGenAIVerbose, Log, TEXT("Sending chat request... Payload: %s"), *PayloadString);
 
     HttpRequest->OnProcessRequestComplete().BindLambda([ResponseCallback](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bSuccess) {
         if (!bSuccess || !Response.IsValid())
@@ -145,12 +147,14 @@ void UGenOAIStructuredOpService::ProcessResponse(const FString& ResponseStr, con
                         {
                             FString Content = MessageObject->GetStringField(TEXT("content"));
                             ResponseCallback(Content, TEXT(""), true);
+						    //UE_LOG(LogGenAIVerbose, Log, TEXT("Chat response: %s"), *Content);
                             return;
                         }
                         else if (MessageObject->HasField(TEXT("refusal")))
                         {
                             const FString Refusal = MessageObject->GetStringField(TEXT("refusal"));
                             ResponseCallback(TEXT(""), Refusal, false);
+						    //UE_LOG(LogGenAIVerbose, Log, TEXT("Chat response: %s"), *Refusal);
                             return;
                         }
                     }

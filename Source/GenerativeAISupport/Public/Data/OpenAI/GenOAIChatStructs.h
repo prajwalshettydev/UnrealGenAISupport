@@ -66,7 +66,7 @@ struct FGenChatSettings
 	TArray<FGenChatMessage> Messages;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Chat")
-	int32 MaxTokens;
+	int32 MaxTokens = 10000;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Chat")
 	FString Model; //can be gpt-4o-mini, 

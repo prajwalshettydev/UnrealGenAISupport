@@ -5,6 +5,7 @@
 //in accordance with https://unrealcommunity.wiki/logging-lgpidy6i
 DECLARE_LOG_CATEGORY_EXTERN(LogGenAI, Log, All);
 DECLARE_LOG_CATEGORY_EXTERN(LogGenPerformance, Log, All);
+DECLARE_LOG_CATEGORY_EXTERN(LogGenAIVerbose, Log, All);
 
 #define ENABLE_LOG(Category) UE_SET_LOG_VERBOSITY(Category, Log)
 #define DISABLE_LOG(Category) UE_SET_LOG_VERBOSITY(Category, NoLogging)
@@ -39,9 +40,11 @@ struct FLogInitializer
 	{
 		//DISABLE_LOG(LogGenAI);
 		//DISABLE_LOG(LogGenPerformance);
+		DISABLE_LOG(LogGenAIVerbose);
 
 		ENABLE_LOG(LogGenAI);
 		ENABLE_LOG(LogGenPerformance);
+		//ENABLE_LOG(LogGenAIVerbose);
 	}
 };
 
