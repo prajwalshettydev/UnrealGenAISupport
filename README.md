@@ -107,7 +107,10 @@ export PS_OPENAIAPIKEY="your api key"
 
 ### For Packaged Builds:
 
-Still in development..
+Storing API keys in packaged builds is a security risk. This is what the OpenAI API documentation says about it:
+>"Exposing your OpenAI API key in client-side environments like browsers or mobile apps allows malicious users to take that key and make requests on your behalf – which may lead to unexpected charges or compromise of certain account data. Requests should always be routed through your own backend server where you can keep your API key secure."
+
+Read more about it [here](https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety).
 
 ## Adding the plugin to your project:
 
