@@ -35,18 +35,18 @@ and contributions are welcome. Currently working on OpenAI API support with real
         - `grok-beta` Streaming API 🚧
     - XAI Image API 🚧
 - Google Gemini API Support:
-    - Gemini Chat API 🚧
-        - `gemini-2.0-flash-exp` Model 🚧
-        - `gemini-1.5-flash` Model 🚧
-        - `gemini-1.5-flash-8b` Model 🚧
-    - Gemini Multi-Modal API 🚧
+    - Gemini Chat API 🚧🤝
+        - `gemini-2.0-flash-exp` Model 🚧🤝
+        - `gemini-1.5-flash` Model 🚧🤝
+        - `gemini-1.5-flash-8b` Model 🚧🤝
+    - Gemini Multi-Modal API 🚧🤝
 - Meta AI API Support:
     - Llama Chat API 🚧
         - `llama3.3-70b` Model 🚧
         - `llama3.1-8b` Model 🚧
     - Multi-Modal Vision API 🚧
         - `llama3.2-90b-vision` Model 🚧
-    - Local Llama API 🚧
+    - Local Llama API 🚧🤝
 - Deepseek API Support:
     - Deepseek Chat API 🚧
         - `deepseek-chat` (DeepSeek-V3) Model 🚧
@@ -61,8 +61,8 @@ and contributions are welcome. Currently working on OpenAI API support with real
     - C++ Support 🛠️
     - C++ Latent Functions For Blueprints 🛠️
     - Packaged Build Support 🛠️
-- Plugin Documentation 🛠️
-- Plugin Examples 🚧
+- Plugin Documentation 🛠️🤝
+- Plugin Example Project 🛠️ [here](https://github.com/prajwalshettydev/unreal-llm-api-test-project)
 - Version Control Support
     - Perforce Support 🚧
     - Git Submodule Support ✅ 
@@ -76,8 +76,15 @@ and contributions are welcome. Currently working on OpenAI API support with real
 - Testing 
     - Automated Testing 🚧
     - Build Testing 🚧
-    - Different Platforms 🚧
-    - Different Engine Versions 🚧
+    - Different Platforms 🚧🤝
+    - Different Engine Versions 🚧🤝
+
+
+Where,
+- ✅ - Completed
+- 🛠️ - In Progress
+- 🚧 - Planned
+- 🤝 - Need Contributors
 
 ## Quick Links:
 
@@ -101,9 +108,16 @@ setx PS_OPENAIAPIKEY "your api key"
 
 In Linux/MacOS you can use:
 
-```bash
-export PS_OPENAIAPIKEY="your api key"
-```
+1. Run the following command in your terminal, replacing yourkey with your API key.
+    ```bash
+    echo "export PS_OPENAIAPIKEY='yourkey'" >> ~/.zshrc
+    ```
+
+2. Update the shell with the new variable:
+    ```bash
+    source ~/.zshrc
+    ```
+
 
 ### For Packaged Builds:
 
