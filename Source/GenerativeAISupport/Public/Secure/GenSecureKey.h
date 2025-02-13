@@ -19,21 +19,36 @@
 
 #include "GenSecureKey.generated.h"
 
+enum class EGenAIOrgs : uint8;
+
 UCLASS()
 class GENERATIVEAISUPPORT_API UGenSecureKey : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
 
-public:
-	// Set the API key for Generative AI
-	UFUNCTION(BlueprintCallable, Category = "Generative AI")
-	static void SetGenerativeAIApiKey(FString apiKey);
+private:
+	// A map to store API keys by organization
+	static TMap<EGenAIOrgs, FString> APIKeys;
 
-	// Get the API key for Generative AI
-	static FString GetGenerativeAIApiKey();
+	// Flag to determine whether to use environment variables for API keys
+	static bool bUseApiKeyFromEnv;
+
+public:
+	/**
+	 * Stores the API key in memory for runtime use. 
+	 * This does NOT modify system environment variables.
+	 * If environment variables are enabled (via SetUseApiKeyFromEnvironmentVars),
+	 * it will prioritize reading from the system instead of the stored key.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "GenAI|Secure Key")
+	static void SetGenAIApiKeyRuntime(EGenAIOrgs Org, const FString& APIKey);
+	
+	// Gets the API key for a specific organization
+	UFUNCTION(BlueprintCallable, Category = "GenAI|Secure Key")
+	static FString GetGenerativeAIApiKey(EGenAIOrgs Org);
 
 	// Set whether to use the API key from environment variables
-	UFUNCTION(BlueprintCallable, Category = "Generative AI")
+	UFUNCTION(BlueprintCallable, Category = "GenAI|Secure Key")
 	static void SetUseApiKeyFromEnvironmentVars(bool bUseEnvVariable);
 
 	// Get whether to use the API key from environment variables

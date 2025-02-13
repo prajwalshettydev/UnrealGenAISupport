@@ -48,8 +48,10 @@ and contributions are welcome. Currently working on OpenAI API support with real
         - `llama3.2-90b-vision` Model 🚧
     - Local Llama API 🚧🤝
 - Deepseek API Support:
-    - Deepseek Chat API 🚧
-        - `deepseek-chat` (DeepSeek-V3) Model 🚧
+    - Deepseek Chat API ✅
+        - `deepseek-chat` (DeepSeek-V3) Model ✅
+    - Deepseek Reasoning API, R1 ✅
+        - `deepseek-reasoning-r1` Model ✅
 - API Key Management 
     - Cross-Platform Secure Key Storage ✅
     - Encrypted Key Storage 🛠️
@@ -103,14 +105,14 @@ Set the environment variable `PS_OPENAIAPIKEY` to your API key.
 In windows you can use:
 
 ```cmd
-setx PS_OPENAIAPIKEY "your api key"
+setx PS_<ORGNAME> "your api key"
 ```
 
 In Linux/MacOS you can use:
 
 1. Run the following command in your terminal, replacing yourkey with your API key.
     ```bash
-    echo "export PS_OPENAIAPIKEY='yourkey'" >> ~/.zshrc
+    echo "export PS_<ORGNAME>='yourkey'" >> ~/.zshrc
     ```
 
 2. Update the shell with the new variable:
@@ -118,6 +120,10 @@ In Linux/MacOS you can use:
     source ~/.zshrc
     ```
 
+PS: Don't forget to restart the Editor and also the connected IDE after setting the environment variable.
+
+Where `<ORGNAME>` can be:
+`PS_OPENAIAPIKEY`, `PS_DEEPSEEKAPIKEY`, `PS_ANTHROPICAPIKEY`, `PS_METAAPIKEY`, `PS_GOOGLEAPIKEY` etc.
 
 ### For Packaged Builds:
 
@@ -125,6 +131,8 @@ Storing API keys in packaged builds is a security risk. This is what the OpenAI 
 >"Exposing your OpenAI API key in client-side environments like browsers or mobile apps allows malicious users to take that key and make requests on your behalf – which may lead to unexpected charges or compromise of certain account data. Requests should always be routed through your own backend server where you can keep your API key secure."
 
 Read more about it [here](https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety).
+
+For testing you can call the GenSecureKey::SetGenAIApiKeyRuntime function with your API key in the packaged build.
 
 ## Adding the plugin to your project:
 

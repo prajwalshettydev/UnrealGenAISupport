@@ -25,7 +25,7 @@ public class GenerativeAISupport : ModuleRules
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"Core", "Engine"
+				"Core", "Engine", "ImageDownload", "ImageDownload"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

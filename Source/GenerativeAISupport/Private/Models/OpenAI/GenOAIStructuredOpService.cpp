@@ -3,10 +3,11 @@
 
 #include "Models/OpenAI/GenOAIStructuredOpService.h"
 
-#include "GenSecureKey.h"
 #include "Http.h"
+#include "Data/GenAIOrgs.h"
 #include "Data/OpenAI/GenOAIChatStructs.h"
 #include "Engine/Engine.h" // For GEngine logging
+#include "Secure/GenSecureKey.h"
 #include "Utilities/GenGlobalDefinitions.h"
 
 void UGenOAIStructuredOpService::RequestStructuredOutput(const FGenOAIStructuredChatSettings& StructuredChatSettings, const FOnSchemaResponse& OnComplete)
@@ -42,7 +43,7 @@ void UGenOAIStructuredOpService::Activate()
 
 void UGenOAIStructuredOpService::MakeRequest(const FGenOAIStructuredChatSettings& StructuredChatSettings, const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
 {
-    FString ApiKey = UGenSecureKey::GetGenerativeAIApiKey();
+    FString ApiKey = UGenSecureKey::GetGenerativeAIApiKey(EGenAIOrgs::OpenAI);
     if (ApiKey.IsEmpty())
     {
         ResponseCallback(TEXT(""), TEXT("API key not set"), false);

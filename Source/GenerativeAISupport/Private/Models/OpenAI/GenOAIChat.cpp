@@ -1,10 +1,11 @@
 // Copyright Prajwal Shetty 2024. All rights Reserved. https://prajwalshetty.com/terms
 
 
-#include "Data/OpenAI/GenOAIChat.h"
-#include "GenSecureKey.h"
+#include "Models/OpenAI/GenOAIChat.h"
+#include "Secure/GenSecureKey.h"
 #include "Http.h"
 #include "LatentActions.h"
+#include "Data/GenAIOrgs.h"
 #include "Data/OpenAI/GenOAIChatStructs.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
@@ -44,7 +45,7 @@ void UGenOAIChat::Activate()
 void UGenOAIChat::MakeRequest(const FGenChatSettings& ChatSettings,
                               const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
 {
-	const FString ApiKey = UGenSecureKey::GetGenerativeAIApiKey();
+	const FString ApiKey = UGenSecureKey::GetGenerativeAIApiKey(EGenAIOrgs::OpenAI);
 	if (ApiKey.IsEmpty())
 	{
 		ResponseCallback(TEXT(""), TEXT("API key not set"), false);

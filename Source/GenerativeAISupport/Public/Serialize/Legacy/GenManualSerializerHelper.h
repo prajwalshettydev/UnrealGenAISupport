@@ -4,13 +4,15 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
-#include "Data/OpenAI/GenOAIChat.h"
 #include "CoreMinimal.h"
+#include "WebImage.h"
 #include "UObject/Object.h"
 #include "GenManualSerializerHelper.generated.h"
 
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FGenChatCompletionDelegateLegacy, const FString&, ResponseContent, const FString&, ErrorMessage, bool, bSuccess);
+struct FGenChatSettings;
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FGenChatCompletionDelegateLegacy, const FString&, ResponseContent,
+                                               const FString&, ErrorMessage, bool, bSuccess);
 
 /**
  * 
@@ -21,9 +23,9 @@ class GENERATIVEAISUPPORT_API UGenManualSerializerHelper : public UObject
 	GENERATED_BODY()
 
 public:
-	
 	UPROPERTY(BlueprintAssignable)
 	FGenChatCompletionDelegateLegacy Finished;
-	
-	static void HandleJsonResponse(FHttpResponsePtr Response, FGenChatSettings& ChatSettings, FGenChatCompletionDelegateLegacy& Finished);
+
+	static void HandleJsonResponse(FHttpResponsePtr Response, FGenChatSettings& ChatSettings,
+	                               FGenChatCompletionDelegateLegacy& Finished);
 };
