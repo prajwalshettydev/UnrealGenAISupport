@@ -52,6 +52,7 @@ and contributions are welcome. Currently working on OpenAI API support with real
         - `deepseek-chat` (DeepSeek-V3) Model ✅
     - Deepseek Reasoning API, R1 ✅
         - `deepseek-reasoning-r1` Model ✅
+        - `deepseek-reasoning-r1` CoT Streaming ❌
 - API Key Management 
     - Cross-Platform Secure Key Storage ✅
     - Encrypted Key Storage 🛠️
@@ -87,6 +88,7 @@ Where,
 - 🛠️ - In Progress
 - 🚧 - Planned
 - 🤝 - Need Contributors
+- ❌ - Won't Support For Now
 
 ## Quick Links:
 
@@ -101,7 +103,7 @@ Where,
 
 ### For Editor:
 
-Set the environment variable `PS_OPENAIAPIKEY` to your API key.
+Set the environment variable `PS_<ORGNAME>` to your API key.
 In windows you can use:
 
 ```cmd
@@ -180,6 +182,7 @@ git submodule update --recursive --remote
 Still in development..
 
 ## Usage:
+There is a example Unreal project that already implements the plugin. You can find it [here](https://github.com/prajwalshettydev/unreal-llm-api-test-project).
 
 ### OpenAI:
 
@@ -281,6 +284,54 @@ environment variable
        );
    }
    ```
+
+### DeepSeek API:
+
+> [!WARNING]  
+> While using the R1 reasoning model, make sure the Unreal's HTTP timeouts are not the default values at 30 seconds.
+> As these API calls can take longer than 30 seconds to respond. Simple setting the `HttpRequest->SetTimeout(<N Seconds>);` is not enough
+> So the following lines need to be added to your project's `DefaultEngine.ini` file:
+> ```ini
+> [HTTP]
+> HttpConnectionTimeout=180
+> HttpReceiveTimeout=180
+> ```
+
+1. Chat and Reasoning:
+   C++ Example:
+    ```cpp
+    FGenDSeekChatSettings ReasoningSettings;
+    ReasoningSettings.Model = EDeepSeekModels::Reasoner; // or EDeepSeekModels::Chat for Chat API
+    ReasoningSettings.MaxTokens = 100;
+    ReasoningSettings.Messages.Add(FGenChatMessage{TEXT("system"), TEXT("You are a helpful assistant.")});
+    ReasoningSettings.Messages.Add(FGenChatMessage{TEXT("user"), TEXT("9.11 and 9.8, which is greater?")});
+    ReasoningSettings.bStreamResponse = false;
+    UGenDSeekChat::SendChatRequest(
+        ReasoningSettings,
+        FOnDSeekChatCompletionResponse::CreateLambda(
+            [this](const FString& Response, const FString& ErrorMessage, bool bSuccess)
+            {
+                if (!UTHelper::IsContextStillValid(this))
+                {
+                    return;
+                }
+
+                // Log response details regardless of success
+                UE_LOG(LogTemp, Warning, TEXT("DeepSeek Reasoning Response Received - Success: %d"), bSuccess);
+                UE_LOG(LogTemp, Warning, TEXT("Response: %s"), *Response);
+                if (!ErrorMessage.IsEmpty())
+                {
+                    UE_LOG(LogTemp, Error, TEXT("Error Message: %s"), *ErrorMessage);
+                }
+            })
+    );
+    ```
+    Point to note:
+    * System messages are currently mandatory for the reasoning model. API otherwise seems to return null
+    * Also, from the documentation: `Please note that if the reasoning_content field is included in the sequence of input messages, the API will return a 400 error.
+      Read more about it [here](https://api-docs.deepseek.com/guides/reasoning_model)`
+
+
 ## Contribution Guidelines:
 ### Project Structure:
 

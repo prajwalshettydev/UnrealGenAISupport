@@ -50,6 +50,7 @@ void UGenDSeekChat::MakeRequest(const FGenDSeekChatSettings& ChatSettings,
 		return;
 	}
 
+
 	// Construct JSON payload
 	TSharedPtr<FJsonObject> JsonPayload = MakeShareable(new FJsonObject());
 	JsonPayload->SetStringField(
@@ -74,11 +75,17 @@ void UGenDSeekChat::MakeRequest(const FGenDSeekChatSettings& ChatSettings,
 
 	// Create HTTP request
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = FHttpModule::Get().CreateRequest();
+	HttpRequest->SetTimeout(180.0f); // Set 180 seconds timeout
 	HttpRequest->SetVerb(TEXT("POST"));
 	HttpRequest->SetURL(TEXT("https://api.deepseek.com/chat/completions"));
 	HttpRequest->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
 	HttpRequest->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *ApiKey));
 	HttpRequest->SetContentAsString(PayloadString);
+	FHttpModule::Get().UpdateConfigs(); // Apply changes
+
+	// UE_LOG(LogTemp, Warning, TEXT("Unreal HTTP Timeouts: Total: %f, Connection: %f"),
+	// FHttpModule::Get().GetHttpTotalTimeout(),
+	// FHttpModule::Get().GetHttpConnectionTimeout());
 	
 	UE_LOG(LogTemp, Log, TEXT("Payload: %s"), *PayloadString);
 
@@ -89,6 +96,10 @@ void UGenDSeekChat::MakeRequest(const FGenDSeekChatSettings& ChatSettings,
 			{
 				FString ErrorMessage = Response.IsValid() ? Response->GetContentAsString() : TEXT("Request failed. No response received.");
 				int32 ResponseCode = Response.IsValid() ? Response->GetResponseCode() : -1;
+				if(ResponseCode == 0)
+				{
+					ErrorMessage = TEXT("Request most likely timed out. No response received.");
+				}
 				UE_LOG(LogTemp, Error, TEXT("DeepSeek API request failed. HTTP Code: %d, Error: %s"), ResponseCode, *ErrorMessage);
 
 				ResponseCallback(TEXT(""), ErrorMessage, false);
