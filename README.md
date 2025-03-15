@@ -3,16 +3,16 @@
 > [!WARNING]  
 > This plugin is currently under development and not ready for production use.
 
-Every weeks there are 100s of new AI models being released by various organizations. Hard to keep up, right?
-I present you the Unreal Engine Generative AI Support Plugin. Do not worry about the LLM/GenAI layer, just focus on the Game!
+Every week, hundreds of new AI models are released by various organizations, making it hard to keep up with the latest advancements.
 
-Currently integrating MCP (Model Control Protocol) to Unreal Engine 5.    
+The Unreal Engine Generative AI Support Plugin allows you to focus on game development without worrying about the LLM/GenAI integration layer.
 
-This project aims to build a long-term support (LTS) plugin for various cutting-edge LLM/GenAI models & foster a
-community around it. It currently includes OpenAI's GPT4o & GPT4o-mini for Unreal Engine 5.1 or higher, with plans to add Claude
-Sonnet 3.5, real-time APIs, Deepseek, Gemini, & Grok 2 APIs soon. Will only focus on the APIs that can be useful for
-game development and interactive experiences. Any suggestions
-and contributions are welcome. Currently working on OpenAI API support with real-time chat/audio completions.
+Currently integrating Model Control Protocol (MCP) with Unreal Engine 5.5.
+
+This project aims to build a long-term support (LTS) plugin for various cutting-edge LLM/GenAI models and foster a
+community around it. It currently includes OpenAI's GPT-4o, Deepseek R1, and GPT-4o-mini for Unreal Engine 5.1 or higher, with plans to add Claude
+Sonnet 3.5, real-time APIs, Gemini, MCP, and Grok 3 APIs soon. The plugin will focus exclusively on APIs useful for
+game development and interactive experiences. All suggestions and contributions are welcome.
 
 ## Current Progress:
 
