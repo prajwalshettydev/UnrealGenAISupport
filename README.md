@@ -3,6 +3,11 @@
 > [!WARNING]  
 > This plugin is currently under development and not ready for production use.
 
+Every weeks there are 100s of new AI models being released by various organizations. Hard to keep up, right?
+I present you the Unreal Engine Generative AI Support Plugin. Do not worry about the LLM/GenAI layer, just focus on the Game!
+
+Currently integrating MCP (Model Control Protocol) to Unreal Engine 5.    
+
 This project aims to build a long-term support (LTS) plugin for various cutting-edge LLM/GenAI models & foster a
 community around it. It currently includes OpenAI's GPT4o & GPT4o-mini for Unreal Engine 5.1 or higher, with plans to add Claude
 Sonnet 3.5, real-time APIs, Deepseek, Gemini, & Grok 2 APIs soon. Will only focus on the APIs that can be useful for
@@ -15,9 +20,11 @@ and contributions are welcome. Currently working on OpenAI API support with real
     - OpenAI Chat API ✅
         - `gpt-4o` Model ✅
         - `gpt-4o-mini` Model ✅
+        - `gpt-4.5` Model 🛠️
         - `o1-mini` Model 🚧
         - `o1` Model 🚧
-    - OpenAI DALL-E API 🛠️
+        - `o3-mini-high` Model 🚧
+    - OpenAI DALL-E API 🚧
     - OpenAI Vision API 🚧
     - OpenAI Realtime API 🛠️
     - OpenAI Structured Outputs ✅
@@ -25,11 +32,14 @@ and contributions are welcome. Currently working on OpenAI API support with real
     - OpenAI Whisper API 🚧
 - Anthropic Claude API Support:
     - Claude Chat API 🚧
-        - `claude-3-5-sonnet-latest` Model 🚧
+        - `claude-3-7-sonnet-latest` Model 🚧
+        - `claude-3-5-sonnet` Model 🚧
         - `claude-3-5-haiku-latest` Model 🚧
         - `claude-3-opus-latest` Model 🚧
     - Claude Vision API 🚧
-- XAI (Grok) API Support:
+    - Model Control Protocol (MCP) 🛠️
+        - Claude Desktop App Client Support 🛠️
+- XAI (Grok 3) API Support:
     - XAI Chat Completions API 🚧
         - `grok-beta` Model 🚧
         - `grok-beta` Streaming API 🚧
@@ -53,6 +63,7 @@ and contributions are welcome. Currently working on OpenAI API support with real
     - Deepseek Reasoning API, R1 ✅
         - `deepseek-reasoning-r1` Model ✅
         - `deepseek-reasoning-r1` CoT Streaming ❌
+    - Independently Hosted Deepseek Models 🚧
 - API Key Management 
     - Cross-Platform Secure Key Storage ✅
     - Encrypted Key Storage 🛠️
