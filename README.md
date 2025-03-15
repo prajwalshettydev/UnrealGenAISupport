@@ -31,11 +31,11 @@ game development and interactive experiences. All suggestions and contributions 
     - OpenAI Text-To-Speech API 🚧
     - OpenAI Whisper API 🚧
 - Anthropic Claude API Support:
-    - Claude Chat API 🚧
-        - `claude-3-7-sonnet-latest` Model 🚧
-        - `claude-3-5-sonnet` Model 🚧
-        - `claude-3-5-haiku-latest` Model 🚧
-        - `claude-3-opus-latest` Model 🚧
+    - Claude Chat API ✅
+        - `claude-3-7-sonnet-latest` Model ✅
+        - `claude-3-5-sonnet` Model ✅
+        - `claude-3-5-haiku-latest` Model ✅
+        - `claude-3-opus-latest` Model ✅ 
     - Claude Vision API 🚧
     - Model Control Protocol (MCP) 🛠️
         - Claude Desktop App Client Support 🛠️
