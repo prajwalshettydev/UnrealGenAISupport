@@ -38,6 +38,7 @@ def handshake_test(message: str) -> str:
             return f"Handshake failed: {response.get('error', 'Unknown error')}"
     except Exception as e:
         return f"Error communicating with Unreal: {str(e)}"
+    
 @mcp.tool()
 def spawn_object(actor_class: str, location: list = [0, 0, 0], rotation: list = [0, 0, 0],
                  scale: list = [1, 1, 1], actor_label: str = None) -> str:
@@ -45,7 +46,8 @@ def spawn_object(actor_class: str, location: list = [0, 0, 0], rotation: list = 
     Spawn an object in the Unreal Engine level
     
     Args:
-        actor_class: Class name of the actor to spawn (e.g., "Cube", "Sphere", "Cone")
+        actor_class: For basic shapes, use: "Cube", "Sphere", "Cylinder", or "Cone".
+                     For other actors, use class name like "PointLight" or full path.
         location: [X, Y, Z] coordinates
         rotation: [Pitch, Yaw, Roll] in degrees
         scale: [X, Y, Z] scale factors
@@ -67,7 +69,12 @@ def spawn_object(actor_class: str, location: list = [0, 0, 0], rotation: list = 
     if response.get("success"):
         return f"Successfully spawned {actor_class}" + (f" with label '{actor_label}'" if actor_label else "")
     else:
-        return f"Failed to spawn object: {response.get('error', 'Unknown error')}"
+        error = response.get('error', 'Unknown error')
+        # Add hint for Claude to understand what went wrong
+        if "not found" in error:
+            hint = "\nHint: For basic shapes, use 'Cube', 'Sphere', 'Cylinder', or 'Cone'. For other actors, try using '/Script/Engine.PointLight' format."
+            error += hint
+        return f"Failed to spawn object: {error}"
 
 @mcp.tool()
 def create_material(material_name: str, color: list) -> str:
