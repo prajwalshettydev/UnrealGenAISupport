@@ -10,8 +10,8 @@ The Unreal Engine Generative AI Support Plugin allows you to focus on game devel
 Currently integrating Model Control Protocol (MCP) with Unreal Engine 5.5.
 
 This project aims to build a long-term support (LTS) plugin for various cutting-edge LLM/GenAI models and foster a
-community around it. It currently includes OpenAI's GPT-4o, Deepseek R1, and GPT-4o-mini for Unreal Engine 5.1 or higher, with plans to add Claude
-Sonnet 3.5, real-time APIs, Gemini, MCP, and Grok 3 APIs soon. The plugin will focus exclusively on APIs useful for
+community around it. It currently includes OpenAI's GPT-4o, Deepseek R1, Claude Sonnet 3.7 and GPT-4o-mini for Unreal Engine 5.1 or higher, with plans to add
+, real-time APIs, Gemini, MCP, and Grok 3 APIs soon. The plugin will focus exclusively on APIs useful for
 game development and interactive experiences. All suggestions and contributions are welcome.
 
 ## Current Progress:
@@ -37,8 +37,12 @@ game development and interactive experiences. All suggestions and contributions 
         - `claude-3-5-haiku-latest` Model ✅
         - `claude-3-opus-latest` Model ✅ 
     - Claude Vision API 🚧
-    - Model Control Protocol (MCP) 🛠️
-        - Claude Desktop App Client Support 🛠️
+- Model Control Protocol (MCP) 🛠️
+    - Clients Support ✅
+        - Claude Desktop App Support ✅
+        - OpenAI Operator API Support 🚧
+    - Blueprints Auto Generation 🛠️
+    - Level/Scene Control for LLMs 🛠️
 - XAI (Grok 3) API Support:
     - XAI Chat Completions API 🚧
         - `grok-beta` Model 🚧
@@ -64,6 +68,9 @@ game development and interactive experiences. All suggestions and contributions 
         - `deepseek-reasoning-r1` Model ✅
         - `deepseek-reasoning-r1` CoT Streaming ❌
     - Independently Hosted Deepseek Models 🚧
+- Baidu API Support:
+    - Baidu Chat API 🚧
+        - `baidu-chat` Model 🚧
 - API Key Management 
     - Cross-Platform Secure Key Storage ✅
     - Encrypted Key Storage 🛠️
@@ -109,19 +116,48 @@ Where,
 - [Google Gemini API Documentation](https://ai.google.dev/gemini-api/docs/models/gemini)
 - [Meta AI API Documentation](https://docs.llama-api.com/quickstart#available-models)
 - [Deepseek API Documentation](https://api-docs.deepseek.com/)
+- [Model Control Protocol (MCP) Documentation](https://modelcontextprotocol.io/)
+
+# Table of Contents
+
+- [Current Progress](#current-progress)
+- [Quick Links](#quick-links)
+- [Setting API Key](#setting-api-key)
+    - [For Editor](#for-editor)
+    - [For Packaged Builds](#for-packaged-builds)
+- [Adding the plugin to your project](#adding-the-plugin-to-your-project)
+    - [With Git](#with-git)
+    - [With Perforce](#with-perforce)
+    - [With Unreal Marketplace](#with-unreal-marketplace)
+- [Fetching the Latest Plugin Changes](#fetching-the-latest-plugin-changes)
+    - [With Git](#with-git-1)
+    - [With Perforce](#with-perforce-1)
+- [Usage](#usage)
+    - [OpenAI](#openai)
+        - [1. Chat](#1-chat)
+        - [2. Structured Outputs](#2-structured-outputs)
+    - [DeepSeek API](#deepseek-api)
+        - [1. Chat and Reasoning](#1-chat-and-reasoning)
+    - [Anthropic API](#anthropic-api)
+        - [1. Chat](#1-chat-1)
+    - [Model Control Protocol (MCP)](#model-control-protocol-mcp)
+        - [Setting up](#setting-up)
+        - [Usage](#usage-1)
+- [Contribution Guidelines](#contribution-guidelines)
+- [Project Structure](#project-structure)
+- [References](#references)
 
 ## Setting API Key:
 
 ### For Editor:
 
 Set the environment variable `PS_<ORGNAME>` to your API key.
-In windows you can use:
-
+#### For Windows:
 ```cmd
 setx PS_<ORGNAME> "your api key"
 ```
 
-In Linux/MacOS you can use:
+#### For Linux/MacOS:
 
 1. Run the following command in your terminal, replacing yourkey with your API key.
     ```bash
@@ -133,7 +169,7 @@ In Linux/MacOS you can use:
     source ~/.zshrc
     ```
 
-PS: Don't forget to restart the Editor and also the connected IDE after setting the environment variable.
+PS: Don't forget to restart the Editor and ALSO the connected IDE after setting the environment variable.
 
 Where `<ORGNAME>` can be:
 `PS_OPENAIAPIKEY`, `PS_DEEPSEEKAPIKEY`, `PS_ANTHROPICAPIKEY`, `PS_METAAPIKEY`, `PS_GOOGLEAPIKEY` etc.
@@ -145,7 +181,7 @@ Storing API keys in packaged builds is a security risk. This is what the OpenAI 
 
 Read more about it [here](https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety).
 
-For testing you can call the GenSecureKey::SetGenAIApiKeyRuntime function with your API key in the packaged build.
+For test builds you can call the `GenSecureKey::SetGenAIApiKeyRuntime` either in c++ or blueprints function with your API key in the packaged build.
 
 ## Adding the plugin to your project:
 
@@ -169,6 +205,9 @@ For testing you can call the GenSecureKey::SetGenAIApiKeyRuntime function with y
 
 ### With Perforce:
 
+Still in development..
+
+### With Unreal Marketplace:
 Still in development..
 
 ## Fetching the Latest Plugin Changes:
@@ -197,12 +236,12 @@ There is a example Unreal project that already implements the plugin. You can fi
 
 ### OpenAI:
 
-Function `GetGenerativeAIApiKey` by default responds with OpenAI API key, that you have securely set in the local
-environment variable
+Currently the plugin supports Chat and Structured Outputs from OpenAI API. Both for C++ and Blueprints.
+Tested models are `gpt-4o`, `gpt-4o-mini`, `gpt-4.5`, `o1-mini`, `o1`, `o3-mini-high`.
 
-1. Chat:
+#### 1. Chat:
 
-   C++ Example:
+   ##### C++ Example:
     ```cpp
     void SomeDebugSubsystem::CallGPT(const FString& Prompt, 
         const TFunction<void(const FString&, const FString&, bool)>& Callback)
@@ -222,11 +261,12 @@ environment variable
     }
     ```
 
-   Blueprint Example:
+   ##### Blueprint Example:
 
     <img src="Docs/BpExampleOAIChat.png" width="782"/>
-2. Structured Outputs:
-   C++ Example 1:
+
+#### 2. Structured Outputs:
+   ##### C++ Example 1:
    Sending a custom schema json directly to function call
    ```cpp
    FString MySchemaJson = R"({
@@ -266,7 +306,7 @@ environment variable
        }
    );
    ```
-   C++ Example 2:
+   ##### C++ Example 2:
    Sending a custom schema json from a file
    ```cpp
    #include "Misc/FileHelper.h"
@@ -298,9 +338,15 @@ environment variable
 
 ### DeepSeek API:
 
+Currently the plugin supports Chat and Reasoning from DeepSeek API. Both for C++ and Blueprints.
+Points to note:
+* System messages are currently mandatory for the reasoning model. API otherwise seems to return null
+* Also, from the documentation: "Please note that if the reasoning_content field is included in the sequence of input messages, the API will return a 400 error.
+  Read more about it [here](https://api-docs.deepseek.com/guides/reasoning_model)"
+
 > [!WARNING]  
 > While using the R1 reasoning model, make sure the Unreal's HTTP timeouts are not the default values at 30 seconds.
-> As these API calls can take longer than 30 seconds to respond. Simple setting the `HttpRequest->SetTimeout(<N Seconds>);` is not enough
+> As these API calls can take longer than 30 seconds to respond. Simply setting the `HttpRequest->SetTimeout(<N Seconds>);` is not enough
 > So the following lines need to be added to your project's `DefaultEngine.ini` file:
 > ```ini
 > [HTTP]
@@ -308,9 +354,10 @@ environment variable
 > HttpReceiveTimeout=180
 > ```
 
-1. Chat and Reasoning:
-   C++ Example:
-    ```cpp
+#### 1. Chat and Reasoning:
+##### C++ Example:
+
+   ```cpp
     FGenDSeekChatSettings ReasoningSettings;
     ReasoningSettings.Model = EDeepSeekModels::Reasoner; // or EDeepSeekModels::Chat for Chat API
     ReasoningSettings.MaxTokens = 100;
@@ -336,14 +383,76 @@ environment variable
                 }
             })
     );
-    ```
-    Point to note:
-    * System messages are currently mandatory for the reasoning model. API otherwise seems to return null
-    * Also, from the documentation: `Please note that if the reasoning_content field is included in the sequence of input messages, the API will return a 400 error.
-      Read more about it [here](https://api-docs.deepseek.com/guides/reasoning_model)`
+   ```
 
+### Anthropic API:
+Currently the plugin supports Chat from Anthropic API. Both for C++ and Blueprints.
+Tested models are `claude-3-7-sonnet-latest`, `claude-3-5-sonnet`, `claude-3-5-haiku-latest`, `claude-3-opus-latest`.
+
+#### 1. Chat:
+##### C++ Example:
+```cpp
+    // ---- Claude Chat Test ----
+    FGenClaudeChatSettings ChatSettings;
+    ChatSettings.Model = EClaudeModels::Claude_3_7_Sonnet; // Use Claude 3.7 Sonnet model
+    ChatSettings.MaxTokens = 4096;
+    ChatSettings.Temperature = 0.7f;
+    ChatSettings.Messages.Add(FGenChatMessage{TEXT("system"), TEXT("You are a helpful assistant.")});
+    ChatSettings.Messages.Add(FGenChatMessage{TEXT("user"), TEXT("What is the capital of France?")});
+    
+    UGenClaudeChat::SendChatRequest(
+        ChatSettings,
+        FOnClaudeChatCompletionResponse::CreateLambda(
+            [this](const FString& Response, const FString& ErrorMessage, bool bSuccess)
+            {
+                if (!UTHelper::IsContextStillValid(this))
+                {
+                    return;
+                }
+    
+                if (bSuccess)
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("Claude Chat Response: %s"), *Response);
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Error, TEXT("Claude Chat Error: %s"), *ErrorMessage);
+                }
+            })
+    );
+```
+
+## Model Control Protocol (MCP):
+This is currently work in progress. The plugin will support various clients like Claude Desktop App, OpenAI Operator API etc.
+
+### Setting up:
+##### 1. Install the Claude Desktop App from [here](https://claude.anthropic.com/).
+##### 2. Setup the `claude_desktop_config.json` file in Claude Desktop App's installation directory. (might ask claude where its located for your platform!)
+The file will look something like this:
+```json
+{
+    "mcpServers": {
+      "unreal-handshake": {
+        "command": python,
+        "args": ["<your_project_directoy>/ExamplesForUEGenAIPlugin/Plugins/GenerativeAISupport/Content/Python/mcp_server.py"],
+        "env": {
+          "UNREAL_HOST": "localhost",
+          "UNREAL_PORT": "9877" 
+        }
+      }
+    }
+}
+```
+##### 3. Install MCP and MCP[CLI] from with either pip or cv
+##### 4. Enable python plugin in Unreal Engine. (Edit -> Plugins -> Python Editor Script Plugin)
+
+### Usage:
+
+More documentation will follow.
 
 ## Contribution Guidelines:
+
+
 ### Project Structure:
 
 
@@ -351,3 +460,5 @@ environment variable
 
 * Env Var set logic
   from: [OpenAI-Api-Unreal by KellanM](https://github.com/KellanM/OpenAI-Api-Unreal/blob/main/Source/OpenAIAPI/Private/OpenAIUtils.cpp)
+* MCP Server inspiration
+  from: [Blender-MCP by ahujasid](https://github.com/ahujasid/blender-mcp)
