@@ -51,86 +51,71 @@ def spawn_actor(actor_class_name, location=(0, 0, 0), rotation=(0, 0, 0), scale=
     except Exception as e:
         unreal.log_error(f"Error spawning actor: {str(e)}")
         return {"success": False, "error": str(e)}
-    
+
 def create_material(material_name, color=(1, 0, 0)):
     try:
-        # Create a new material in the content browser
-        package_path = "/Game/Materials"
-        factory = unreal.MaterialFactoryNew()
-        asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
+        # Use the C++ utility class instead
+        gen_actor_utils = unreal.GenActorUtils
+        color_linear = unreal.LinearColor(color[0], color[1], color[2], 1.0)
 
-        # Create the material asset
-        material = asset_tools.create_asset(material_name, package_path, unreal.Material, factory)
+        material = gen_actor_utils.create_material(material_name, color_linear)
 
-        # Get the color parameter
-        color_param = unreal.LinearColor(color[0], color[1], color[2], 1.0)
+        if not material:
+            return {"success": False, "error": "Failed to create material"}
 
-        # Create a constant color expression and set its value
-        constant_expr = unreal.MaterialEditingLibrary.create_material_expression(material, unreal.MaterialExpressionConstant3Vector, -350, 0)
-        constant_expr.set_editor_property("constant", color_param)
-
-        # Connect to the base color
-        unreal.MaterialEditingLibrary.connect_material_property(constant_expr, "RGB", unreal.MaterialProperty.MP_BASE_COLOR)
-
-        # Compile and save the material
-        unreal.MaterialEditingLibrary.recompile_material(material)
-        unreal.EditorAssetLibrary.save_asset(f"{package_path}/{material_name}")
-
-        unreal.log(f"Created material: {material_name} with color {color}")
-        return {"success": True, "material_path": f"{package_path}/{material_name}"}
-
+        material_path = f"/Game/Materials/{material_name}"
+        unreal.log(f"Created material: {material_name} at {material_path}")
+        return {"success": True, "material_path": material_path}
     except Exception as e:
         unreal.log_error(f"Error creating material: {str(e)}")
         return {"success": False, "error": str(e)}
 
 def modify_object(actor_name, property_type, value):
     try:
-        # Find the actor in the level
-        actor = unreal.EditorLevelLibrary.get_actor_reference(actor_name)
-        if not actor:
-            return {"success": False, "error": f"Actor '{actor_name}' not found in level"}
+        # Use the C++ utility class
+        gen_actor_utils = unreal.GenActorUtils
 
         if property_type == "material":
             # Set the material
             material_path = value
-            material = unreal.EditorAssetLibrary.find_asset_data(material_path).get_asset()
-            if not material:
-                return {"success": False, "error": f"Material '{material_path}' not found"}
-
-            # Get static mesh component
-            static_mesh_component = actor.get_component_by_class(unreal.StaticMeshComponent)
-            if static_mesh_component:
-                static_mesh_component.set_material(0, material)
+            success = gen_actor_utils.set_actor_material_by_path(actor_name, material_path)
+            if success:
                 unreal.log(f"Set material of {actor_name} to {material_path}")
                 return {"success": True}
-            return {"success": False, "error": "No static mesh component found on actor"}
+            return {"success": False, "error": f"Failed to set material for {actor_name}"}
 
         elif property_type == "position":
             # Set position (expects tuple of x,y,z)
             if not isinstance(value, (list, tuple)) or len(value) != 3:
                 return {"success": False, "error": "Position value must be a tuple/list of 3 coordinates"}
-            loc = unreal.Vector(value[0], value[1], value[2])
-            actor.set_actor_location(loc, False, True)
-            unreal.log(f"Set position of {actor_name} to {loc}")
-            return {"success": True}
+            vec = unreal.Vector(value[0], value[1], value[2])
+            success = gen_actor_utils.set_actor_position(actor_name, vec)
+            if success:
+                unreal.log(f"Set position of {actor_name} to {vec}")
+                return {"success": True}
+            return {"success": False, "error": f"Failed to set position for {actor_name}"}
 
         elif property_type == "rotation":
             # Set rotation (expects tuple of pitch,yaw,roll)
             if not isinstance(value, (list, tuple)) or len(value) != 3:
                 return {"success": False, "error": "Rotation value must be a tuple/list of 3 angles"}
             rot = unreal.Rotator(value[0], value[1], value[2])
-            actor.set_actor_rotation(rot, False)
-            unreal.log(f"Set rotation of {actor_name} to {rot}")
-            return {"success": True}
+            success = gen_actor_utils.set_actor_rotation(actor_name, rot)
+            if success:
+                unreal.log(f"Set rotation of {actor_name} to {rot}")
+                return {"success": True}
+            return {"success": False, "error": f"Failed to set rotation for {actor_name}"}
 
         elif property_type == "scale":
             # Set scale (expects tuple of x,y,z)
             if not isinstance(value, (list, tuple)) or len(value) != 3:
                 return {"success": False, "error": "Scale value must be a tuple/list of 3 values"}
             scale = unreal.Vector(value[0], value[1], value[2])
-            actor.set_actor_scale3d(scale)
-            unreal.log(f"Set scale of {actor_name} to {scale}")
-            return {"success": True}
+            success = gen_actor_utils.set_actor_scale(actor_name, scale)
+            if success:
+                unreal.log(f"Set scale of {actor_name} to {scale}")
+                return {"success": True}
+            return {"success": False, "error": f"Failed to set scale for {actor_name}"}
 
         else:
             return {"success": False, "error": f"Unknown property type: {property_type}"}

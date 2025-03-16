@@ -44,7 +44,9 @@ public class GenerativeAISupport : ModuleRules
 				"HTTP",
 				"EditorScriptingUtilities", 
 				"Blutility",
-				"UnrealEd"
+				"UnrealEd",
+				"MaterialEditor",
+				"MaterialUtilities"
 				// ... add private dependencies that you statically link with here ...	
 			}
 		);
