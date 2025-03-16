@@ -263,7 +263,7 @@ Tested models are `gpt-4o`, `gpt-4o-mini`, `gpt-4.5`, `o1-mini`, `o1`, `o3-mini-
 
    ##### Blueprint Example:
 
-    <img src="Docs/BpExampleOAIChat.png" width="782"/>
+<img src="Docs/BpExampleOAIChat.png" width="782"/>
 
 #### 2. Structured Outputs:
    ##### C++ Example 1:
