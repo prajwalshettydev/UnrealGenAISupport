@@ -46,7 +46,8 @@ public class GenerativeAISupport : ModuleRules
 				"Blutility",
 				"UnrealEd",
 				"MaterialEditor",
-				"MaterialUtilities"
+				"MaterialUtilities",
+				"BlueprintGraph"
 				// ... add private dependencies that you statically link with here ...	
 			}
 		);

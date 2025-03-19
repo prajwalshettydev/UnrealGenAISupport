@@ -443,7 +443,10 @@ The file will look something like this:
     }
 }
 ```
-##### 3. Install MCP and MCP[CLI] from with either pip or cv
+##### 3. Install MCP[CLI] from with either pip or cv.
+```bash
+pip install mcp[cli]
+```
 ##### 4. Enable python plugin in Unreal Engine. (Edit -> Plugins -> Python Editor Script Plugin)
 
 ### Usage:
@@ -452,6 +455,12 @@ More documentation will follow.
 
 ## Contribution Guidelines:
 
+### Setting up for Development:
+
+1. Install `unreal` python package and setup the IDE's python interpreter for proper intellisense.
+```bash
+pip install unreal
+```
 
 ### Project Structure:
 

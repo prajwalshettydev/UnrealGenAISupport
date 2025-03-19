@@ -22,7 +22,8 @@ def send_to_unreal(command):
             return {"success": False, "error": str(e)}
 
 
-# Define a tool for Claude to call
+# Define basic tools for Claude to call
+
 @mcp.tool()
 def handshake_test(message: str) -> str:
     """Send a handshake message to Unreal Engine"""
@@ -38,7 +39,12 @@ def handshake_test(message: str) -> str:
             return f"Handshake failed: {response.get('error', 'Unknown error')}"
     except Exception as e:
         return f"Error communicating with Unreal: {str(e)}"
-    
+
+
+#
+# Basic Object Commands
+#
+
 @mcp.tool()
 def spawn_object(actor_class: str, location: list = [0, 0, 0], rotation: list = [0, 0, 0],
                  scale: list = [1, 1, 1], actor_label: str = None) -> str:
@@ -199,6 +205,250 @@ def set_object_scale(actor_name: str, scale: list) -> str:
         return f"Successfully set scale of '{actor_name}' to {scale}"
     else:
         return f"Failed to set scale: {response.get('error', 'Unknown error')}"
+
+
+#
+# Blueprint Commands
+#
+
+@mcp.tool()
+def create_blueprint(blueprint_name: str, parent_class: str = "Actor", save_path: str = "/Game/Blueprints") -> str:
+    """
+    Create a new Blueprint class
+    
+    Args:
+        blueprint_name: Name for the new Blueprint
+        parent_class: Parent class name or path (e.g., "Actor", "/Script/Engine.Actor")
+        save_path: Path to save the Blueprint asset
+        
+    Returns:
+        Message indicating success or failure
+    """
+    command = {
+        "type": "create_blueprint",
+        "blueprint_name": blueprint_name,
+        "parent_class": parent_class,
+        "save_path": save_path
+    }
+
+    response = send_to_unreal(command)
+    if response.get("success"):
+        return f"Successfully created Blueprint '{blueprint_name}' with path: {response.get('blueprint_path', save_path + '/' + blueprint_name)}"
+    else:
+        return f"Failed to create Blueprint: {response.get('error', 'Unknown error')}"
+
+@mcp.tool()
+def add_component_to_blueprint(blueprint_path: str, component_class: str, component_name: str = None) -> str:
+    """
+    Add a component to a Blueprint
+    
+    Args:
+        blueprint_path: Path to the Blueprint asset
+        component_class: Component class to add (e.g., "StaticMeshComponent", "PointLightComponent")
+        component_name: Name for the new component (optional)
+        
+    Returns:
+        Message indicating success or failure
+    """
+    command = {
+        "type": "add_component",
+        "blueprint_path": blueprint_path,
+        "component_class": component_class,
+        "component_name": component_name
+    }
+
+    response = send_to_unreal(command)
+    if response.get("success"):
+        return f"Successfully added {component_class} to Blueprint at {blueprint_path}"
+    else:
+        return f"Failed to add component: {response.get('error', 'Unknown error')}"
+
+@mcp.tool()
+def add_variable_to_blueprint(blueprint_path: str, variable_name: str, variable_type: str,
+                              default_value: str = None, category: str = "Default") -> str:
+    """
+    Add a variable to a Blueprint
+    
+    Args:
+        blueprint_path: Path to the Blueprint asset
+        variable_name: Name for the new variable
+        variable_type: Type of the variable (e.g., "float", "vector", "boolean")
+        default_value: Default value for the variable (optional)
+        category: Category for organizing variables in the Blueprint editor (optional)
+        
+    Returns:
+        Message indicating success or failure
+    """
+    command = {
+        "type": "add_variable",
+        "blueprint_path": blueprint_path,
+        "variable_name": variable_name,
+        "variable_type": variable_type,
+        "default_value": default_value,
+        "category": category
+    }
+
+    response = send_to_unreal(command)
+    if response.get("success"):
+        return f"Successfully added {variable_type} variable '{variable_name}' to Blueprint at {blueprint_path}"
+    else:
+        return f"Failed to add variable: {response.get('error', 'Unknown error')}"
+
+@mcp.tool()
+def add_function_to_blueprint(blueprint_path: str, function_name: str,
+                              inputs: list = None, outputs: list = None) -> str:
+    """
+    Add a function to a Blueprint
+    
+    Args:
+        blueprint_path: Path to the Blueprint asset
+        function_name: Name for the new function
+        inputs: List of input parameters [{"name": "param1", "type": "float"}, ...]
+        outputs: List of output parameters [{"name": "return", "type": "boolean"}, ...]
+        
+    Returns:
+        Message indicating success or failure
+    """
+    if inputs is None:
+        inputs = []
+    if outputs is None:
+        outputs = []
+
+    command = {
+        "type": "add_function",
+        "blueprint_path": blueprint_path,
+        "function_name": function_name,
+        "inputs": inputs,
+        "outputs": outputs
+    }
+
+    response = send_to_unreal(command)
+    if response.get("success"):
+        return f"Successfully added function '{function_name}' to Blueprint at {blueprint_path} with ID: {response.get('function_id', 'unknown')}"
+    else:
+        return f"Failed to add function: {response.get('error', 'Unknown error')}"
+
+@mcp.tool()
+def add_node_to_blueprint(blueprint_path: str, function_id: str, node_type: str,
+                          node_position: list = [0, 0], node_properties: dict = None) -> str:
+    """
+    Add a node to a Blueprint graph
+    
+    Args:
+        blueprint_path: Path to the Blueprint asset
+        function_id: ID of the function to add the node to
+        node_type: Type of node to add (e.g., "K2_SetActorLocation", "Branch")
+        node_position: Position of the node in the graph [X, Y]
+        node_properties: Properties to set on the node (optional)
+        
+    Returns:
+        Message indicating success or failure
+    """
+    if node_properties is None:
+        node_properties = {}
+
+    command = {
+        "type": "add_node",
+        "blueprint_path": blueprint_path,
+        "function_id": function_id,
+        "node_type": node_type,
+        "node_position": node_position,
+        "node_properties": node_properties
+    }
+
+    response = send_to_unreal(command)
+    if response.get("success"):
+        return f"Successfully added {node_type} node to function {function_id} in Blueprint at {blueprint_path} with ID: {response.get('node_id', 'unknown')}"
+    else:
+        return f"Failed to add node: {response.get('error', 'Unknown error')}"
+
+@mcp.tool()
+def connect_blueprint_nodes(blueprint_path: str, function_id: str,
+                            source_node_id: str, source_pin: str,
+                            target_node_id: str, target_pin: str) -> str:
+    """
+    Connect nodes in a Blueprint graph
+    
+    Args:
+        blueprint_path: Path to the Blueprint asset
+        function_id: ID of the function containing the nodes
+        source_node_id: ID of the source node
+        source_pin: Name of the source pin
+        target_node_id: ID of the target node
+        target_pin: Name of the target pin
+        
+    Returns:
+        Message indicating success or failure
+    """
+    command = {
+        "type": "connect_nodes",
+        "blueprint_path": blueprint_path,
+        "function_id": function_id,
+        "source_node_id": source_node_id,
+        "source_pin": source_pin,
+        "target_node_id": target_node_id,
+        "target_pin": target_pin
+    }
+
+    response = send_to_unreal(command)
+    if response.get("success"):
+        return f"Successfully connected {source_node_id}.{source_pin} to {target_node_id}.{target_pin} in Blueprint at {blueprint_path}"
+    else:
+        return f"Failed to connect nodes: {response.get('error', 'Unknown error')}"
+
+@mcp.tool()
+def compile_blueprint(blueprint_path: str) -> str:
+    """
+    Compile a Blueprint
+    
+    Args:
+        blueprint_path: Path to the Blueprint asset
+        
+    Returns:
+        Message indicating success or failure
+    """
+    command = {
+        "type": "compile_blueprint",
+        "blueprint_path": blueprint_path
+    }
+
+    response = send_to_unreal(command)
+    if response.get("success"):
+        return f"Successfully compiled Blueprint at {blueprint_path}"
+    else:
+        return f"Failed to compile Blueprint: {response.get('error', 'Unknown error')}"
+
+@mcp.tool()
+def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
+                          rotation: list = [0, 0, 0], scale: list = [1, 1, 1],
+                          actor_label: str = None) -> str:
+    """
+    Spawn a Blueprint actor in the level
+    
+    Args:
+        blueprint_path: Path to the Blueprint asset
+        location: [X, Y, Z] coordinates
+        rotation: [Pitch, Yaw, Roll] in degrees
+        scale: [X, Y, Z] scale factors
+        actor_label: Optional custom name for the actor
+        
+    Returns:
+        Message indicating success or failure
+    """
+    command = {
+        "type": "spawn_blueprint",
+        "blueprint_path": blueprint_path,
+        "location": location,
+        "rotation": rotation,
+        "scale": scale,
+        "actor_label": actor_label
+    }
+
+    response = send_to_unreal(command)
+    if response.get("success"):
+        return f"Successfully spawned Blueprint {blueprint_path}" + (f" with label '{actor_label}'" if actor_label else "")
+    else:
+        return f"Failed to spawn Blueprint: {response.get('error', 'Unknown error')}"
 
 
 if __name__ == "__main__":
