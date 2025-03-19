@@ -337,12 +337,27 @@ def add_node_to_blueprint(blueprint_path: str, function_id: str, node_type: str,
     Args:
         blueprint_path: Path to the Blueprint asset
         function_id: ID of the function to add the node to
-        node_type: Type of node to add (e.g., "K2_SetActorLocation", "Branch")
+        node_type: Type of node to add. Common supported types include:
+            - Basic nodes: "ReturnNode", "FunctionEntry", "Branch", "Sequence"
+            - Math operations: "Multiply", "Add", "Subtract", "Divide"
+            - Utilities: "PrintString", "Delay", "GetActorLocation", "SetActorLocation"
+            - For other functions, try using the exact function name from Blueprints
+              (e.g., "GetWorldLocation", "SpawnActorFromClass")
+            
+            If the requested node type isn't found, the system will search for alternatives
+            and return suggestions. You can then use these suggestions in a new request.
+            
         node_position: Position of the node in the graph [X, Y]
         node_properties: Properties to set on the node (optional)
         
     Returns:
-        Message indicating success or failure
+        On success: The node ID (GUID)
+        On failure: A response containing "SUGGESTIONS:" followed by alternative node types to try
+    
+    Note:
+        Function libraries like KismetMathLibrary, KismetSystemLibrary, and KismetStringLibrary 
+        contain most common Blueprint functions. If a simple node name doesn't work, try the 
+        full function name, e.g., "Multiply_FloatFloat" instead of just "Multiply".
     """
     if node_properties is None:
         node_properties = {}
@@ -460,13 +475,43 @@ def add_nodes_to_blueprint_bulk(blueprint_path: str, function_id: str, nodes: li
         blueprint_path: Path to the Blueprint asset
         function_id: ID of the function to add the nodes to
         nodes: Array of node definitions, each containing:
-            - id: Optional ID for referencing the node (string)
-            - node_type: Type of node to add (string) 
+            - id: ID for referencing the node (string) - this is important for creating connections later
+            - node_type: Type of node to add (see add_node_to_blueprint for supported types)
             - node_position: Position of the node in the graph [X, Y]
             - node_properties: Properties to set on the node (optional)
         
     Returns:
-        Message indicating success or failure with node mapping
+        On success: Dictionary mapping your node IDs to the actual node GUIDs created in Unreal
+        On partial success: Dictionary with successful nodes and suggestions for failed nodes
+        On failure: Error message with suggestions
+    
+    Example success response:
+        {
+          "success": true,
+          "nodes": {
+            "function_entry": "425E7A3949D7420A461175A4733BBA5C",
+            "multiply_node": "70354A7E444BB68EEF31718DC50CF89C",
+            "return_node": "6436796645ED674F3C64A8A94CBA416C"
+          }
+        }
+    
+    Example partial success with suggestions:
+        {
+          "success": true,
+          "partial_success": true,
+          "nodes": {
+            "function_entry": "425E7A3949D7420A461175A4733BBA5C",
+            "return_node": "6436796645ED674F3C64A8A94CBA416C"
+          },
+          "suggestions": {
+            "multiply_node": {
+              "requested_type": "Multiply_Float",
+              "suggestions": ["KismetMathLibrary.Multiply_FloatFloat", "KismetMathLibrary.MultiplyByFloat"]
+            }
+          }
+        }
+    
+    When you receive suggestions, you can retry adding those nodes using the suggested node types.
     """
     command = {
         "type": "add_nodes_bulk",

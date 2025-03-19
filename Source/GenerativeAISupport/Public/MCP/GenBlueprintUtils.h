@@ -78,12 +78,23 @@ public:
 	 * @param NodeX - X position in the graph
 	 * @param NodeY - Y position in the graph
 	 * @param PropertiesJson - Node properties as JSON string
+	 * @param bFinalizeChanges
 	 * @return Node GUID as string if successful, empty string if failed
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
 	static FString AddNode(const FString& BlueprintPath, const FString& FunctionGuid,
 	                       const FString& NodeType, float NodeX, float NodeY,
-	                       const FString& PropertiesJson);
+	                       const FString& PropertiesJson, bool bFinalizeChanges);
+	
+	static bool TryCreateKnownNodeType(UEdGraph* Graph, const FString& NodeType, UK2Node*& OutNode);
+
+	UFUNCTION()
+	static bool CreateMathFunctionNode(UEdGraph* Graph, const FString& ClassName, const FString& FunctionName,
+	                            UK2Node*& OutNode);
+
+	
+	static bool TryCreateNodeFromLibraries(UEdGraph* Graph, const FString& NodeType, 
+					 UK2Node*& OutNode, TArray<FString>& OutSuggestions);
 
 	/**
 	 * Connect nodes in a Blueprint graph
@@ -148,7 +159,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
 	static bool ConnectNodesBulk(const FString& BlueprintPath, const FString& FunctionGuid,
 	                             const FString& ConnectionsJson);
-	static bool OpenBlueprintGraph(UBlueprint* Blueprint, UEdGraph* Graph);
+	static bool OpenBlueprintGraph(UBlueprint* Blueprint, UEdGraph* Graph = nullptr);
 	
 	UFUNCTION(BlueprintCallable, Category = "GenBlueprintUtils")
 	static FString GetNodeGUID(const FString& BlueprintPath, const FString& GraphType, const FString& NodeName, const FString& FunctionGuid);
