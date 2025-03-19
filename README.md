@@ -9,7 +9,7 @@ The Unreal Engine Generative AI Support Plugin allows you to focus on game devel
 
 Currently integrating Model Control Protocol (MCP) with Unreal Engine 5.5.
 
-<img src="Docs/Repo Card - UnrealGenAISupport.png" width="512"/>
+<p align="center"><img src="Docs/Repo Card - UnrealGenAISupport.png" width="512"/></p>
 
 This project aims to build a long-term support (LTS) plugin for various cutting-edge LLM/GenAI models and foster a
 community around it. It currently includes OpenAI's GPT-4o, Deepseek R1, Claude Sonnet 3.7 and GPT-4o-mini for Unreal Engine 5.1 or higher, with plans to add
