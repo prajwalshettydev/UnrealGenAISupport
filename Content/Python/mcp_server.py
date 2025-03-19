@@ -451,6 +451,96 @@ def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
         return f"Failed to spawn Blueprint: {response.get('error', 'Unknown error')}"
 
 
+@mcp.tool()
+def add_nodes_to_blueprint_bulk(blueprint_path: str, function_id: str, nodes: list) -> str:
+    """
+    Add multiple nodes to a Blueprint graph in a single operation
+    
+    Args:
+        blueprint_path: Path to the Blueprint asset
+        function_id: ID of the function to add the nodes to
+        nodes: Array of node definitions, each containing:
+            - id: Optional ID for referencing the node (string)
+            - node_type: Type of node to add (string) 
+            - node_position: Position of the node in the graph [X, Y]
+            - node_properties: Properties to set on the node (optional)
+        
+    Returns:
+        Message indicating success or failure with node mapping
+    """
+    command = {
+        "type": "add_nodes_bulk",
+        "blueprint_path": blueprint_path,
+        "function_id": function_id,
+        "nodes": nodes
+    }
+
+    response = send_to_unreal(command)
+    if response.get("success"):
+        node_mapping = response.get("nodes", {})
+        return f"Successfully added {len(node_mapping)} nodes to function {function_id} in Blueprint at {blueprint_path}\nNode mapping: {json.dumps(node_mapping, indent=2)}"
+    else:
+        return f"Failed to add nodes: {response.get('error', 'Unknown error')}"
+
+@mcp.tool()
+def connect_blueprint_nodes_bulk(blueprint_path: str, function_id: str, connections: list) -> str:
+    """
+    Connect multiple pairs of nodes in a Blueprint graph
+    
+    Args:
+        blueprint_path: Path to the Blueprint asset
+        function_id: ID of the function containing the nodes
+        connections: Array of connection definitions, each containing:
+            - source_node_id: ID of the source node
+            - source_pin: Name of the source pin
+            - target_node_id: ID of the target node
+            - target_pin: Name of the target pin
+        
+    Returns:
+        Message indicating success or failure
+    """
+    command = {
+        "type": "connect_nodes_bulk",
+        "blueprint_path": blueprint_path,
+        "function_id": function_id,
+        "connections": connections
+    }
+
+    response = send_to_unreal(command)
+    if response.get("success"):
+        return f"Successfully connected {len(connections)} node pairs in Blueprint at {blueprint_path}"
+    else:
+        return f"Failed to connect nodes: {response.get('error', 'Unknown error')}"
+@mcp.tool()
+def get_blueprint_node_guid(blueprint_path: str, graph_type: str = "EventGraph", node_name: str = None, function_id: str = None) -> str:
+    """
+    Retrieve the GUID of a pre-existing node in a Blueprint graph.
+    
+    Args:
+        blueprint_path: Path to the Blueprint asset (e.g., "/Game/Blueprints/TestBulkBlueprint")
+        graph_type: Type of graph to query ("EventGraph" or "FunctionGraph", default: "EventGraph")
+        node_name: Name of the node to find (e.g., "BeginPlay" for EventGraph, optional if using function_id)
+        function_id: ID of the function to get the FunctionEntry node for (optional, used with graph_type="FunctionGraph")
+    
+    Returns:
+        Message with the node's GUID or an error if not found
+    """
+    command = {
+        "type": "get_node_guid",
+        "blueprint_path": blueprint_path,
+        "graph_type": graph_type,
+        "node_name": node_name if node_name else "",
+        "function_id": function_id if function_id else ""
+    }
+
+    response = send_to_unreal(command)
+    if response.get("success"):
+        guid = response.get("node_guid")
+        return f"Node GUID for {node_name or 'FunctionEntry'} in {graph_type} of {blueprint_path}: {guid}"
+    else:
+        return f"Failed to get node GUID: {response.get('error', 'Unknown error')}"
+
+
 if __name__ == "__main__":
     import traceback
     try:

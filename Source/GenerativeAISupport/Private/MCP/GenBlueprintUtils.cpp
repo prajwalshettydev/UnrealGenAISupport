@@ -3,6 +3,7 @@
 // source tree or http://opensource.org/licenses/MIT.
 #include "MCP/GenBlueprintUtils.h"
 
+#include "BlueprintEditor.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Engine/Blueprint.h"
 #include "Factories/BlueprintFactory.h"
@@ -43,10 +44,11 @@ UBlueprint* UGenBlueprintUtils::CreateBlueprint(const FString& BlueprintName, co
 	UObject* ExistingObject = StaticLoadObject(UBlueprint::StaticClass(), nullptr, *FullPackagePath);
 	if (ExistingObject)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Blueprint already exists at path: %s, returning existing blueprint"), *FullPackagePath);
+		UE_LOG(LogTemp, Warning, TEXT("Blueprint already exists at path: %s, returning existing blueprint"),
+		       *FullPackagePath);
 		return Cast<UBlueprint>(ExistingObject);
 	}
-	
+
 	UPackage* Package = CreatePackage(*FullPackagePath);
 	if (!Package)
 	{
@@ -81,9 +83,11 @@ UBlueprint* UGenBlueprintUtils::CreateBlueprint(const FString& BlueprintName, co
 	UPackage::SavePackage(Package, Blueprint, *PackageFileName, SaveArgs);
 
 	// Open the Blueprint editor
-	if (GEditor) {
+	if (GEditor)
+	{
 		UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
-		if (AssetEditorSubsystem) {
+		if (AssetEditorSubsystem)
+		{
 			AssetEditorSubsystem->OpenEditorForAsset(Blueprint);
 		}
 	}
@@ -141,9 +145,11 @@ bool UGenBlueprintUtils::AddComponent(const FString& BlueprintPath, const FStrin
 	FKismetEditorUtilities::CompileBlueprint(Blueprint);
 
 	// Open the Blueprint editor
-	if (GEditor) {
+	if (GEditor)
+	{
 		UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
-		if (AssetEditorSubsystem) {
+		if (AssetEditorSubsystem)
+		{
 			AssetEditorSubsystem->OpenEditorForAsset(Blueprint);
 		}
 	}
@@ -281,9 +287,11 @@ bool UGenBlueprintUtils::AddVariable(const FString& BlueprintPath, const FString
 	FKismetEditorUtilities::CompileBlueprint(Blueprint);
 
 	// Open the Blueprint editor
-	if (GEditor) {
+	if (GEditor)
+	{
 		UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
-		if (AssetEditorSubsystem) {
+		if (AssetEditorSubsystem)
+		{
 			AssetEditorSubsystem->OpenEditorForAsset(Blueprint);
 		}
 	}
@@ -474,9 +482,11 @@ FString UGenBlueprintUtils::AddFunction(const FString& BlueprintPath, const FStr
 	FKismetEditorUtilities::CompileBlueprint(Blueprint);
 
 	// Open the Blueprint editor
-	if (GEditor) {
+	if (GEditor)
+	{
 		UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
-		if (AssetEditorSubsystem) {
+		if (AssetEditorSubsystem)
+		{
 			AssetEditorSubsystem->OpenEditorForAsset(Blueprint);
 		}
 	}
@@ -579,6 +589,24 @@ FString UGenBlueprintUtils::AddNode(const FString& BlueprintPath, const FString&
 			}
 		}
 	}
+	else if (NodeType.Equals(TEXT("Delay"), ESearchCase::IgnoreCase))
+	{
+		UK2Node_CallFunction* DelayNode = NewObject<UK2Node_CallFunction>(FunctionGraph);
+		UClass* KismetClass = FindObject<UClass>(ANY_PACKAGE, TEXT("KismetSystemLibrary"));
+		if (KismetClass)
+		{
+			UFunction* DelayFunction = FindFunctionByName(KismetClass, TEXT("Delay"));
+			if (DelayFunction)
+			{
+				DelayNode->FunctionReference.SetExternalMember(DelayFunction->GetFName(), KismetClass);
+				NewNode = DelayNode;
+			}
+		}
+	}
+	else if (NodeType.Equals(TEXT("ReturnNode"), ESearchCase::IgnoreCase))
+	{
+		NewNode = NewObject<UK2Node_FunctionResult>(FunctionGraph);
+	}
 	else
 	{
 		// Try to find a matching node type
@@ -669,7 +697,18 @@ FString UGenBlueprintUtils::AddNode(const FString& BlueprintPath, const FString&
 	// Notify blueprint that the graph changed
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 
-	UE_LOG(LogTemp, Log, TEXT("Added node of type %s to blueprint %s"), *NodeType, *BlueprintPath);
+	OpenBlueprintGraph(Blueprint, FunctionGraph);
+
+	// Generate a new GUID if the node doesn't have one
+	if (NewNode->NodeGuid.IsValid() == false)
+	{
+		NewNode->NodeGuid = FGuid::NewGuid();
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("Added node of type %s to blueprint %s with GUID %s"),
+	       *NodeType, *BlueprintPath, *NewNode->NodeGuid.ToString());
+
+	// Return the actual node GUID
 	return NewNode->NodeGuid.ToString();
 }
 
@@ -878,4 +917,329 @@ UFunction* UGenBlueprintUtils::FindFunctionByName(UClass* Class, const FString& 
 	}
 
 	return Class->FindFunctionByName(*FunctionName);
+}
+
+
+FString UGenBlueprintUtils::AddNodesBulk(const FString& BlueprintPath, const FString& FunctionGuid,
+                                     const FString& NodesJson)
+{
+    // Load the blueprint asset
+    UBlueprint* Blueprint = LoadBlueprintAsset(BlueprintPath);
+    if (!Blueprint)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Could not load blueprint at path: %s"), *BlueprintPath);
+        return TEXT("");
+    }
+
+    // Find the function graph by GUID
+    FGuid GraphGuid;
+    if (!FGuid::Parse(FunctionGuid, GraphGuid))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Invalid GUID format: %s"), *FunctionGuid);
+        return TEXT("");
+    }
+
+    UEdGraph* FunctionGraph = nullptr;
+    for (UEdGraph* Graph : Blueprint->UbergraphPages)
+    {
+        if (Graph->GraphGuid == GraphGuid)
+        {
+            FunctionGraph = Graph;
+            break;
+        }
+    }
+
+    if (!FunctionGraph)
+    {
+        for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+        {
+            if (Graph->GraphGuid == GraphGuid)
+            {
+                FunctionGraph = Graph;
+                break;
+            }
+        }
+    }
+
+    if (!FunctionGraph)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Could not find function graph with GUID: %s"), *FunctionGuid);
+        return TEXT("");
+    }
+
+    // Parse the nodes array from JSON
+    TArray<TSharedPtr<FJsonValue>> NodesArray;
+    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(NodesJson);
+
+    if (!FJsonSerializer::Deserialize(Reader, NodesArray))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Failed to parse nodes JSON"));
+        return TEXT("");
+    }
+
+    // Create a JSON object to store the results
+    TSharedPtr<FJsonObject> ResultsObject = MakeShareable(new FJsonObject);
+    TArray<TSharedPtr<FJsonValue>> ResultsArray;
+
+    // Process each node definition
+    for (auto& NodeValue : NodesArray)
+    {
+        TSharedPtr<FJsonObject> NodeObject = NodeValue->AsObject();
+        if (!NodeObject.IsValid()) continue;
+
+        FString NodeType = NodeObject->GetStringField(TEXT("node_type"));
+    	// Get position from array
+    	TArray<TSharedPtr<FJsonValue>> PositionArray = NodeObject->GetArrayField(TEXT("node_position"));
+    	double NodeX = PositionArray.Num() > 0 ? PositionArray[0]->AsNumber() : 0.0;
+    	double NodeY = PositionArray.Num() > 1 ? PositionArray[1]->AsNumber() : 0.0;
+
+        // Get properties JSON if available
+        FString PropertiesJson;
+        if (NodeObject->HasField(TEXT("node_properties")))
+        {
+            TSharedPtr<FJsonObject> PropsObject = NodeObject->GetObjectField(TEXT("node_properties"));
+            TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&PropertiesJson);
+            FJsonSerializer::Serialize(PropsObject.ToSharedRef(), Writer);
+        }
+
+        // Get node ID from the node definition if available (for reference in results)
+        FString NodeRefId;
+        if (NodeObject->HasField(TEXT("id")))
+        {
+            NodeRefId = NodeObject->GetStringField(TEXT("id"));
+        }
+
+        // Create the node
+        FString NodeGuid = AddNode(BlueprintPath, FunctionGuid, NodeType, NodeX, NodeY, PropertiesJson);
+        
+        if (!NodeGuid.IsEmpty())
+        {
+            // Add this node's result to the results array
+            TSharedPtr<FJsonObject> ResultObject = MakeShareable(new FJsonObject);
+            ResultObject->SetStringField(TEXT("node_guid"), NodeGuid);
+            
+            if (!NodeRefId.IsEmpty())
+            {
+                ResultObject->SetStringField(TEXT("ref_id"), NodeRefId);
+            }
+            
+            ResultsArray.Add(MakeShareable(new FJsonValueObject(ResultObject)));
+        }
+    }
+
+    // Convert results to JSON string
+    FString ResultsJson;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultsJson);
+    FJsonSerializer::Serialize(ResultsArray, Writer);
+
+    // Mark the blueprint as modified
+    Blueprint->Modify();
+
+    // Notify blueprint that the graph changed
+    FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+    UE_LOG(LogTemp, Log, TEXT("Added %d nodes to blueprint %s"), ResultsArray.Num(), *BlueprintPath);
+    return ResultsJson;
+}
+
+
+
+bool UGenBlueprintUtils::ConnectNodesBulk(const FString& BlueprintPath, const FString& FunctionGuid,
+									  const FString& ConnectionsJson)
+{
+	// Load the blueprint asset
+	UBlueprint* Blueprint = LoadBlueprintAsset(BlueprintPath);
+	if (!Blueprint)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Could not load blueprint at path: %s"), *BlueprintPath);
+		return false;
+	}
+
+	// Parse the connections array from JSON
+	TArray<TSharedPtr<FJsonValue>> ConnectionsArray;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ConnectionsJson);
+
+	if (!FJsonSerializer::Deserialize(Reader, ConnectionsArray))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to parse connections JSON"));
+		return false;
+	}
+
+	// Connect each pair of nodes
+	bool AllSuccessful = true;
+	int SuccessfulConnections = 0;
+
+	for (auto& ConnectionValue : ConnectionsArray)
+	{
+		TSharedPtr<FJsonObject> ConnectionObject = ConnectionValue->AsObject();
+		if (!ConnectionObject.IsValid()) continue;
+
+		// Extract connection details
+		FString SourceNodeGuid = ConnectionObject->GetStringField(TEXT("source_node_id"));
+		FString SourcePinName = ConnectionObject->GetStringField(TEXT("source_pin"));
+		FString TargetNodeGuid = ConnectionObject->GetStringField(TEXT("target_node_id"));
+		FString TargetPinName = ConnectionObject->GetStringField(TEXT("target_pin"));
+
+		// Connect the nodes
+		bool Success = ConnectNodes(BlueprintPath, FunctionGuid, SourceNodeGuid, SourcePinName, 
+								   TargetNodeGuid, TargetPinName);
+
+		if (Success)
+		{
+			SuccessfulConnections++;
+		}
+		else
+		{
+			AllSuccessful = false;
+		}
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("Connected %d/%d node pairs in blueprint %s"), 
+		   SuccessfulConnections, ConnectionsArray.Num(), *BlueprintPath);
+	return AllSuccessful;
+}
+
+bool UGenBlueprintUtils::OpenBlueprintGraph(UBlueprint* Blueprint, UEdGraph* Graph)
+{
+	if (!Blueprint || !Graph || !GEditor)
+		return false;
+        
+	UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
+	if (!AssetEditorSubsystem)
+		return false;
+        
+	// First make sure the blueprint editor is open
+	IAssetEditorInstance* EditorInstance = AssetEditorSubsystem->FindEditorForAsset(Blueprint, false);
+	if (!EditorInstance)
+	{
+		EditorInstance = AssetEditorSubsystem->OpenEditorForAsset(Blueprint) ? AssetEditorSubsystem->FindEditorForAsset(Blueprint, false) : nullptr;
+		if (!EditorInstance)
+			return false;
+	}
+    
+	// Try to cast to blueprint editor
+	FBlueprintEditor* BlueprintEditor = static_cast<FBlueprintEditor*>(EditorInstance);
+	if (BlueprintEditor)
+	{
+		
+		// Focus on the specific graph
+		BlueprintEditor->OpenGraphAndBringToFront(Graph);
+		return true;
+	}
+    
+	return false;
+}
+
+FString UGenBlueprintUtils::GetNodeGUID(const FString& BlueprintPath, const FString& GraphType, const FString& NodeName, const FString& FunctionGuid)
+{
+    // Load the blueprint asset
+    UBlueprint* Blueprint = LoadBlueprintAsset(BlueprintPath);
+    if (!Blueprint)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Could not load blueprint at path: %s"), *BlueprintPath);
+        return TEXT("");
+    }
+
+    // Determine graph type and find the target graph
+    UEdGraph* TargetGraph = nullptr;
+
+    if (GraphType.Equals(TEXT("EventGraph"), ESearchCase::IgnoreCase))
+    {
+        if (NodeName.IsEmpty())
+        {
+            UE_LOG(LogTemp, Error, TEXT("NodeName is required for EventGraph"));
+            return TEXT("");
+        }
+
+        // Find EventGraph (typically the first UbergraphPage)
+        if (Blueprint->UbergraphPages.Num() > 0)
+        {
+            TargetGraph = Blueprint->UbergraphPages[0];
+        }
+    }
+    else if (GraphType.Equals(TEXT("FunctionGraph"), ESearchCase::IgnoreCase))
+    {
+        if (FunctionGuid.IsEmpty())
+        {
+            UE_LOG(LogTemp, Error, TEXT("FunctionGuid is required for FunctionGraph"));
+            return TEXT("");
+        }
+
+        FGuid GraphGuid;
+        if (!FGuid::Parse(FunctionGuid, GraphGuid))
+        {
+            UE_LOG(LogTemp, Error, TEXT("Invalid FunctionGuid format: %s"), *FunctionGuid);
+            return TEXT("");
+        }
+
+        // Find the function graph by GUID
+        for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+        {
+            if (Graph->GraphGuid == GraphGuid)
+            {
+                TargetGraph = Graph;
+                break;
+            }
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("Invalid GraphType: %s. Use 'EventGraph' or 'FunctionGraph'"), *GraphType);
+        return TEXT("");
+    }
+
+    if (!TargetGraph)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Could not find graph of type %s in blueprint %s"), *GraphType, *BlueprintPath);
+        return TEXT("");
+    }
+
+    // Find the target node
+    UK2Node* TargetNode = nullptr;
+
+    if (GraphType.Equals(TEXT("EventGraph"), ESearchCase::IgnoreCase))
+    {
+        for (UEdGraphNode* Node : TargetGraph->Nodes)
+        {
+            UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node);
+            if (EventNode && EventNode->EventReference.GetMemberName().ToString().Equals(NodeName, ESearchCase::IgnoreCase))
+            {
+                TargetNode = EventNode;
+                break;
+            }
+        }
+    }
+    else if (GraphType.Equals(TEXT("FunctionGraph"), ESearchCase::IgnoreCase))
+    {
+        for (UEdGraphNode* Node : TargetGraph->Nodes)
+        {
+            UK2Node_FunctionEntry* EntryNode = Cast<UK2Node_FunctionEntry>(Node);
+            if (EntryNode)
+            {
+                TargetNode = EntryNode;
+                break;
+            }
+        }
+    }
+
+    if (!TargetNode)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Could not find node %s in %s of blueprint %s"),
+               *(GraphType.Equals(TEXT("EventGraph")) ? NodeName : TEXT("FunctionEntry")),
+               *GraphType, *BlueprintPath);
+        return TEXT("");
+    }
+
+    // Ensure the node has a valid GUID
+    if (!TargetNode->NodeGuid.IsValid())
+    {
+        TargetNode->NodeGuid = FGuid::NewGuid();
+    }
+
+    FString NodeGUID = TargetNode->NodeGuid.ToString();
+    UE_LOG(LogTemp, Log, TEXT("Found node GUID %s for %s in %s of blueprint %s"),
+           *NodeGUID, *(GraphType.Equals(TEXT("EventGraph")) ? NodeName : TEXT("FunctionEntry")),
+           *GraphType, *BlueprintPath);
+
+    return NodeGUID;
 }
