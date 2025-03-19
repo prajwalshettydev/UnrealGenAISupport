@@ -158,46 +158,71 @@ AActor* UGenActorUtils::FindActorByName(const FString& ActorName)
     return nullptr;
 }
 
-// Create a new material with specific color
 UMaterial* UGenActorUtils::CreateMaterial(const FString& MaterialName, const FLinearColor& Color)
 {
+    // Create unique asset name to avoid conflicts
     FString PackagePath = TEXT("/Game/Materials");
     FString FullPackagePath = PackagePath + TEXT("/") + MaterialName;
-
+    
+    // Check if package already exists to avoid partially loaded assets
+    UPackage* ExistingPackage = FindPackage(nullptr, *FullPackagePath);
+    if (ExistingPackage)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Material '%s' already exists, trying to load it"), *MaterialName);
+        UMaterial* ExistingMaterial = LoadObject<UMaterial>(nullptr, *(FullPackagePath + "." + MaterialName));
+        if (ExistingMaterial)
+        {
+            return ExistingMaterial;
+        }
+    }
+    
     // Create package for new material
     UPackage* Package = CreatePackage(*FullPackagePath);
-
+    if (!Package)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Failed to create package for material '%s'"), *MaterialName);
+        return nullptr;
+    }
+    
     // Create new material
-    UMaterial* Material = NewObject<UMaterial>(Package, *MaterialName, RF_Public | RF_Standalone);
+    UMaterial* Material = NewObject<UMaterial>(Package, *MaterialName, RF_Public | RF_Standalone | RF_Transactional);
     if (!Material)
     {
         UE_LOG(LogTemp, Error, TEXT("Failed to create material '%s'"), *MaterialName);
         return nullptr;
     }
-
-    // Use MaterialEditingLibrary to create and connect expressions
-    UMaterialExpressionConstant3Vector* ConstantColor = 
+    
+    // Set up material properties
+    Material->bUseEmissiveForDynamicAreaLighting = false;
+    Material->BlendMode = BLEND_Opaque;
+    
+    // Create color expression
+    UMaterialExpressionConstant3Vector* ConstantColor =
         Cast<UMaterialExpressionConstant3Vector>(UMaterialEditingLibrary::CreateMaterialExpression(
             Material, UMaterialExpressionConstant3Vector::StaticClass(), -350, 0));
     
     if (ConstantColor)
     {
         ConstantColor->Constant = Color;
-        // Connect to base color using the MaterialEditingLibrary
+        // Connect to base color
         UMaterialEditingLibrary::ConnectMaterialProperty(ConstantColor, "RGB", EMaterialProperty::MP_BaseColor);
     }
-
-    // Notify material that it has been modified and compile it
-    UMaterialEditingLibrary::RecompileMaterial(Material);
-    Material->MarkPackageDirty();
-
-    // Save the material
-    FString PackageFileName = FPackageName::LongPackageNameToFilename(FullPackagePath, FPackageName::GetAssetPackageExtension());
     
-    // Use the updated SavePackage signature that doesn't need FObjectSavingParameters
-
-    // Create save package args
+    // Set material to be fully created and initialized
+    Material->PreEditChange(nullptr);
+    Material->PostEditChange();
+    UMaterialEditingLibrary::RecompileMaterial(Material);
+    
+    // Mark package as dirty
+    Package->MarkPackageDirty();
+    
+    // Save the package
+    FString PackageFileName = FPackageName::LongPackageNameToFilename(FullPackagePath, FPackageName::GetAssetPackageExtension());
     FSavePackageArgs SaveArgs;
+    SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+    
+    // Force immediate flush to disk to ensure complete save
+    SaveArgs.SaveFlags = SAVE_NoError;
     
     bool bSaved = UPackage::SavePackage(
         Package,
@@ -205,17 +230,19 @@ UMaterial* UGenActorUtils::CreateMaterial(const FString& MaterialName, const FLi
         *PackageFileName,
         SaveArgs
     );
-
+    
     if (bSaved)
     {
+        // Notify asset registry that we created a new asset
+        FAssetRegistryModule::AssetCreated(Material);
         UE_LOG(LogTemp, Log, TEXT("Successfully created and saved material '%s'"), *MaterialName);
-        return Material;
     }
     else
     {
         UE_LOG(LogTemp, Error, TEXT("Failed to save material '%s'"), *MaterialName);
-        return Material; // Still return the created material even if save failed
     }
+    
+    return Material;
 }
 
 // Set material for an actor by direct material reference

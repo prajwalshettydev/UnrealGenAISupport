@@ -37,6 +37,11 @@ class CommandDispatcher:
             "connect_nodes": blueprint_commands.handle_connect_nodes,
             "compile_blueprint": blueprint_commands.handle_compile_blueprint,
             "spawn_blueprint": blueprint_commands.handle_spawn_blueprint,
+            "get_node_guid": blueprint_commands.handle_get_node_guid,
+            
+            # Bulk commands
+            "add_nodes_bulk": blueprint_commands.handle_add_nodes_bulk,      # Add this line
+            "connect_nodes_bulk": blueprint_commands.handle_connect_nodes_bulk
         }
 
     def dispatch(self, command: Dict[str, Any]) -> Dict[str, Any]:
@@ -146,8 +151,7 @@ def initialize_server():
     log.log_info("Unreal Engine AI command server initialized successfully")
     log.log_info("Available commands:")
     log.log_info("  - Basic: handshake, spawn, create_material, modify_object")
-    log.log_info("  - Blueprint: create_blueprint, add_component, add_variable, add_function, add_node, connect_nodes, compile_blueprint, spawn_blueprint")
-
+    log.log_info("  - Blueprint: create_blueprint, add_component, add_variable, add_function, add_node, connect_nodes, compile_blueprint, spawn_blueprint, add_nodes_bulk, connect_nodes_bulk")
 
 # Auto-start the server when this module is imported
 initialize_server()

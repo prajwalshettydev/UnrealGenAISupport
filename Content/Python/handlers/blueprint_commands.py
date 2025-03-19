@@ -109,7 +109,8 @@ def handle_add_variable(command: Dict[str, Any]) -> Dict[str, Any]:
             log.log_error("Missing required parameters for add_variable")
             return {"success": False, "error": "Missing required parameters"}
 
-        log.log_command("add_variable", f"Blueprint: {blueprint_path}, Variable: {variable_name}, Type: {variable_type}")
+        log.log_command("add_variable",
+                        f"Blueprint: {blueprint_path}, Variable: {variable_name}, Type: {variable_type}")
 
         # Call the C++ implementation
         gen_bp_utils = unreal.GenBlueprintUtils
@@ -162,7 +163,8 @@ def handle_add_function(command: Dict[str, Any]) -> Dict[str, Any]:
         function_id = gen_bp_utils.add_function(blueprint_path, function_name, inputs_json, outputs_json)
 
         if function_id:
-            log.log_result("add_function", True, f"Added function {function_name} to {blueprint_path} with ID: {function_id}")
+            log.log_result("add_function", True,
+                           f"Added function {function_name} to {blueprint_path} with ID: {function_id}")
             return {"success": True, "function_id": function_id}
         else:
             log.log_error(f"Failed to add function {function_name} to {blueprint_path}")
@@ -255,7 +257,8 @@ def handle_connect_nodes(command: Dict[str, Any]) -> Dict[str, Any]:
             log.log_error("Missing required parameters for connect_nodes")
             return {"success": False, "error": "Missing required parameters"}
 
-        log.log_command("connect_nodes", f"Blueprint: {blueprint_path}, {source_node_id}.{source_pin} -> {target_node_id}.{target_pin}")
+        log.log_command("connect_nodes",
+                        f"Blueprint: {blueprint_path}, {source_node_id}.{source_pin} -> {target_node_id}.{target_pin}")
 
         # Call the C++ implementation
         gen_bp_utils = unreal.GenBlueprintUtils
@@ -358,4 +361,154 @@ def handle_spawn_blueprint(command: Dict[str, Any]) -> Dict[str, Any]:
 
     except Exception as e:
         log.log_error(f"Error spawning blueprint: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+def handle_add_nodes_bulk(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a command to add multiple nodes to a Blueprint graph in a single operation
+    
+    Args:
+        command: The command dictionary containing:
+            - blueprint_path: Path to the Blueprint asset
+            - function_id: ID of the function to add the nodes to
+            - nodes: Array of node definitions, each containing:
+                * id: Optional ID for referencing the node (string)
+                * node_type: Type of node to add (string)
+                * node_position: Position of the node in the graph [X, Y]
+                * node_properties: Properties to set on the node (optional)
+            
+    Returns:
+        Response dictionary with success/failure status and node IDs mapped to reference IDs
+    """
+
+    try:
+        blueprint_path = command.get("blueprint_path")
+        function_id = command.get("function_id")
+        nodes = command.get("nodes", [])
+
+        if not blueprint_path or not function_id or not nodes:
+            log.log_error("Missing required parameters for add_nodes_bulk")
+            return {"success": False, "error": "Missing required parameters"}
+
+        log.log_command("add_nodes_bulk", f"Blueprint: {blueprint_path}, Adding {len(nodes)} nodes")
+
+        # Prepare nodes in the format expected by the C++ function
+        nodes_json = json.dumps(nodes)
+
+        # Call the C++ implementation
+        gen_bp_utils = unreal.GenBlueprintUtils
+        results_json = gen_bp_utils.add_nodes_bulk(blueprint_path, function_id, nodes_json)
+
+        if results_json:
+            results = json.loads(results_json)
+            node_mapping = {}
+
+            # Create a mapping from reference IDs to actual node GUIDs
+            for node_result in results:
+                if "ref_id" in node_result:
+                    node_mapping[node_result["ref_id"]] = node_result["node_guid"]
+                else:
+                    # For nodes without a reference ID, just include the GUID
+                    node_mapping[f"node_{len(node_mapping)}"] = node_result["node_guid"]
+
+            log.log_result("add_nodes_bulk", True, f"Added {len(results)} nodes to {blueprint_path}")
+            return {"success": True, "nodes": node_mapping}
+        else:
+            log.log_error(f"Failed to add nodes to {blueprint_path}")
+            return {"success": False, "error": f"Failed to add nodes to {blueprint_path}"}
+
+    except Exception as e:
+        log.log_error(f"Error adding nodes: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+def handle_connect_nodes_bulk(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a command to connect multiple pairs of nodes in a Blueprint graph
+    
+    Args:
+        command: The command dictionary containing:
+            - blueprint_path: Path to the Blueprint asset
+            - function_id: ID of the function containing the nodes
+            - connections: Array of connection definitions, each containing:
+                * source_node_id: ID of the source node
+                * source_pin: Name of the source pin
+                * target_node_id: ID of the target node
+                * target_pin: Name of the target pin
+            
+    Returns:
+        Response dictionary with success/failure status
+    """
+    try:
+        blueprint_path = command.get("blueprint_path")
+        function_id = command.get("function_id")
+        connections = command.get("connections", [])
+
+        if not blueprint_path or not function_id or not connections:
+            log.log_error("Missing required parameters for connect_nodes_bulk")
+            return {"success": False, "error": "Missing required parameters"}
+
+        log.log_command("connect_nodes_bulk", f"Blueprint: {blueprint_path}, Making {len(connections)} connections")
+
+        # Convert connections list to JSON for C++ function
+        connections_json = json.dumps(connections)
+
+        # Call the C++ implementation
+        gen_bp_utils = unreal.GenBlueprintUtils
+        success = gen_bp_utils.connect_nodes_bulk(blueprint_path, function_id, connections_json)
+
+        if success:
+            log.log_result("connect_nodes_bulk", True, f"Connected {len(connections)} node pairs in {blueprint_path}")
+            return {"success": True}
+        else:
+            log.log_error(f"Failed to connect some or all nodes in {blueprint_path}")
+            return {"success": False, "error": f"Failed to connect some or all nodes in {blueprint_path}"}
+
+    except Exception as e:
+        log.log_error(f"Error connecting nodes: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+def handle_get_node_guid(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a command to retrieve the GUID of a pre-existing node in a Blueprint graph.
+    
+    Args:
+        command: The command dictionary containing:
+            - blueprint_path: Path to the Blueprint asset
+            - graph_type: "EventGraph" or "FunctionGraph"
+            - node_name: Name of the node (e.g., "BeginPlay") for EventGraph
+            - function_id: ID of the function for FunctionGraph to get FunctionEntry
+            
+    Returns:
+        Response dictionary with the node's GUID or an error
+    """
+    try:
+        blueprint_path = command.get("blueprint_path")
+        graph_type = command.get("graph_type", "EventGraph")
+        node_name = command.get("node_name", "")
+        function_id = command.get("function_id", "")
+
+        if not blueprint_path:
+            log.log_error("Missing blueprint_path for get_node_guid")
+            return {"success": False, "error": "Missing blueprint_path"}
+
+        if graph_type not in ["EventGraph", "FunctionGraph"]:
+            log.log_error(f"Invalid graph_type: {graph_type}")
+            return {"success": False, "error": f"Invalid graph_type: {graph_type}"}
+
+        log.log_command("get_node_guid", f"Blueprint: {blueprint_path}, Graph: {graph_type}, Node: {node_name or function_id}")
+
+        # Call the C++ implementation
+        gen_bp_utils = unreal.GenBlueprintUtils
+        node_guid = gen_bp_utils.get_node_guid(blueprint_path, graph_type, node_name, function_id)
+
+        if node_guid:
+            log.log_result("get_node_guid", True, f"Found node GUID: {node_guid}")
+            return {"success": True, "node_guid": node_guid}
+        else:
+            log.log_error(f"Failed to find node: {node_name or 'FunctionEntry'}")
+            return {"success": False, "error": f"Node not found: {node_name or 'FunctionEntry'}"}
+
+    except Exception as e:
+        log.log_error(f"Error getting node GUID: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}

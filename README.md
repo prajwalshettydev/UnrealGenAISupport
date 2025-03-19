@@ -9,6 +9,8 @@ The Unreal Engine Generative AI Support Plugin allows you to focus on game devel
 
 Currently integrating Model Control Protocol (MCP) with Unreal Engine 5.5.
 
+<img src="Docs/Repo Card - UnrealGenAISupport.png" width="512"/>
+
 This project aims to build a long-term support (LTS) plugin for various cutting-edge LLM/GenAI models and foster a
 community around it. It currently includes OpenAI's GPT-4o, Deepseek R1, Claude Sonnet 3.7 and GPT-4o-mini for Unreal Engine 5.1 or higher, with plans to add
 , real-time APIs, Gemini, MCP, and Grok 3 APIs soon. The plugin will focus exclusively on APIs useful for
@@ -451,7 +453,18 @@ pip install mcp[cli]
 
 ### Usage:
 
-More documentation will follow.
+Running the MCP server:
+#### 1. Run the MCP server from the plugin's python directory.
+```bash
+python <your_project_directoy>/ExamplesForUEGenAIPlugin/Plugins/GenerativeAISupport/Content/Python/mcp_server.py
+```
+#### 2. Run the MCP client by opening or restarting the claude desktop app.
+
+#### 3. Run the Unreal Engine project and run the python script from the plugin's python directory.
+
+> Tools -> Run Python Script -> Select the `Plugins/GenerativeAISupport/Content/Python/mcp_client.py` file.
+
+#### 4. Now you should be able to prompt the Claude Desktop App to use Unreal Engine.
 
 ## Contribution Guidelines:
 
@@ -461,6 +474,8 @@ More documentation will follow.
 ```bash
 pip install unreal
 ```
+
+More details will be added soon.
 
 ### Project Structure:
 
