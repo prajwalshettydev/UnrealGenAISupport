@@ -122,7 +122,7 @@ Claude spawning scene objects and controlling their transformations and material
 ![MCP Example](Docs/SpeedUpClaudeDemo1.gif)
 ### API Example:
 A project called become human, where NPCs are OpenAI agentic instances. Built using this plugin.
-![Become Human](Docs/BhDemoGif.gif)
+![Become Human](Docs/BHDemoGif.gif)
 
 ## Table of Contents
 
