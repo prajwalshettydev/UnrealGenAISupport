@@ -435,7 +435,7 @@ The file will look something like this:
 {
     "mcpServers": {
       "unreal-handshake": {
-        "command": python,
+        "command": "python",
         "args": ["<your_project_directoy>/ExamplesForUEGenAIPlugin/Plugins/GenerativeAISupport/Content/Python/mcp_server.py"],
         "env": {
           "UNREAL_HOST": "localhost",
@@ -462,7 +462,7 @@ python <your_project_directoy>/ExamplesForUEGenAIPlugin/Plugins/GenerativeAISupp
 
 #### 3. Run the Unreal Engine project and run the python script from the plugin's python directory.
 
-> Tools -> Run Python Script -> Select the `Plugins/GenerativeAISupport/Content/Python/mcp_client.py` file.
+> Tools -> Run Python Script -> Select the `Plugins/GenerativeAISupport/Content/Python/unreal_socket_server.py` file.
 
 #### 4. Now you should be able to prompt the Claude Desktop App to use Unreal Engine.
 
