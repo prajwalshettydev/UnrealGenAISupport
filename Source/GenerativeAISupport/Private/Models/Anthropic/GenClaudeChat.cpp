@@ -23,7 +23,7 @@ void UGenClaudeChat::SendChatRequest(const FGenClaudeChatSettings& ChatSettings,
     });
 }
 
-UGenClaudeChat* UGenClaudeChat::SendRequestLatent(UObject* WorldContextObject, const FGenClaudeChatSettings& ChatSettings)
+UGenClaudeChat* UGenClaudeChat::RequestClaudeChat(UObject* WorldContextObject, const FGenClaudeChatSettings& ChatSettings)
 {
     UGenClaudeChat* AsyncAction = NewObject<UGenClaudeChat>();
     AsyncAction->ChatSettings = ChatSettings;

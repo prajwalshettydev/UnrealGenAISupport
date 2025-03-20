@@ -52,7 +52,7 @@ public:
 
 	// Blueprint latent function
 	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject"), Category = "GenAI|DeepSeek")
-	static UGenDSeekChat* SendRequestLatent(UObject* WorldContextObject, const FGenDSeekChatSettings& ChatSettings);
+	static UGenDSeekChat* RequestDeepseekChat(UObject* WorldContextObject, const FGenDSeekChatSettings& ChatSettings);
 
 private:
 	// Stores settings for request

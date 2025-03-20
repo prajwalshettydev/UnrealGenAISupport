@@ -24,7 +24,7 @@ void UGenDSeekChat::SendChatRequest(const FGenDSeekChatSettings& ChatSettings,
 	});
 }
 
-UGenDSeekChat* UGenDSeekChat::SendRequestLatent(UObject* WorldContextObject, const FGenDSeekChatSettings& ChatSettings)
+UGenDSeekChat* UGenDSeekChat::RequestDeepseekChat(UObject* WorldContextObject, const FGenDSeekChatSettings& ChatSettings)
 {
 	UGenDSeekChat* AsyncAction = NewObject<UGenDSeekChat>();
 	AsyncAction->ChatSettings = ChatSettings;

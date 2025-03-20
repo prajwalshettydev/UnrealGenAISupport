@@ -23,7 +23,7 @@ void UGenOAIStructuredOpService::RequestStructuredOutput(const FGenOAIStructured
     );
 }
 
-UGenOAIStructuredOpService* UGenOAIStructuredOpService::RequestStructuredOutputLatent(UObject* WorldContextObject, const FGenOAIStructuredChatSettings& StructuredChatSettings)
+UGenOAIStructuredOpService* UGenOAIStructuredOpService::RequestOpenAIStructuredOutput(UObject* WorldContextObject, const FGenOAIStructuredChatSettings& StructuredChatSettings)
 {
     UGenOAIStructuredOpService* AsyncAction = NewObject<UGenOAIStructuredOpService>();
     AsyncAction->StructuredChatSettings = StructuredChatSettings;

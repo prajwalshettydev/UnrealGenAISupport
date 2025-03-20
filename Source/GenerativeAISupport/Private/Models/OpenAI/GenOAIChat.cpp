@@ -26,7 +26,7 @@ void UGenOAIChat::SendChatRequest(const FGenChatSettings& ChatSettings, const FO
 	});
 }
 
-UGenOAIChat* UGenOAIChat::SendRequestLatent(UObject* WorldContextObject, const FGenChatSettings& ChatSettings)
+UGenOAIChat* UGenOAIChat::RequestOpenAIChat(UObject* WorldContextObject, const FGenChatSettings& ChatSettings)
 {
 	UGenOAIChat* AsyncAction = NewObject<UGenOAIChat>();
 	AsyncAction->ChatSettings = ChatSettings;

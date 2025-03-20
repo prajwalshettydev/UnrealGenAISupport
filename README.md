@@ -14,7 +14,7 @@ Currently integrating Model Control Protocol (MCP) with Unreal Engine 5.5.
 This project aims to build a long-term support (LTS) plugin for various cutting-edge LLM/GenAI models and foster a
 community around it. It currently includes OpenAI's GPT-4o, Deepseek R1, Claude Sonnet 3.7 and GPT-4o-mini for Unreal Engine 5.1 or higher, with plans to add
 , real-time APIs, Gemini, MCP, and Grok 3 APIs soon. The plugin will focus exclusively on APIs useful for
-game development and interactive experiences. All suggestions and contributions are welcome.
+game development, evals and interactive experiences. All suggestions and contributions are welcome. The plugin can also be used for setting up new evals and ways to compare models in game battlefields.
 
 ## Current Progress:
 
@@ -102,7 +102,6 @@ game development and interactive experiences. All suggestions and contributions 
     - Different Platforms 🚧🤝
     - Different Engine Versions 🚧🤝
 
-
 Where,
 - ✅ - Completed
 - 🛠️ - In Progress
@@ -150,6 +149,8 @@ Where,
 - [References](#references)
 
 ## Setting API Key:
+> [!NOTE]  
+> There is no need to set the API key for testing the MCP features in Claude app. Anthropic key only needed for Claude API.
 
 ### For Editor:
 
@@ -338,6 +339,9 @@ Tested models are `gpt-4o`, `gpt-4o-mini`, `gpt-4.5`, `o1-mini`, `o1`, `o3-mini-
    }
    ```
 
+##### Blueprint Example:
+<img src="Docs/BpExampleOAIStructuredOp.png" width="782"/>
+
 ### DeepSeek API:
 
 Currently the plugin supports Chat and Reasoning from DeepSeek API. Both for C++ and Blueprints.
@@ -387,6 +391,9 @@ Points to note:
     );
    ```
 
+##### Blueprint Example:
+<img src="Docs/BpExampleDeepseekChat.png" width="782"/>
+
 ### Anthropic API:
 Currently the plugin supports Chat from Anthropic API. Both for C++ and Blueprints.
 Tested models are `claude-3-7-sonnet-latest`, `claude-3-5-sonnet`, `claude-3-5-haiku-latest`, `claude-3-opus-latest`.
@@ -424,6 +431,9 @@ Tested models are `claude-3-7-sonnet-latest`, `claude-3-5-sonnet`, `claude-3-5-h
     );
 ```
 
+##### Blueprint Example:
+<img src="Docs/BpExampleClaudeChat.png" width="782"/>
+
 ## Model Control Protocol (MCP):
 This is currently work in progress. The plugin will support various clients like Claude Desktop App, OpenAI Operator API etc.
 
@@ -436,7 +446,7 @@ The file will look something like this:
     "mcpServers": {
       "unreal-handshake": {
         "command": "python",
-        "args": ["<your_project_directoy>/ExamplesForUEGenAIPlugin/Plugins/GenerativeAISupport/Content/Python/mcp_server.py"],
+        "args": ["<your_project_directoy_path~~~~>/Plugins/GenerativeAISupport/Content/Python/mcp_server.py"],
         "env": {
           "UNREAL_HOST": "localhost",
           "UNREAL_PORT": "9877" 

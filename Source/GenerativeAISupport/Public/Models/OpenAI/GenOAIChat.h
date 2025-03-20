@@ -34,7 +34,7 @@ public:
 
     // Blueprint latent function
     UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject"), Category = "GenAI")
-    static UGenOAIChat* SendRequestLatent(UObject* WorldContextObject, const FGenChatSettings& ChatSettings);
+    static UGenOAIChat* RequestOpenAIChat(UObject* WorldContextObject, const FGenChatSettings& ChatSettings);
 
 private:
     FGenChatSettings ChatSettings;

@@ -32,7 +32,7 @@ public:
 
 	// Blueprint latent function
 	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject"), Category = "GenAI")
-	static UGenOAIStructuredOpService* RequestStructuredOutputLatent(UObject* WorldContextObject, const FGenOAIStructuredChatSettings& StructuredChatSettings);
+	static UGenOAIStructuredOpService* RequestOpenAIStructuredOutput(UObject* WorldContextObject, const FGenOAIStructuredChatSettings& StructuredChatSettings);
 
 private:
 	FString Prompt;
