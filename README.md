@@ -19,18 +19,17 @@ game development, evals and interactive experiences. All suggestions and contrib
 ## Current Progress:
 
 - OpenAI API Support:
-    - OpenAI Chat API ✅
-        - `gpt-4o` Model ✅
-        - `gpt-4o-mini` Model ✅
-        - `gpt-4.5` Model 🛠️
-        - `o1-mini` Model 🚧
-        - `o1` Model 🚧
-        - `o3-mini-high` Model 🚧
-    - OpenAI DALL-E API 🚧
+    - OpenAI Chat API ✅ 
+      [(models-ref)](https://platform.openai.com/docs/models)
+        - `gpt-4o`, `gpt-4o-mini`  Model ✅
+        - `gpt-4.5-preview` Model 🛠️
+        - `o1-mini`, `o1`, `o1-pro`  Model 🚧
+        - `o3-mini` Model 🛠️
+    - OpenAI DALL-E API ❌ (Until new generation models are released)
     - OpenAI Vision API 🚧
     - OpenAI Realtime API 🛠️
+        - `gpt-4o-realtime-preview` `gpt-4o-mini-realtime-preview` Model 🛠️ 
     - OpenAI Structured Outputs ✅
-    - OpenAI Text-To-Speech API 🚧
     - OpenAI Whisper API 🚧
 - Anthropic Claude API Support:
     - Claude Chat API ✅
@@ -42,9 +41,18 @@ game development, evals and interactive experiences. All suggestions and contrib
 - Model Control Protocol (MCP) 🛠️
     - Clients Support ✅
         - Claude Desktop App Support ✅
+        - Cursor IDE Support 🛠️
         - OpenAI Operator API Support 🚧
     - Blueprints Auto Generation 🛠️
+        - Creating new blueprint of types ✅
+        - Adding new functions to blueprint ✅
+        - Adding new variables to blueprint ✅
+        - Adding nodes and connections 🛠️ (buggy)
     - Level/Scene Control for LLMs 🛠️
+        - Spawning Objects and Shapes ✅
+        - Moving, rotating and scaling objects ✅
+        - Changing materials and color ✅
+        - Advanced scene features 🛠️
 - XAI (Grok 3) API Support:
     - XAI Chat Completions API 🚧
         - `grok-beta` Model 🚧
@@ -52,16 +60,13 @@ game development, evals and interactive experiences. All suggestions and contrib
     - XAI Image API 🚧
 - Google Gemini API Support:
     - Gemini Chat API 🚧🤝
-        - `gemini-2.0-flash-exp` Model 🚧🤝
-        - `gemini-1.5-flash` Model 🚧🤝
-        - `gemini-1.5-flash-8b` Model 🚧🤝
-    - Gemini Multi-Modal API 🚧🤝
+        - `gemini-2.0-flash-lite`, `gemini-2.0-flash` `gemini-1.5-flash` Model 🚧🤝
+    - Gemini Imagen API: 🚧
+        - `imagen-3.0-generate-002` Model 🚧
 - Meta AI API Support:
-    - Llama Chat API 🚧
-        - `llama3.3-70b` Model 🚧
-        - `llama3.1-8b` Model 🚧
-    - Multi-Modal Vision API 🚧
-        - `llama3.2-90b-vision` Model 🚧
+    - Llama Chat API ❌ (Until new generation models are released)
+        - `llama3.3-70b` Model ❌
+        - `llama3.1-8b` Model ❌
     - Local Llama API 🚧🤝
 - Deepseek API Support:
     - Deepseek Chat API ✅
@@ -73,17 +78,8 @@ game development, evals and interactive experiences. All suggestions and contrib
 - Baidu API Support:
     - Baidu Chat API 🚧
         - `baidu-chat` Model 🚧
-- API Key Management 
-    - Cross-Platform Secure Key Storage ✅
-    - Encrypted Key Storage 🛠️
-    - Cross Platform Testing 🚧
-    - Build System Integration 🛠️
-    - Keys in Build Configuration 🛠️
-- Unreal Engine Integration
-    - Blueprint Support 🛠️
-    - C++ Support 🛠️
-    - C++ Latent Functions For Blueprints 🛠️
-    - Packaged Build Support 🛠️
+- 3D generative model APIs:
+    -  TripoSR by StabilityAI 🚧
 - Plugin Documentation 🛠️🤝
 - Plugin Example Project 🛠️ [here](https://github.com/prajwalshettydev/unreal-llm-api-test-project)
 - Version Control Support
@@ -96,9 +92,9 @@ game development, evals and interactive experiences. All suggestions and contrib
     - No External Dependencies ✅
     - Build Flags to enable/disable APIs 🚧
     - Submodules per API Organization 🚧
+    - Exclude MCP from build 🚧
 - Testing 
     - Automated Testing 🚧
-    - Build Testing 🚧
     - Different Platforms 🚧🤝
     - Different Engine Versions 🚧🤝
 
@@ -118,8 +114,17 @@ Where,
 - [Meta AI API Documentation](https://docs.llama-api.com/quickstart#available-models)
 - [Deepseek API Documentation](https://api-docs.deepseek.com/)
 - [Model Control Protocol (MCP) Documentation](https://modelcontextprotocol.io/)
+- [TripoSt Documentation](https://huggingface.co/stabilityai/TripoSR)
 
-# Table of Contents
+## Usage Examples:
+#### MCP Example:
+Claude spawning scene objects and controlling their transformations and materials in Unreal Engine.
+![MCP Example](Docs/SpeedUpClaudeDemo1.gif)
+### API Example:
+A project called become human, where NPCs are OpenAI agentic instances. Built using this plugin.
+![Become Human](Docs/BhDemoGif.gif)
+
+## Table of Contents
 
 - [Current Progress](#current-progress)
 - [Quick Links](#quick-links)
@@ -476,6 +481,11 @@ python <your_project_directoy>/ExamplesForUEGenAIPlugin/Plugins/GenerativeAISupp
 
 #### 4. Now you should be able to prompt the Claude Desktop App to use Unreal Engine.
 
+## Known Issues:
+- Nodes fail to connect properly with MCP
+- No undo redo support for MCP
+- No streaming support for Deepseek reasoning model
+
 ## Contribution Guidelines:
 
 ### Setting up for Development:
@@ -489,6 +499,7 @@ More details will be added soon.
 
 ### Project Structure:
 
+More details will be added soon.
 
 ## References:
 
