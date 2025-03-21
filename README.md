@@ -119,7 +119,7 @@ Where,
 ## Usage Examples:
 #### MCP Example:
 Claude spawning scene objects and controlling their transformations and materials in Unreal Engine.
-![MCP Example](Docs/SpeedUpClaudeDemo1.gif){width="480px"}
+<img src="Docs/SpeedUpClaudeDemo1.gif" width="480"/>
 ### API Example:
 A project called become human, where NPCs are OpenAI agentic instances. Built using this plugin.
 ![Become Human](Docs/BHDemoGif.gif)
