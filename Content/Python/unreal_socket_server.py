@@ -37,9 +37,12 @@ class CommandDispatcher:
             "connect_nodes": blueprint_commands.handle_connect_nodes,
             "compile_blueprint": blueprint_commands.handle_compile_blueprint,
             "spawn_blueprint": blueprint_commands.handle_spawn_blueprint,
-            "get_node_guid": blueprint_commands.handle_get_node_guid,
             "delete_node": blueprint_commands.handle_delete_node,
+            
+            # Getters
+            "get_node_guid": blueprint_commands.handle_get_node_guid,
             "get_all_nodes": blueprint_commands.handle_get_all_nodes,
+            "get_node_suggestions": blueprint_commands.handle_get_node_suggestions,
             
             
             # Bulk commands

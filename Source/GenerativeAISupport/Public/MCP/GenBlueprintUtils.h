@@ -119,8 +119,9 @@ public:
 	 * @return True if all connections were successful
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
-	static bool ConnectNodesBulk(const FString& BlueprintPath, const FString& FunctionGuid,
-	                             const FString& ConnectionsJson);
+	static FString ConnectNodesBulk(const FString& BlueprintPath, const FString& FunctionGuid,
+	                                const FString& ConnectionsJson);
+	
 	static bool OpenBlueprintGraph(UBlueprint* Blueprint, UEdGraph* Graph = nullptr);
 	
 	UFUNCTION(BlueprintCallable, Category = "GenBlueprintUtils")

@@ -27,9 +27,18 @@ public:
 	// Adds multiple nodes to a Blueprint function graph in bulk
 	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Nodes")
 	static FString AddNodesBulk(const FString& BlueprintPath, const FString& FunctionGuid, const FString& NodesJson);
+
+	UFUNCTION(BlueprintCallable, Category = "Blueprint")
 	bool DeleteNode(const FString& BlueprintPath, const FString& FunctionGuid, const FString& NodeGuid);
+
+	UFUNCTION(BlueprintCallable, Category = "Blueprint")
 	FString GetAllNodesInGraph(const FString& BlueprintPath, const FString& FunctionGuid);
+	
+	UFUNCTION(BlueprintCallable, Category = "Blueprint")
 	UEdGraph* FindGraphByGuid(UBlueprint* Blueprint, const FGuid& GraphGuid);
+	
+	UFUNCTION(BlueprintCallable, Category = "Blueprint")
+	FString GetNodeSuggestions(const FString& NodeType);
 
 private:
 	// Static map of friendly node names to Unreal Engine node types
@@ -42,10 +51,11 @@ private:
 									   const FString& PropertiesJson = TEXT(""));
 
 	// Attempts to create a node by searching Blueprint libraries and actor classes
-	static bool TryCreateNodeFromLibraries(UEdGraph* Graph, const FString& NodeType, UK2Node*& OutNode,
-										   TArray<FString>& OutSuggestions);
+	static FString TryCreateNodeFromLibraries(UEdGraph* Graph, const FString& NodeType, UK2Node*& OutNode,
+	                                          TArray<FString>& OutSuggestions);
 
 	// Helper to create function call nodes
 	static bool CreateMathFunctionNode(UEdGraph* Graph, const FString& ClassName, const FString& FunctionName,
 									   UK2Node*& OutNode);
+
 };

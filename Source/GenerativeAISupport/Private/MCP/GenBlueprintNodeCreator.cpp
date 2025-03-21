@@ -17,6 +17,7 @@
 #include "Engine/Blueprint.h"
 #include "BlueprintEditor.h"
 #include "Editor.h"
+#include "K2Node_FunctionEntry.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 
 
@@ -55,24 +56,23 @@ FString UGenBlueprintNodeCreator::AddNode(const FString& BlueprintPath, const FS
 
     UK2Node* NewNode = nullptr;
     TArray<FString> Suggestions;
-    bool bNodeCreated = false;
 
     if (TryCreateKnownNodeType(FunctionGraph, NodeType, NewNode, PropertiesJson))
-        bNodeCreated = true;
-    else if (TryCreateNodeFromLibraries(FunctionGraph, NodeType, NewNode, Suggestions))
-        bNodeCreated = true;
-
-    if (!bNodeCreated || !NewNode)
     {
-        if (Suggestions.Num() > 0)
+        // Node created successfully
+    }
+    else
+    {
+        FString Result = TryCreateNodeFromLibraries(FunctionGraph, NodeType, NewNode, Suggestions);
+        if (!Result.IsEmpty() && Result.StartsWith(TEXT("SUGGESTIONS:")))
         {
-            while (Suggestions.Num() > 5) Suggestions.RemoveAt(Suggestions.Num() - 1);
-            FString SuggestionStr = FString::Join(Suggestions, TEXT(", "));
-            UE_LOG(LogTemp, Warning, TEXT("Node type not found: %s. Try: %s"), *NodeType, *SuggestionStr);
-            return TEXT("SUGGESTIONS:") + SuggestionStr;
+            return Result; // Return suggestions directly to caller
         }
-        UE_LOG(LogTemp, Error, TEXT("Failed to create node type: %s"), *NodeType);
-        return TEXT("");
+        else if (!NewNode)
+        {
+            UE_LOG(LogTemp, Error, TEXT("Failed to create node type: %s"), *NodeType);
+            return TEXT("");
+        }
     }
 
     FunctionGraph->AddNode(NewNode, false, false);
@@ -140,6 +140,7 @@ FString UGenBlueprintNodeCreator::AddNode(const FString& BlueprintPath, const FS
     UE_LOG(LogTemp, Log, TEXT("Added node of type %s to blueprint %s with GUID %s"), *NodeType, *BlueprintPath, *NewNode->NodeGuid.ToString());
     return NewNode->NodeGuid.ToString();
 }
+
 
 FString UGenBlueprintNodeCreator::AddNodesBulk(const FString& BlueprintPath, const FString& FunctionGuid, const FString& NodesJson)
 {
@@ -362,6 +363,17 @@ void UGenBlueprintNodeCreator::InitNodeTypeMap()
     // K2 prefix issues (sometimes needed, sometimes not)
     NodeTypeMap.Add(TEXT("k2_getactorlocation"), TEXT("GetActorLocation"));
     NodeTypeMap.Add(TEXT("k2_setactorlocation"), TEXT("SetActorLocation"));
+
+    // Extended mappings
+    NodeTypeMap.Add(TEXT("functionentry"), TEXT("K2Node_FunctionEntry"));
+    NodeTypeMap.Add(TEXT("gettime"), TEXT("GetTimeSeconds"));
+    NodeTypeMap.Add(TEXT("gettimeseconds"), TEXT("GetTimeSeconds"));
+    NodeTypeMap.Add(TEXT("sin"), TEXT("Sin"));
+    NodeTypeMap.Add(TEXT("cos"), TEXT("Cos"));
+    NodeTypeMap.Add(TEXT("makevector"), TEXT("MakeVector"));
+    NodeTypeMap.Add(TEXT("vector"), TEXT("MakeVector"));
+    NodeTypeMap.Add(TEXT("addvector"), TEXT("Add_VectorVector"));
+    NodeTypeMap.Add(TEXT("add_vectorvector"), TEXT("Add_VectorVector"));
 }
 
 
@@ -381,6 +393,23 @@ bool UGenBlueprintNodeCreator::TryCreateKnownNodeType(UEdGraph* Graph, const FSt
     {
         UE_LOG(LogTemp, Log, TEXT("Mapped node type '%s' to '%s'"), *NodeType, *ActualNodeType);
     }
+
+    // Special handling for function entry nodes - find existing rather than create new
+    if (NodeTypeLower.Contains(TEXT("functionentry")) || NodeTypeLower.Contains(TEXT("entrynode")))
+    {
+        for (UEdGraphNode* Node : Graph->Nodes)
+        {
+            UK2Node_FunctionEntry* EntryNode = Cast<UK2Node_FunctionEntry>(Node);
+            if (EntryNode)
+            {
+                OutNode = EntryNode;
+                return true;
+            }
+        }
+        // If we don't find one, don't create a new one as it would be a duplicate
+        return false;
+    }
+
     
     if (ActualNodeType.Equals(TEXT("Branch"), ESearchCase::IgnoreCase) || ActualNodeType.Equals(TEXT("IfThenElse"), ESearchCase::IgnoreCase))
     {
@@ -449,6 +478,27 @@ bool UGenBlueprintNodeCreator::TryCreateKnownNodeType(UEdGraph* Graph, const FSt
     {
         return CreateMathFunctionNode(Graph, TEXT("Actor"), TEXT("K2_SetActorLocation"), OutNode);
     }
+    // Add conversion nodes
+    else if (NodeType.Equals(TEXT("FloatToDouble"), ESearchCase::IgnoreCase) || 
+             NodeType.Equals(TEXT("Conv_FloatToDouble"), ESearchCase::IgnoreCase))
+    {
+        return CreateMathFunctionNode(Graph, TEXT("KismetMathLibrary"), TEXT("Conv_FloatToDouble"), OutNode);
+    }
+    else if (NodeType.Equals(TEXT("FloatToInt"), ESearchCase::IgnoreCase) || 
+             NodeType.Equals(TEXT("Conv_FloatToInteger"), ESearchCase::IgnoreCase))
+    {
+        return CreateMathFunctionNode(Graph, TEXT("KismetMathLibrary"), TEXT("Conv_FloatToInteger"), OutNode);
+    }
+    else if (NodeType.Equals(TEXT("IntToFloat"), ESearchCase::IgnoreCase) || 
+             NodeType.Equals(TEXT("Conv_IntToFloat"), ESearchCase::IgnoreCase))
+    {
+        return CreateMathFunctionNode(Graph, TEXT("KismetMathLibrary"), TEXT("Conv_IntToFloat"), OutNode);
+    }
+    else if (NodeType.Equals(TEXT("DoubleToFloat"), ESearchCase::IgnoreCase) || 
+             NodeType.Equals(TEXT("Conv_DoubleToFloat"), ESearchCase::IgnoreCase))
+    {
+        return CreateMathFunctionNode(Graph, TEXT("KismetMathLibrary"), TEXT("Conv_DoubleToFloat"), OutNode);
+    }
 
     UClass* NodeClass = FindObject<UClass>(ANY_PACKAGE, *(TEXT("UK2Node_") + ActualNodeType));
     if (!NodeClass || !NodeClass->IsChildOf(UK2Node::StaticClass()))
@@ -462,8 +512,9 @@ bool UGenBlueprintNodeCreator::TryCreateKnownNodeType(UEdGraph* Graph, const FSt
     return false;
 }
 
-bool UGenBlueprintNodeCreator::TryCreateNodeFromLibraries(UEdGraph* Graph, const FString& NodeType, UK2Node*& OutNode,
-                                                          TArray<FString>& OutSuggestions)
+FString UGenBlueprintNodeCreator::TryCreateNodeFromLibraries(UEdGraph* Graph, const FString& NodeType,
+                                                             UK2Node*& OutNode,
+                                                             TArray<FString>& OutSuggestions)
 {
     static const TArray<FString> CommonLibraries = {
         TEXT("KismetMathLibrary"), TEXT("KismetSystemLibrary"), TEXT("KismetStringLibrary"),
@@ -483,6 +534,27 @@ bool UGenBlueprintNodeCreator::TryCreateNodeFromLibraries(UEdGraph* Graph, const
     TArray<FFunctionMatch> Matches;
     const FString NodeTypeLower = NodeType.ToLower();
 
+    // Helper to split names by underscore or camelCase
+    auto SplitName = [](const FString& Name) -> TArray<FString> {
+        TArray<FString> Parts;
+        Name.ParseIntoArray(Parts, TEXT("_"));
+        if (Parts.Num() == 1) {
+            FString Temp = Name;
+            Parts.Empty();
+            for (int32 i = 0; i < Temp.Len(); ++i) {
+                if (i > 0 && FChar::IsUpper(Temp[i])) {
+                    Parts.Add(Temp.Mid(0, i));
+                    Temp = Temp.Mid(i);
+                    i = 0;
+                }
+            }
+            if (!Temp.IsEmpty()) Parts.Add(Temp);
+        }
+        return Parts;
+    };
+
+    TArray<FString> NodeTypeParts = SplitName(NodeTypeLower);
+
     for (const FString& LibraryName : CommonLibraries)
     {
         UClass* LibClass = FindObject<UClass>(ANY_PACKAGE, *LibraryName);
@@ -498,15 +570,17 @@ bool UGenBlueprintNodeCreator::TryCreateNodeFromLibraries(UEdGraph* Graph, const
                 continue;
 
             int32 Score = 0;
-            if (FuncNameLower == NodeTypeLower) Score = 100;
-            else if (FuncNameLower.Contains(NodeTypeLower)) Score = 75;
-            else
-            {
-                TArray<FString> SearchParts;
-                NodeTypeLower.ParseIntoArray(SearchParts, TEXT("_"));
-                for (const FString& Part : SearchParts)
-                    if (FuncNameLower.Contains(Part)) Score += 10;
-            }
+            if (FuncNameLower == NodeTypeLower) Score = 100; // Exact match
+            else if (FuncNameLower.Contains(NodeTypeLower)) Score = 50; // Substring match
+
+            // Keyword relevance via word overlap
+            TArray<FString> FuncParts = SplitName(FuncNameLower);
+            for (const FString& Part : NodeTypeParts)
+                if (FuncParts.Contains(Part)) Score += 10;
+
+            // Position and length adjustments
+            if (FuncNameLower.StartsWith(NodeTypeLower)) Score += 5;
+            if (FuncNameLower.Len() > NodeTypeLower.Len() * 2) Score -= 10;
 
             if (Score > 0)
             {
@@ -522,10 +596,17 @@ bool UGenBlueprintNodeCreator::TryCreateNodeFromLibraries(UEdGraph* Graph, const
         }
     }
 
+    if (Matches.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("No matches found for node type: %s"), *NodeType);
+        return TEXT("");
+    }
+
     Matches.Sort([](const FFunctionMatch& A, const FFunctionMatch& B) { return A.Score > B.Score; });
     for (const FFunctionMatch& Match : Matches) OutSuggestions.Add(Match.DisplayName);
 
-    if (Matches.Num() > 0)
+    const int32 ScoreThreshold = 80;
+    if (Matches[0].Score >= ScoreThreshold)
     {
         const FFunctionMatch& BestMatch = Matches[0];
         UK2Node_CallFunction* FunctionNode = NewObject<UK2Node_CallFunction>(Graph);
@@ -533,11 +614,17 @@ bool UGenBlueprintNodeCreator::TryCreateNodeFromLibraries(UEdGraph* Graph, const
         {
             FunctionNode->FunctionReference.SetExternalMember(BestMatch.Function->GetFName(), BestMatch.Class);
             OutNode = FunctionNode;
-            return true;
+            UE_LOG(LogTemp, Log, TEXT("Selected node %s with score %d"), *BestMatch.DisplayName, BestMatch.Score);
+            return BestMatch.DisplayName; // Return the selected node's full name
         }
+        return TEXT(""); // Failed to create node, but score was high enough
     }
 
-    return false;
+    // No match above threshold, return suggestions
+    while (OutSuggestions.Num() > 5) OutSuggestions.RemoveAt(OutSuggestions.Num() - 1);
+    FString SuggestionStr = FString::Join(OutSuggestions, TEXT(", "));
+    UE_LOG(LogTemp, Warning, TEXT("No match above threshold for %s. Suggestions: %s"), *NodeType, *SuggestionStr);
+    return TEXT("SUGGESTIONS:") + SuggestionStr;
 }
 
 bool UGenBlueprintNodeCreator::CreateMathFunctionNode(UEdGraph* Graph, const FString& ClassName, const FString& FunctionName,
@@ -559,4 +646,95 @@ bool UGenBlueprintNodeCreator::CreateMathFunctionNode(UEdGraph* Graph, const FSt
         }
     }
     return false;
+}
+
+FString UGenBlueprintNodeCreator::GetNodeSuggestions(const FString& NodeType)
+{
+    static const TArray<FString> CommonLibraries = {
+        TEXT("KismetMathLibrary"), TEXT("KismetSystemLibrary"), TEXT("KismetStringLibrary"),
+        TEXT("KismetArrayLibrary"), TEXT("KismetTextLibrary"), TEXT("GameplayStatics"),
+        TEXT("BlueprintFunctionLibrary"), TEXT("Actor"), TEXT("Pawn"), TEXT("Character")
+    };
+
+    struct FFunctionMatch {
+        FString LibraryName;
+        FString FunctionName;
+        FString DisplayName;
+        int32 Score;
+    };
+
+    TArray<FFunctionMatch> Matches;
+    const FString NodeTypeLower = NodeType.ToLower();
+
+    auto SplitName = [](const FString& Name) -> TArray<FString> {
+        TArray<FString> Parts;
+        Name.ParseIntoArray(Parts, TEXT("_"));
+        if (Parts.Num() == 1) {
+            FString Temp = Name;
+            Parts.Empty();
+            for (int32 i = 0; i < Temp.Len(); ++i) {
+                if (i > 0 && FChar::IsUpper(Temp[i])) {
+                    Parts.Add(Temp.Mid(0, i));
+                    Temp = Temp.Mid(i);
+                    i = 0;
+                }
+            }
+            if (!Temp.IsEmpty()) Parts.Add(Temp);
+        }
+        return Parts;
+    };
+
+    TArray<FString> NodeTypeParts = SplitName(NodeTypeLower);
+
+    for (const FString& LibraryName : CommonLibraries)
+    {
+        UClass* LibClass = FindObject<UClass>(ANY_PACKAGE, *LibraryName);
+        if (!LibClass) continue;
+
+        for (TFieldIterator<UFunction> FuncIt(LibClass); FuncIt; ++FuncIt)
+        {
+            UFunction* Function = *FuncIt;
+            FString FuncName = Function->GetName();
+            FString FuncNameLower = FuncName.ToLower();
+
+            if (Function->HasMetaData(TEXT("DeprecatedFunction")) || Function->HasMetaData(TEXT("BlueprintInternalUseOnly")))
+                continue;
+
+            int32 Score = 0;
+            if (FuncNameLower == NodeTypeLower) Score = 100;
+            else if (FuncNameLower.Contains(NodeTypeLower)) Score = 50;
+
+            TArray<FString> FuncParts = SplitName(FuncNameLower);
+            for (const FString& Part : NodeTypeParts)
+                if (FuncParts.Contains(Part)) Score += 10;
+
+            if (FuncNameLower.StartsWith(NodeTypeLower)) Score += 5;
+            if (FuncNameLower.Len() > NodeTypeLower.Len() * 2) Score -= 10;
+
+            if (Score > 0)
+            {
+                FFunctionMatch Match;
+                Match.LibraryName = LibraryName;
+                Match.FunctionName = FuncName;
+                Match.DisplayName = FString::Printf(TEXT("%s.%s"), *LibraryName, *FuncName);
+                Match.Score = Score;
+                Matches.Add(Match);
+            }
+        }
+    }
+
+    if (Matches.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("No suggestions found for node type: %s"), *NodeType);
+        return TEXT("");
+    }
+
+    Matches.Sort([](const FFunctionMatch& A, const FFunctionMatch& B) { return A.Score > B.Score; });
+    TArray<FString> Suggestions;
+    for (const FFunctionMatch& Match : Matches) Suggestions.Add(Match.DisplayName);
+    while (Suggestions.Num() > 5) Suggestions.RemoveAt(Suggestions.Num() - 1);
+
+    FString SuggestionStr = FString::Join(Suggestions, TEXT(", "));
+    UE_LOG(LogTemp, Log, TEXT("Suggestions for %s: %s"), *NodeType, *SuggestionStr);
+    return TEXT("SUGGESTIONS:") + SuggestionStr;
 }

@@ -524,8 +524,8 @@ FString UGenBlueprintUtils::ConnectNodes(const FString& BlueprintPath, const FSt
     if (!SourceNode || !TargetNode)
         return TEXT("{\"success\": false, \"error\": \"Could not find source or target node\"}");
 
-    UEdGraphPin* SourcePin = SourceNode->FindPin(FName(*SourcePinName));
-    UEdGraphPin* TargetPin = TargetNode->FindPin(FName(*TargetPinName));
+    UEdGraphPin* SourcePin = SourceNode->FindPin(FName(*SourcePinName), EGPD_Output);
+    UEdGraphPin* TargetPin = TargetNode->FindPin(FName(*TargetPinName), EGPD_Input);
 
     if (!SourcePin || !TargetPin)
     {
@@ -533,22 +533,27 @@ FString UGenBlueprintUtils::ConnectNodes(const FString& BlueprintPath, const FSt
         ResponseObject->SetBoolField(TEXT("success"), false);
         ResponseObject->SetStringField(TEXT("error"), TEXT("Invalid pin name"));
 
-        auto AddPins = [](UK2Node* Node, const FString& FieldName, TSharedPtr<FJsonObject> JsonObj)
+        auto AddPins = [](UK2Node* Node, const FString& FieldName, TSharedPtr<FJsonObject> JsonObj, EEdGraphPinDirection Direction)
         {
             TArray<TSharedPtr<FJsonValue>> PinsArray;
             for (UEdGraphPin* Pin : Node->Pins)
             {
-                TSharedPtr<FJsonObject> PinObj = MakeShareable(new FJsonObject);
-                PinObj->SetStringField(TEXT("name"), Pin->PinName.ToString());
-                PinObj->SetStringField(TEXT("direction"), Pin->Direction == EGPD_Input ? TEXT("Input") : TEXT("Output"));
-                PinObj->SetStringField(TEXT("type"), Pin->PinType.PinCategory.ToString());
-                PinsArray.Add(MakeShareable(new FJsonValueObject(PinObj)));
+                if (Pin->Direction == Direction)
+                {
+                    TSharedPtr<FJsonObject> PinObj = MakeShareable(new FJsonObject);
+                    PinObj->SetStringField(TEXT("name"), Pin->PinName.ToString());
+                    PinObj->SetStringField(TEXT("direction"), Pin->Direction == EGPD_Input ? TEXT("Input") : TEXT("Output"));
+                    PinObj->SetStringField(TEXT("type"), Pin->PinType.PinCategory.ToString());
+                    if (Pin->PinType.PinSubCategory != NAME_None)
+                        PinObj->SetStringField(TEXT("subtype"), Pin->PinType.PinSubCategory.ToString());
+                    PinsArray.Add(MakeShareable(new FJsonValueObject(PinObj)));
+                }
             }
             JsonObj->SetArrayField(FieldName, PinsArray);
         };
 
-        AddPins(SourceNode, TEXT("source_available_pins"), ResponseObject);
-        AddPins(TargetNode, TEXT("target_available_pins"), ResponseObject);
+        AddPins(SourceNode, TEXT("source_available_pins"), ResponseObject, EGPD_Output);
+        AddPins(TargetNode, TEXT("target_available_pins"), ResponseObject, EGPD_Input);
 
         FString ResultJson;
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
@@ -556,66 +561,98 @@ FString UGenBlueprintUtils::ConnectNodes(const FString& BlueprintPath, const FSt
         return ResultJson;
     }
 
+    // Attempt the connection directly, letting Unreal handle type conversion
+    SourcePin->MakeLinkTo(TargetPin);
 
-	// Check if pins can be connected
-	const UEdGraphSchema* Schema = FunctionGraph->GetSchema();
-	FPinConnectionResponse Response = Schema->CanCreateConnection(SourcePin, TargetPin);
-    if (Response.Response != CONNECT_RESPONSE_MAKE)
+    // Verify if the connection was successful
+    if (SourcePin->LinkedTo.Contains(TargetPin) && TargetPin->LinkedTo.Contains(SourcePin))
     {
+        Blueprint->Modify();
+        FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+        TSharedPtr<FJsonObject> ResponseObject = MakeShareable(new FJsonObject);
+        ResponseObject->SetBoolField(TEXT("success"), true);
+        FString ResultJson;
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
+        FJsonSerializer::Serialize(ResponseObject.ToSharedRef(), Writer);
+        return ResultJson;
+    }
+    else
+    {
+        // Connection failed, provide detailed feedback
         TSharedPtr<FJsonObject> ResponseObject = MakeShareable(new FJsonObject);
         ResponseObject->SetBoolField(TEXT("success"), false);
-        ResponseObject->SetStringField(TEXT("error"), Response.Message.ToString());
-        
-        auto AddPins = [](UK2Node* Node, const FString& FieldName, TSharedPtr<FJsonObject> JsonObj)
-        {
-            TArray<TSharedPtr<FJsonValue>> PinsArray;
-            for (UEdGraphPin* Pin : Node->Pins)
-            {
-                TSharedPtr<FJsonObject> PinObj = MakeShareable(new FJsonObject);
-                PinObj->SetStringField(TEXT("name"), Pin->PinName.ToString());
-                PinObj->SetStringField(TEXT("direction"), Pin->Direction == EGPD_Input ? TEXT("Input") : TEXT("Output"));
-                PinObj->SetStringField(TEXT("type"), Pin->PinType.PinCategory.ToString());
-                PinsArray.Add(MakeShareable(new FJsonValueObject(PinObj)));
-            }
-            JsonObj->SetArrayField(FieldName, PinsArray);
-        };
+        ResponseObject->SetStringField(TEXT("error"), TEXT("Failed to connect pins - type mismatch or invalid connection"));
 
-        AddPins(SourceNode, TEXT("source_available_pins"), ResponseObject);
-        AddPins(TargetNode, TEXT("target_available_pins"), ResponseObject);
+        TSharedPtr<FJsonObject> SourcePinInfo = MakeShareable(new FJsonObject);
+        SourcePinInfo->SetStringField(TEXT("name"), SourcePin->PinName.ToString());
+        SourcePinInfo->SetStringField(TEXT("type"), SourcePin->PinType.PinCategory.ToString());
+        if (SourcePin->PinType.PinSubCategory != NAME_None)
+            SourcePinInfo->SetStringField(TEXT("subtype"), SourcePin->PinType.PinSubCategory.ToString());
+
+        TSharedPtr<FJsonObject> TargetPinInfo = MakeShareable(new FJsonObject);
+        TargetPinInfo->SetStringField(TEXT("name"), TargetPin->PinName.ToString());
+        TargetPinInfo->SetStringField(TEXT("type"), TargetPin->PinType.PinCategory.ToString());
+        if (TargetPin->PinType.PinSubCategory != NAME_None)
+            TargetPinInfo->SetStringField(TEXT("subtype"), TargetPin->PinType.PinSubCategory.ToString());
+
+        ResponseObject->SetObjectField(TEXT("source_pin"), SourcePinInfo);
+        ResponseObject->SetObjectField(TEXT("target_pin"), TargetPinInfo);
 
         FString ResultJson;
         TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
         FJsonSerializer::Serialize(ResponseObject.ToSharedRef(), Writer);
         return ResultJson;
     }
-
-    SourcePin->MakeLinkTo(TargetPin);
-    Blueprint->Modify();
-    FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
-
-    TSharedPtr<FJsonObject> ResponseObject = MakeShareable(new FJsonObject);
-    ResponseObject->SetBoolField(TEXT("success"), true);
-    FString ResultJson;
-    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
-    FJsonSerializer::Serialize(ResponseObject.ToSharedRef(), Writer);
-    return ResultJson;
 }
+
 bool UGenBlueprintUtils::CompileBlueprint(const FString& BlueprintPath)
 {
-	// Load the blueprint asset
-	UBlueprint* Blueprint = LoadBlueprintAsset(BlueprintPath);
-	if (!Blueprint)
+	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *BlueprintPath);
+	if (!Blueprint) return false;
+    
+	// Validate pin connections before compiling
+	TArray<FString> InvalidConnectionMessages;
+	bool HasInvalidConnections = false;
+    
+	// Check all graphs
+	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
 	{
-		UE_LOG(LogTemp, Error, TEXT("Could not load blueprint: %s"), *BlueprintPath);
-		return false;
+		for (UEdGraphNode* Node : Graph->Nodes)
+		{
+			for (UEdGraphPin* Pin : Node->Pins)
+			{
+				// Check for multiple connections to exec output pins (a common issue)
+				if (Pin->Direction == EGPD_Output && Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
+				{
+					if (Pin->LinkedTo.Num() > 1)
+					{
+						HasInvalidConnections = true;
+						// Optionally fix by keeping only the first connection
+						while (Pin->LinkedTo.Num() > 1)
+						{
+							Pin->LinkedTo.RemoveAt(1);
+						}
+						FString Message = FString::Printf(TEXT("Fixed invalid multiple connections from pin %s on node %s"), 
+							*Pin->PinName.ToString(), *Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString());
+						InvalidConnectionMessages.Add(Message);
+					}
+				}
+			}
+		}
 	}
-
-	// Compile the blueprint
-	FKismetEditorUtilities::CompileBlueprint(Blueprint);
-	
-	OpenBlueprintGraph(Blueprint);
-
+    
+	// If issues were found and fixed, mark blueprint modified
+	if (HasInvalidConnections)
+	{
+		Blueprint->Modify();
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	}
+    
+	// Now compile
 	UE_LOG(LogTemp, Log, TEXT("Compiled blueprint: %s"), *BlueprintPath);
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+    
 	return true;
 }
 
@@ -705,59 +742,101 @@ UFunction* UGenBlueprintUtils::FindFunctionByName(UClass* Class, const FString& 
 }
 
 
-bool UGenBlueprintUtils::ConnectNodesBulk(const FString& BlueprintPath, const FString& FunctionGuid,
-									  const FString& ConnectionsJson)
+FString UGenBlueprintUtils::ConnectNodesBulk(const FString& BlueprintPath, const FString& FunctionGuid,
+                                             const FString& ConnectionsJson)
 {
-	// Load the blueprint asset
-	UBlueprint* Blueprint = LoadBlueprintAsset(BlueprintPath);
-	if (!Blueprint)
-	{
-		UE_LOG(LogTemp, Error, TEXT("Could not load blueprint at path: %s"), *BlueprintPath);
-		return false;
-	}
+    // Load the blueprint asset
+    UBlueprint* Blueprint = LoadBlueprintAsset(BlueprintPath);
+    if (!Blueprint)
+    {
+       UE_LOG(LogTemp, Error, TEXT("Could not load blueprint at path: %s"), *BlueprintPath);
+       return TEXT("{\"success\": false, \"error\": \"Could not load blueprint\"}");
+    }
 
-	// Parse the connections array from JSON
-	TArray<TSharedPtr<FJsonValue>> ConnectionsArray;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ConnectionsJson);
+    // Parse the connections array from JSON
+    TArray<TSharedPtr<FJsonValue>> ConnectionsArray;
+    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ConnectionsJson);
 
-	if (!FJsonSerializer::Deserialize(Reader, ConnectionsArray))
-	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to parse connections JSON"));
-		return false;
-	}
+    if (!FJsonSerializer::Deserialize(Reader, ConnectionsArray))
+    {
+       UE_LOG(LogTemp, Error, TEXT("Failed to parse connections JSON"));
+       return TEXT("{\"success\": false, \"error\": \"Failed to parse connections JSON\"}");
+    }
 
-	// Connect each pair of nodes
-	bool AllSuccessful = true;
-	int SuccessfulConnections = 0;
+    // Create a response array to track all connection results
+    TArray<TSharedPtr<FJsonValue>> ResultsArray;
+    int SuccessfulConnections = 0;
+    bool HasErrors = false;
 
-	for (auto& ConnectionValue : ConnectionsArray)
-	{
-		TSharedPtr<FJsonObject> ConnectionObject = ConnectionValue->AsObject();
-		if (!ConnectionObject.IsValid()) continue;
+    for (int32 i = 0; i < ConnectionsArray.Num(); i++)
+    {
+       TSharedPtr<FJsonObject> ConnectionObject = ConnectionsArray[i]->AsObject();
+       if (!ConnectionObject.IsValid()) continue;
 
-		// Extract connection details
-		FString SourceNodeGuid = ConnectionObject->GetStringField(TEXT("source_node_id"));
-		FString SourcePinName = ConnectionObject->GetStringField(TEXT("source_pin"));
-		FString TargetNodeGuid = ConnectionObject->GetStringField(TEXT("target_node_id"));
-		FString TargetPinName = ConnectionObject->GetStringField(TEXT("target_pin"));
+       // Extract connection details
+       FString SourceNodeGuid = ConnectionObject->GetStringField(TEXT("source_node_id"));
+       FString SourcePinName = ConnectionObject->GetStringField(TEXT("source_pin"));
+       FString TargetNodeGuid = ConnectionObject->GetStringField(TEXT("target_node_id"));
+       FString TargetPinName = ConnectionObject->GetStringField(TEXT("target_pin"));
 
-		// Connect the nodes
-		bool Success = false; //ConnectNodes(BlueprintPath, FunctionGuid, SourceNodeGuid, SourcePinName, 
-								   //TargetNodeGuid, TargetPinName);
+       // Connect the nodes - UNCOMMENTED THIS!
+       FString ConnectionResult = ConnectNodes(BlueprintPath, FunctionGuid, SourceNodeGuid, SourcePinName, 
+                                          TargetNodeGuid, TargetPinName);
 
-		if (Success)
-		{
-			SuccessfulConnections++;
-		}
-		else
-		{
-			AllSuccessful = false;
-		}
-	}
+       // Parse the result
+       TSharedPtr<FJsonObject> ResultObject;
+       TSharedRef<TJsonReader<>> ResultReader = TJsonReaderFactory<>::Create(ConnectionResult);
+       
+       if (FJsonSerializer::Deserialize(ResultReader, ResultObject) && ResultObject.IsValid())
+       {
+           // Add connection index and source/target identifiers
+           ResultObject->SetNumberField(TEXT("connection_index"), i);
+           ResultObject->SetStringField(TEXT("source_node"), SourceNodeGuid);
+           ResultObject->SetStringField(TEXT("target_node"), TargetNodeGuid);
+           
+           // Check if successful
+           bool bSuccess = false;
+           if (ResultObject->TryGetBoolField(TEXT("success"), bSuccess) && bSuccess)
+           {
+               SuccessfulConnections++;
+           }
+           else
+           {
+               HasErrors = true;
+           }
+           
+           ResultsArray.Add(MakeShareable(new FJsonValueObject(ResultObject)));
+       }
+       else
+       {
+           // Couldn't parse result, create error object
+           TSharedPtr<FJsonObject> ErrorObject = MakeShareable(new FJsonObject);
+           ErrorObject->SetBoolField(TEXT("success"), false);
+           ErrorObject->SetStringField(TEXT("error"), TEXT("Failed to parse connection result"));
+           ErrorObject->SetNumberField(TEXT("connection_index"), i);
+           ErrorObject->SetStringField(TEXT("source_node"), SourceNodeGuid);
+           ErrorObject->SetStringField(TEXT("target_node"), TargetNodeGuid);
+           
+           ResultsArray.Add(MakeShareable(new FJsonValueObject(ErrorObject)));
+           HasErrors = true;
+       }
+    }
 
-	UE_LOG(LogTemp, Log, TEXT("Connected %d/%d node pairs in blueprint %s"), 
-		   SuccessfulConnections, ConnectionsArray.Num(), *BlueprintPath);
-	return AllSuccessful;
+    // Create the final response
+    TSharedPtr<FJsonObject> ResponseObject = MakeShareable(new FJsonObject);
+    ResponseObject->SetBoolField(TEXT("success"), !HasErrors);
+    ResponseObject->SetNumberField(TEXT("total_connections"), ConnectionsArray.Num());
+    ResponseObject->SetNumberField(TEXT("successful_connections"), SuccessfulConnections);
+    ResponseObject->SetArrayField(TEXT("results"), ResultsArray);
+
+    FString ResultJson;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
+    FJsonSerializer::Serialize(ResponseObject.ToSharedRef(), Writer);
+
+    UE_LOG(LogTemp, Log, TEXT("Connected %d/%d node pairs in blueprint %s"), 
+          SuccessfulConnections, ConnectionsArray.Num(), *BlueprintPath);
+    
+    return ResultJson;
 }
 
 bool UGenBlueprintUtils::OpenBlueprintGraph(UBlueprint* Blueprint, UEdGraph* Graph)

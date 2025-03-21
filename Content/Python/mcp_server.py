@@ -411,6 +411,33 @@ def add_node_to_blueprint(blueprint_path: str, function_id: str, node_type: str,
         return f"Failed to add node: {response.get('error', 'Unknown error')}"
 
 @mcp.tool()
+def get_node_suggestions(node_type: str) -> str:
+    """
+    Get suggestions for a node type in Unreal Blueprints
+    
+    Args:
+        node_type: The partial or full node type to get suggestions for (e.g., "Add", "FloatToDouble")
+        
+    Returns:
+        A string indicating success with suggestions or an error message
+    """
+    command = {
+        "type": "get_node_suggestions",
+        "node_type": node_type
+    }
+
+    response = send_to_unreal(command)
+    if response.get("success"):
+        suggestions = response.get("suggestions", [])
+        if suggestions:
+            return f"Suggestions for '{node_type}': {', '.join(suggestions)}"
+        else:
+            return f"No suggestions found for '{node_type}'"
+    else:
+        error = response.get("error", "Unknown error")
+        return f"Failed to get suggestions for '{node_type}': {error}"
+
+@mcp.tool()
 def delete_node_from_blueprint(blueprint_path: str, function_id: str, node_id: str) -> str:
     """
     Delete a node from a Blueprint graph
@@ -539,67 +566,68 @@ def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
         return f"Failed to spawn Blueprint: {response.get('error', 'Unknown error')}"
 
 
-@mcp.tool()
-def add_nodes_to_blueprint_bulk(blueprint_path: str, function_id: str, nodes: list) -> str:
-    """
-    Add multiple nodes to a Blueprint graph in a single operation
+# @mcp.tool()
+# def add_nodes_to_blueprint_bulk(blueprint_path: str, function_id: str, nodes: list) -> str:
+#     """
+#     Add multiple nodes to a Blueprint graph in a single operation
+#     
+#     Args:
+#         blueprint_path: Path to the Blueprint asset
+#         function_id: ID of the function to add the nodes to
+#         nodes: Array of node definitions, each containing:
+#             - id: ID for referencing the node (string) - this is important for creating connections later
+#             - node_type: Type of node to add (see add_node_to_blueprint for supported types)
+#             - node_position: Position of the node in the graph [X, Y]
+#             - node_properties: Properties to set on the node (optional)
+#         
+#     Returns:
+#         On success: Dictionary mapping your node IDs to the actual node GUIDs created in Unreal
+#         On partial success: Dictionary with successful nodes and suggestions for failed nodes
+#         On failure: Error message with suggestions
+#     
+#     Example success response:
+#         {
+#           "success": true,
+#           "nodes": {
+#             "function_entry": "425E7A3949D7420A461175A4733BBA5C",
+#             "multiply_node": "70354A7E444BB68EEF31718DC50CF89C",
+#             "return_node": "6436796645ED674F3C64A8A94CBA416C"
+#           }
+#         }
+#     
+#     Example partial success with suggestions:
+#         {
+#           "success": true,
+#           "partial_success": true,
+#           "nodes": {
+#             "function_entry": "425E7A3949D7420A461175A4733BBA5C",
+#             "return_node": "6436796645ED674F3C64A8A94CBA416C"
+#           },
+#           "suggestions": {
+#             "multiply_node": {
+#               "requested_type": "Multiply_Float",
+#               "suggestions": ["KismetMathLibrary.Multiply_FloatFloat", "KismetMathLibrary.MultiplyByFloat"]
+#             }
+#           }
+#         }
+#     
+#     When you receive suggestions, you can retry adding those nodes using the suggested node types.
+#     """
+#     command = {
+#         "type": "add_nodes_bulk",
+#         "blueprint_path": blueprint_path,
+#         "function_id": function_id,
+#         "nodes": nodes
+#     }
+# 
+#     response = send_to_unreal(command)
+#     if response.get("success"):
+#         node_mapping = response.get("nodes", {})
+#         return f"Successfully added {len(node_mapping)} nodes to function {function_id} in Blueprint at {blueprint_path}\nNode mapping: {json.dumps(node_mapping, indent=2)}"
+#     else:
+#         return f"Failed to add nodes: {response.get('error', 'Unknown error')}"
     
-    Args:
-        blueprint_path: Path to the Blueprint asset
-        function_id: ID of the function to add the nodes to
-        nodes: Array of node definitions, each containing:
-            - id: ID for referencing the node (string) - this is important for creating connections later
-            - node_type: Type of node to add (see add_node_to_blueprint for supported types)
-            - node_position: Position of the node in the graph [X, Y]
-            - node_properties: Properties to set on the node (optional)
-        
-    Returns:
-        On success: Dictionary mapping your node IDs to the actual node GUIDs created in Unreal
-        On partial success: Dictionary with successful nodes and suggestions for failed nodes
-        On failure: Error message with suggestions
     
-    Example success response:
-        {
-          "success": true,
-          "nodes": {
-            "function_entry": "425E7A3949D7420A461175A4733BBA5C",
-            "multiply_node": "70354A7E444BB68EEF31718DC50CF89C",
-            "return_node": "6436796645ED674F3C64A8A94CBA416C"
-          }
-        }
-    
-    Example partial success with suggestions:
-        {
-          "success": true,
-          "partial_success": true,
-          "nodes": {
-            "function_entry": "425E7A3949D7420A461175A4733BBA5C",
-            "return_node": "6436796645ED674F3C64A8A94CBA416C"
-          },
-          "suggestions": {
-            "multiply_node": {
-              "requested_type": "Multiply_Float",
-              "suggestions": ["KismetMathLibrary.Multiply_FloatFloat", "KismetMathLibrary.MultiplyByFloat"]
-            }
-          }
-        }
-    
-    When you receive suggestions, you can retry adding those nodes using the suggested node types.
-    """
-    command = {
-        "type": "add_nodes_bulk",
-        "blueprint_path": blueprint_path,
-        "function_id": function_id,
-        "nodes": nodes
-    }
-
-    response = send_to_unreal(command)
-    if response.get("success"):
-        node_mapping = response.get("nodes", {})
-        return f"Successfully added {len(node_mapping)} nodes to function {function_id} in Blueprint at {blueprint_path}\nNode mapping: {json.dumps(node_mapping, indent=2)}"
-    else:
-        return f"Failed to add nodes: {response.get('error', 'Unknown error')}"
-
 @mcp.tool()
 def connect_blueprint_nodes_bulk(blueprint_path: str, function_id: str, connections: list) -> str:
     """
@@ -615,7 +643,7 @@ def connect_blueprint_nodes_bulk(blueprint_path: str, function_id: str, connecti
             - target_pin: Name of the target pin
         
     Returns:
-        Message indicating success or failure
+        Message indicating success or failure, with details on which connections succeeded or failed
     """
     command = {
         "type": "connect_nodes_bulk",
@@ -625,10 +653,35 @@ def connect_blueprint_nodes_bulk(blueprint_path: str, function_id: str, connecti
     }
 
     response = send_to_unreal(command)
+
+    # Handle the new detailed response format
     if response.get("success"):
-        return f"Successfully connected {len(connections)} node pairs in Blueprint at {blueprint_path}"
+        successful = response.get("successful_connections", 0)
+        total = response.get("total_connections", 0)
+        return f"Successfully connected {successful}/{total} node pairs in Blueprint at {blueprint_path}"
     else:
-        return f"Failed to connect nodes: {response.get('error', 'Unknown error')}"
+        # Extract detailed error information
+        error_message = response.get("error", "Unknown error")
+        failed_connections = []
+
+        # Look for detailed results in the response
+        if "results" in response:
+            for result in response.get("results", []):
+                if not result.get("success", False):
+                    idx = result.get("connection_index", -1)
+                    src = result.get("source_node", "unknown")
+                    tgt = result.get("target_node", "unknown")
+                    err = result.get("error", "unknown error")
+                    failed_connections.append(f"Connection {idx}: {src} to {tgt} - {err}")
+
+        # Format error message with details
+        if failed_connections:
+            detailed_errors = "\n- " + "\n- ".join(failed_connections)
+            return f"Failed to connect nodes: {error_message}{detailed_errors}"
+        else:
+            return f"Failed to connect nodes: {error_message}"
+        
+        
 @mcp.tool()
 def get_blueprint_node_guid(blueprint_path: str, graph_type: str = "EventGraph", node_name: str = None, function_id: str = None) -> str:
     """

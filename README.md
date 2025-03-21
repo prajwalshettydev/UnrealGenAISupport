@@ -3,7 +3,7 @@
 > [!WARNING]  
 > This plugin is currently under development and not ready for production use.
 
-Every week, hundreds of new AI models are released by various organizations, making it hard to keep up with the latest advancements.
+Every month, hundreds of new AI models are released by various organizations, making it hard to keep up with the latest advancements.
 
 The Unreal Engine Generative AI Support Plugin allows you to focus on game development without worrying about the LLM/GenAI integration layer.
 

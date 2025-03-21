@@ -422,7 +422,7 @@ def handle_connect_nodes_bulk(command: Dict[str, Any]) -> Dict[str, Any]:
                 * target_pin: Name of the target pin
             
     Returns:
-        Response dictionary with success/failure status
+        Response dictionary with detailed connection results
     """
     try:
         blueprint_path = command.get("blueprint_path")
@@ -438,16 +438,21 @@ def handle_connect_nodes_bulk(command: Dict[str, Any]) -> Dict[str, Any]:
         # Convert connections list to JSON for C++ function
         connections_json = json.dumps(connections)
 
-        # Call the C++ implementation
+        # Call the C++ implementation - now returns a JSON string instead of boolean
         gen_bp_utils = unreal.GenBlueprintUtils
-        success = gen_bp_utils.connect_nodes_bulk(blueprint_path, function_id, connections_json)
+        result_json = gen_bp_utils.connect_nodes_bulk(blueprint_path, function_id, connections_json)
 
-        if success:
-            log.log_result("connect_nodes_bulk", True, f"Connected {len(connections)} node pairs in {blueprint_path}")
-            return {"success": True}
-        else:
-            log.log_error(f"Failed to connect some or all nodes in {blueprint_path}")
-            return {"success": False, "error": f"Failed to connect some or all nodes in {blueprint_path}"}
+        # Parse the JSON result
+        try:
+            result_data = json.loads(result_json)
+            log.log_result("connect_nodes_bulk", result_data.get("success", False),
+                           f"Connected {result_data.get('successful_connections', 0)}/{result_data.get('total_connections', 0)} node pairs in {blueprint_path}")
+
+            # Return the full result data for detailed error reporting
+            return result_data
+        except json.JSONDecodeError:
+            log.log_error(f"Failed to parse JSON result from connect_nodes_bulk: {result_json}")
+            return {"success": False, "error": "Failed to parse connection results"}
 
     except Exception as e:
         log.log_error(f"Error connecting nodes: {str(e)}", include_traceback=True)
@@ -534,6 +539,46 @@ def handle_get_all_nodes(command: Dict[str, Any]) -> Dict[str, Any]:
 
     except Exception as e:
         log.log_error(f"Error getting nodes: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+def handle_get_node_suggestions(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a command to get suggestions for a node type in Unreal Blueprints
+    
+    Args:
+        command: The command dictionary containing:
+            - node_type: The partial or full node type to get suggestions for (e.g., "Add", "FloatToDouble")
+                
+    Returns:
+        Response dictionary with success/failure status and a list of suggested node types
+    """
+    try:
+        node_type = command.get("node_type")
+
+        if not node_type:
+            log.log_error("Missing required parameter 'node_type' for get_node_suggestions")
+            return {"success": False, "error": "Missing required parameter 'node_type'"}
+
+        log.log_command("get_node_suggestions", f"Node Type: {node_type}")
+
+        # Call the C++ implementation from UGenBlueprintNodeCreator
+        node_creator = unreal.GenBlueprintNodeCreator
+        suggestions_result = node_creator.get_node_suggestions(node_type)
+
+        if suggestions_result:
+            if suggestions_result.startswith("SUGGESTIONS:"):
+                suggestions = suggestions_result[len("SUGGESTIONS:"):].split(", ")
+                log.log_result("get_node_suggestions", True, f"Retrieved {len(suggestions)} suggestions for {node_type}")
+                return {"success": True, "suggestions": suggestions}
+            else:
+                log.log_error(f"Unexpected response format from get_node_suggestions: {suggestions_result}")
+                return {"success": False, "error": "Unexpected response format from Unreal"}
+        else:
+            log.log_result("get_node_suggestions", False, f"No suggestions found for {node_type}")
+            return {"success": True, "suggestions": []}  # Empty list for no matches
+
+    except Exception as e:
+        log.log_error(f"Error getting node suggestions: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}
 
 def handle_get_node_guid(command: Dict[str, Any]) -> Dict[str, Any]:
