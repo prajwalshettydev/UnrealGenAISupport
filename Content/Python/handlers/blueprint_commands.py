@@ -211,9 +211,9 @@ def handle_add_node(command: Dict[str, Any]) -> Dict[str, Any]:
         # Convert node properties to JSON for C++ function
         node_properties_json = json.dumps(node_properties)
 
-        # Call the C++ implementation - this relies on the C++ code to handle any node type
-        gen_bp_utils = unreal.GenBlueprintUtils
-        node_id = gen_bp_utils.add_node(blueprint_path, function_id, node_type,
+        # Call the C++ implementation from UGenBlueprintNodeCreator
+        node_creator = unreal.GenBlueprintNodeCreator
+        node_id = node_creator.add_node(blueprint_path, function_id, node_type,
                                         node_position[0], node_position[1],
                                         node_properties_json)
 
@@ -230,21 +230,6 @@ def handle_add_node(command: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def handle_connect_nodes(command: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Handle a command to connect nodes in a Blueprint graph
-    
-    Args:
-        command: The command dictionary containing:
-            - blueprint_path: Path to the Blueprint asset
-            - function_id: ID of the function containing the nodes
-            - source_node_id: ID of the source node
-            - source_pin: Name of the source pin
-            - target_node_id: ID of the target node
-            - target_pin: Name of the target pin
-            
-    Returns:
-        Response dictionary with success/failure status
-    """
     try:
         blueprint_path = command.get("blueprint_path")
         function_id = command.get("function_id")
@@ -253,25 +238,25 @@ def handle_connect_nodes(command: Dict[str, Any]) -> Dict[str, Any]:
         target_node_id = command.get("target_node_id")
         target_pin = command.get("target_pin")
 
-        if not blueprint_path or not function_id or not source_node_id or not source_pin or not target_node_id or not target_pin:
+        if not all([blueprint_path, function_id, source_node_id, source_pin, target_node_id, target_pin]):
             log.log_error("Missing required parameters for connect_nodes")
             return {"success": False, "error": "Missing required parameters"}
 
         log.log_command("connect_nodes",
                         f"Blueprint: {blueprint_path}, {source_node_id}.{source_pin} -> {target_node_id}.{target_pin}")
 
-        # Call the C++ implementation
         gen_bp_utils = unreal.GenBlueprintUtils
-        success = gen_bp_utils.connect_nodes(blueprint_path, function_id,
-                                             source_node_id, source_pin,
-                                             target_node_id, target_pin)
+        result_json = gen_bp_utils.connect_nodes(blueprint_path, function_id,
+                                                 source_node_id, source_pin,
+                                                 target_node_id, target_pin)
+        result = json.loads(result_json)
 
-        if success:
+        if result.get("success"):
             log.log_result("connect_nodes", True, f"Connected nodes in {blueprint_path}")
             return {"success": True}
         else:
-            log.log_error(f"Failed to connect nodes in {blueprint_path}")
-            return {"success": False, "error": f"Failed to connect nodes in {blueprint_path}"}
+            log.log_error(f"Failed to connect nodes: {result.get('error')}")
+            return result  # Pass through the detailed response with available pins
 
     except Exception as e:
         log.log_error(f"Error connecting nodes: {str(e)}", include_traceback=True)
@@ -395,10 +380,10 @@ def handle_add_nodes_bulk(command: Dict[str, Any]) -> Dict[str, Any]:
         # Prepare nodes in the format expected by the C++ function
         nodes_json = json.dumps(nodes)
 
-        # Call the C++ implementation
-        gen_bp_utils = unreal.GenBlueprintUtils
-        results_json = gen_bp_utils.add_nodes_bulk(blueprint_path, function_id, nodes_json)
-
+        # Call the C++ implementation from UGenBlueprintNodeCreator
+        node_creator = unreal.GenBlueprintNodeCreator
+        results_json = node_creator.add_nodes_bulk(blueprint_path, function_id, nodes_json)
+        
         if results_json:
             results = json.loads(results_json)
             node_mapping = {}
@@ -466,6 +451,89 @@ def handle_connect_nodes_bulk(command: Dict[str, Any]) -> Dict[str, Any]:
 
     except Exception as e:
         log.log_error(f"Error connecting nodes: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+def handle_delete_node(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a command to delete a node from a Blueprint graph
+    
+    Args:
+        command: The command dictionary containing:
+            - blueprint_path: Path to the Blueprint asset
+            - function_id: ID of the function containing the node
+            - node_id: ID of the node to delete
+                
+    Returns:
+        Response dictionary with success/failure status
+    """
+    try:
+        blueprint_path = command.get("blueprint_path")
+        function_id = command.get("function_id")
+        node_id = command.get("node_id")
+
+        if not blueprint_path or not function_id or not node_id:
+            log.log_error("Missing required parameters for delete_node")
+            return {"success": False, "error": "Missing required parameters"}
+
+        log.log_command("delete_node", f"Blueprint: {blueprint_path}, Node ID: {node_id}")
+
+        # Call the C++ implementation from UGenBlueprintNodeCreator
+        node_creator = unreal.GenBlueprintNodeCreator
+        success = node_creator.delete_node(blueprint_path, function_id, node_id)
+
+        if success:
+            log.log_result("delete_node", True, f"Deleted node {node_id} from {blueprint_path}")
+            return {"success": True}
+        else:
+            log.log_error(f"Failed to delete node {node_id} from {blueprint_path}")
+            return {"success": False, "error": f"Failed to delete node {node_id}"}
+
+    except Exception as e:
+        log.log_error(f"Error deleting node: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+def handle_get_all_nodes(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a command to get all nodes in a Blueprint graph
+    
+    Args:
+        command: The command dictionary containing:
+            - blueprint_path: Path to the Blueprint asset
+            - function_id: ID of the function to get nodes from
+                
+    Returns:
+        Response dictionary with success/failure status and a list of nodes with their details
+    """
+    try:
+        blueprint_path = command.get("blueprint_path")
+        function_id = command.get("function_id")
+
+        if not blueprint_path or not function_id:
+            log.log_error("Missing required parameters for get_all_nodes")
+            return {"success": False, "error": "Missing required parameters"}
+
+        log.log_command("get_all_nodes", f"Blueprint: {blueprint_path}, Function ID: {function_id}")
+
+        # Call the C++ implementation from UGenBlueprintNodeCreator
+        node_creator = unreal.GenBlueprintNodeCreator
+        nodes_json = node_creator.get_all_nodes_in_graph(blueprint_path, function_id)
+
+        if nodes_json:
+            # Parse the JSON response
+            try:
+                nodes = json.loads(nodes_json)
+                log.log_result("get_all_nodes", True, f"Retrieved {len(nodes)} nodes from {blueprint_path}")
+                return {"success": True, "nodes": nodes}
+            except json.JSONDecodeError as e:
+                log.log_error(f"Error parsing nodes JSON: {str(e)}")
+                return {"success": False, "error": f"Error parsing nodes JSON: {str(e)}"}
+        else:
+            log.log_error(f"Failed to get nodes from {blueprint_path}")
+            return {"success": False, "error": "Failed to get nodes"}
+
+    except Exception as e:
+        log.log_error(f"Error getting nodes: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}
 
 def handle_get_node_guid(command: Dict[str, Any]) -> Dict[str, Any]:

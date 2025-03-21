@@ -127,7 +127,7 @@ A project called become human, where NPCs are OpenAI agentic instances. Built us
 ## Table of Contents
 
 - [Setting API Keys](#setting-api-keys)
-    - [For Editor](#for-editor)
+    - [For Editor](#for-editor)~~~~
     - [For Packaged Builds](#for-packaged-builds)
 - [Setting up MCP](#setting-up-mcp)
 - [Adding the plugin to your project](#adding-the-plugin-to-your-project)

@@ -70,33 +70,6 @@ public:
 	                           const FString& InputsJson, const FString& OutputsJson);
 
 	/**
-	 * Add a node to a Blueprint graph
-	 * 
-	 * @param BlueprintPath - Path to the Blueprint asset
-	 * @param FunctionGuid - GUID of the function to add the node to
-	 * @param NodeType - Type of node to add
-	 * @param NodeX - X position in the graph
-	 * @param NodeY - Y position in the graph
-	 * @param PropertiesJson - Node properties as JSON string
-	 * @param bFinalizeChanges
-	 * @return Node GUID as string if successful, empty string if failed
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
-	static FString AddNode(const FString& BlueprintPath, const FString& FunctionGuid,
-	                       const FString& NodeType, float NodeX, float NodeY,
-	                       const FString& PropertiesJson, bool bFinalizeChanges);
-	
-	static bool TryCreateKnownNodeType(UEdGraph* Graph, const FString& NodeType, UK2Node*& OutNode);
-
-	UFUNCTION()
-	static bool CreateMathFunctionNode(UEdGraph* Graph, const FString& ClassName, const FString& FunctionName,
-	                            UK2Node*& OutNode);
-
-	
-	static bool TryCreateNodeFromLibraries(UEdGraph* Graph, const FString& NodeType, 
-					 UK2Node*& OutNode, TArray<FString>& OutSuggestions);
-
-	/**
 	 * Connect nodes in a Blueprint graph
 	 * 
 	 * @param BlueprintPath - Path to the Blueprint asset
@@ -108,9 +81,9 @@ public:
 	 * @return True if successful
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
-	static bool ConnectNodes(const FString& BlueprintPath, const FString& FunctionGuid,
-	                         const FString& SourceNodeGuid, const FString& SourcePinName,
-	                         const FString& TargetNodeGuid, const FString& TargetPinName);
+	static FString ConnectNodes(const FString& BlueprintPath, const FString& FunctionGuid,
+	                            const FString& SourceNodeGuid, const FString& SourcePinName,
+	                            const FString& TargetNodeGuid, const FString& TargetPinName);
 
 	/**
 	 * Compile a Blueprint
@@ -135,18 +108,7 @@ public:
 	static AActor* SpawnBlueprint(const FString& BlueprintPath, const FVector& Location,
 	                              const FRotator& Rotation, const FVector& Scale,
 	                              const FString& ActorLabel);
-
-	/**
-	* Add multiple nodes to a Blueprint graph in a single operation
-	* 
-	* @param BlueprintPath - Path to the Blueprint asset
-	* @param FunctionGuid - GUID of the function to add the nodes to
-	* @param NodesJson - JSON array of node definitions with types, positions and properties
-	* @return JSON string containing node GUIDs if successful, empty string if failed
-	*/
-	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
-	static FString AddNodesBulk(const FString& BlueprintPath, const FString& FunctionGuid,
-	                            const FString& NodesJson);
+	
 
 	/**
 	 * Connect multiple pairs of nodes in a Blueprint graph in a single operation

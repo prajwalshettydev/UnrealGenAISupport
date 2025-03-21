@@ -2,6 +2,7 @@ import socket
 import json
 import sys
 from mcp.server.fastmcp import FastMCP
+import re
 
 # THIS FILE WILL RUN OUTSIDE THE UNREAL ENGINE SCOPE, 
 # DO NOT IMPORT UNREAL MODULES HERE OR EXECUTE IT IN THE UNREAL ENGINE PYTHON INTERPRETER
@@ -40,6 +41,38 @@ def handshake_test(message: str) -> str:
     except Exception as e:
         return f"Error communicating with Unreal: {str(e)}"
 
+
+# Execute Python Script in Unreal Engine
+@mcp.tool()
+def execute_python_script(script: str) -> str:
+    """
+    Execute a Python script within Unreal Engine's Python interpreter.
+    
+    Args:
+        script: A string containing the Python code to execute in Unreal Engine.
+        
+    Returns:
+        Message indicating success, failure, or a request for confirmation.
+    """
+    try:
+        # Check for destructive actions
+        if is_potentially_destructive(script):
+            return ("This script appears to involve potentially destructive actions (e.g., deleting or saving files) "
+                    "that were not explicitly requested. Please confirm if you want to proceed by saying 'Yes, execute it' "
+                    "or modify your request to explicitly allow such actions.")
+
+        command = {
+            "type": "execute_python",
+            "script": script
+        }
+        response = send_to_unreal(command)
+        if response.get("success"):
+            output = response.get("output", "No output returned")
+            return f"Script executed successfully. Output: {output}"
+        else:
+            return f"Failed to execute script: {response.get('error', 'Unknown error')}"
+    except Exception as e:
+        return f"Error sending script to Unreal: {str(e)}"
 
 #
 # Basic Object Commands
@@ -347,7 +380,7 @@ def add_node_to_blueprint(blueprint_path: str, function_id: str, node_type: str,
             If the requested node type isn't found, the system will search for alternatives
             and return suggestions. You can then use these suggestions in a new request.
             
-        node_position: Position of the node in the graph [X, Y]
+        node_position: Position of the node in the graph [X, Y], ALWAYS SPACE THEM WELL, ORGANIZE THEM WELL, TRY TO NOT OVERLAP THEM
         node_properties: Properties to set on the node (optional)
         
     Returns:
@@ -378,23 +411,59 @@ def add_node_to_blueprint(blueprint_path: str, function_id: str, node_type: str,
         return f"Failed to add node: {response.get('error', 'Unknown error')}"
 
 @mcp.tool()
-def connect_blueprint_nodes(blueprint_path: str, function_id: str,
-                            source_node_id: str, source_pin: str,
-                            target_node_id: str, target_pin: str) -> str:
+def delete_node_from_blueprint(blueprint_path: str, function_id: str, node_id: str) -> str:
     """
-    Connect nodes in a Blueprint graph
+    Delete a node from a Blueprint graph
     
     Args:
         blueprint_path: Path to the Blueprint asset
-        function_id: ID of the function containing the nodes
-        source_node_id: ID of the source node
-        source_pin: Name of the source pin
-        target_node_id: ID of the target node
-        target_pin: Name of the target pin
+        function_id: ID of the function containing the node
+        node_id: ID of the node to delete
         
     Returns:
-        Message indicating success or failure
+        Success or failure message
     """
+    command = {
+        "type": "delete_node",
+        "blueprint_path": blueprint_path,
+        "function_id": function_id,
+        "node_id": node_id
+    }
+
+    response = send_to_unreal(command)
+    if response.get("success"):
+        return f"Successfully deleted node {node_id} from function {function_id} in Blueprint at {blueprint_path}"
+    else:
+        return f"Failed to delete node: {response.get('error', 'Unknown error')}"
+
+@mcp.tool()
+def get_all_nodes_in_graph(blueprint_path: str, function_id: str) -> str:
+    """
+    Get all nodes in a Blueprint graph with their positions and types
+    
+    Args:
+        blueprint_path: Path to the Blueprint asset
+        function_id: ID of the function to get nodes from
+        
+    Returns:
+        JSON string containing all nodes with their GUIDs, types, and positions
+    """
+    command = {
+        "type": "get_all_nodes",
+        "blueprint_path": blueprint_path,
+        "function_id": function_id
+    }
+
+    response = send_to_unreal(command)
+    if response.get("success"):
+        return response.get("nodes", "[]")
+    else:
+        return f"Failed to get nodes: {response.get('error', 'Unknown error')}"
+
+@mcp.tool()
+def connect_blueprint_nodes(blueprint_path: str, function_id: str,
+                            source_node_id: str, source_pin: str,
+                            target_node_id: str, target_pin: str) -> str:
     command = {
         "type": "connect_nodes",
         "blueprint_path": blueprint_path,
@@ -409,7 +478,11 @@ def connect_blueprint_nodes(blueprint_path: str, function_id: str,
     if response.get("success"):
         return f"Successfully connected {source_node_id}.{source_pin} to {target_node_id}.{target_pin} in Blueprint at {blueprint_path}"
     else:
-        return f"Failed to connect nodes: {response.get('error', 'Unknown error')}"
+        error = response.get("error", "Unknown error")
+        if "source_available_pins" in response and "target_available_pins" in response:
+            error += f"\nAvailable pins on source ({source_node_id}): {json.dumps(response['source_available_pins'], indent=2)}"
+            error += f"\nAvailable pins on target ({target_node_id}): {json.dumps(response['target_available_pins'], indent=2)}"
+        return f"Failed to connect nodes: {error}"
 
 @mcp.tool()
 def compile_blueprint(blueprint_path: str) -> str:
@@ -585,6 +658,25 @@ def get_blueprint_node_guid(blueprint_path: str, graph_type: str = "EventGraph",
     else:
         return f"Failed to get node GUID: {response.get('error', 'Unknown error')}"
 
+# Safety check for potentially destructive actions
+def is_potentially_destructive(script: str) -> bool:
+    """
+    Check if the script contains potentially destructive actions like deleting or saving files.
+    Returns True if such actions are detected and not explicitly requested.
+    """
+    destructive_keywords = [
+        r'unreal\.EditorAssetLibrary\.delete_asset',
+        r'unreal\.EditorLevelLibrary\.destroy_actor',
+        r'unreal\.save_package',
+        r'os\.remove',
+        r'shutil\.rmtree',
+        r'file\.write',
+        r'unreal\.EditorAssetLibrary\.save_asset'
+    ]
+    for keyword in destructive_keywords:
+        if re.search(keyword, script, re.IGNORECASE):
+            return True
+    return False
 
 if __name__ == "__main__":
     import traceback

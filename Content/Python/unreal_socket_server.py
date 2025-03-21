@@ -6,7 +6,7 @@ import time
 from typing import Dict, Any, Tuple, List, Optional
 
 # Import handlers
-from handlers import basic_commands, actor_commands, blueprint_commands
+from handlers import basic_commands, actor_commands, blueprint_commands, python_commands
 from utils import logging as log
 
 # Global queues and state
@@ -38,10 +38,16 @@ class CommandDispatcher:
             "compile_blueprint": blueprint_commands.handle_compile_blueprint,
             "spawn_blueprint": blueprint_commands.handle_spawn_blueprint,
             "get_node_guid": blueprint_commands.handle_get_node_guid,
+            "delete_node": blueprint_commands.handle_delete_node,
+            "get_all_nodes": blueprint_commands.handle_get_all_nodes,
+            
             
             # Bulk commands
             "add_nodes_bulk": blueprint_commands.handle_add_nodes_bulk,      # Add this line
-            "connect_nodes_bulk": blueprint_commands.handle_connect_nodes_bulk
+            "connect_nodes_bulk": blueprint_commands.handle_connect_nodes_bulk,
+            
+            # Python
+            "execute_python": python_commands.handle_execute_python
         }
 
     def dispatch(self, command: Dict[str, Any]) -> Dict[str, Any]:
