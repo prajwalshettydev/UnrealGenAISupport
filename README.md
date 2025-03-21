@@ -41,7 +41,7 @@ game development, evals and interactive experiences. All suggestions and contrib
 - Model Control Protocol (MCP) 🛠️
     - Clients Support ✅
         - Claude Desktop App Support ✅
-        - Cursor IDE Support 🛠️
+        - Cursor IDE Support ✅
         - OpenAI Operator API Support 🚧
     - Blueprints Auto Generation 🛠️
         - Creating new blueprint of types ✅
@@ -126,11 +126,10 @@ A project called become human, where NPCs are OpenAI agentic instances. Built us
 
 ## Table of Contents
 
-- [Current Progress](#current-progress)
-- [Quick Links](#quick-links)
-- [Setting API Key](#setting-api-key)
+- [Setting API Keys](#setting-api-keys)
     - [For Editor](#for-editor)
     - [For Packaged Builds](#for-packaged-builds)
+- [Setting up MCP](#setting-up-mcp)
 - [Adding the plugin to your project](#adding-the-plugin-to-your-project)
     - [With Git](#with-git)
     - [With Perforce](#with-perforce)
@@ -147,13 +146,13 @@ A project called become human, where NPCs are OpenAI agentic instances. Built us
     - [Anthropic API](#anthropic-api)
         - [1. Chat](#1-chat-1)
     - [Model Control Protocol (MCP)](#model-control-protocol-mcp)
-        - [Setting up](#setting-up)
-        - [Usage](#usage-1)
+- [Known Issues](#known-issues)
 - [Contribution Guidelines](#contribution-guidelines)
-- [Project Structure](#project-structure)
+    - [Setting up for Development](#setting-up-for-development)
+    - [Project Structure](#project-structure)
 - [References](#references)
 
-## Setting API Key:
+## Setting API Keys:
 > [!NOTE]  
 > There is no need to set the API key for testing the MCP features in Claude app. Anthropic key only needed for Claude API.
 
@@ -191,6 +190,63 @@ Read more about it [here](https://help.openai.com/en/articles/5112595-best-pract
 
 For test builds you can call the `GenSecureKey::SetGenAIApiKeyRuntime` either in c++ or blueprints function with your API key in the packaged build.
 
+## Setting up MCP:
+
+> [!NOTE]  
+> If your project only uses the LLM APIs and not the MCP, you can skip this section.
+
+> [!CAUTION]  
+> Discalimer: If you are using the MCP feature of the plugin, it will directly let the Claude Desktop App control your Unreal Engine project.
+> Make sure you are aware of the security risks and only use it in a controlled environment.
+>
+> Please backup your project before using the MCP feature and use version control to track changes.
+
+
+##### 1. Install any one of the below clients: 
+* Claude Desktop App from [here](https://claude.anthropic.com/).
+* Cursor IDE from [here](https://www.cursor.com/).
+
+##### 2. Setup the mcp config json:
+###### For Claude Desktop App:
+`claude_desktop_config.json` file in Claude Desktop App's installation directory. (might ask claude where its located for your platform!)
+The file will look something like this:
+```json
+{
+    "mcpServers": {
+      "unreal-handshake": {
+        "command": "python",
+        "args": ["<your_project_directoy_path>/Plugins/GenerativeAISupport/Content/Python/mcp_server.py"],
+        "env": {
+          "UNREAL_HOST": "localhost",
+          "UNREAL_PORT": "9877" 
+        }
+      }
+    }
+}
+```
+###### For Cursor IDE:
+`.cursor/mcp.json` file in your project directory. The file will look something like this:
+```json
+{
+    "mcpServers": {
+      "unreal-handshake": {
+        "command": "python",
+        "args": ["<your_project_directoy_path>/Plugins/GenerativeAISupport/Content/Python/mcp_server.py"],
+        "env": {
+          "UNREAL_HOST": "localhost",
+          "UNREAL_PORT": "9877" 
+        }
+      }
+    }
+}
+```
+##### 3. Install MCP[CLI] from with either pip or cv.
+```bash
+pip install mcp[cli]
+```
+##### 4. Enable python plugin in Unreal Engine. (Edit -> Plugins -> Python Editor Script Plugin)
+
+
 ## Adding the plugin to your project:
 
 ### With Git:
@@ -216,7 +272,7 @@ For test builds you can call the `GenSecureKey::SetGenAIApiKeyRuntime` either in
 Still in development..
 
 ### With Unreal Marketplace:
-Still in development..
+Coming soon, for free, in the Unreal Engine Marketplace.
 
 ## Fetching the Latest Plugin Changes:
 
@@ -250,7 +306,7 @@ Tested models are `gpt-4o`, `gpt-4o-mini`, `gpt-4.5`, `o1-mini`, `o1`, `o3-mini-
 #### 1. Chat:
 
    ##### C++ Example:
-    ```cpp
+```cpp
     void SomeDebugSubsystem::CallGPT(const FString& Prompt, 
         const TFunction<void(const FString&, const FString&, bool)>& Callback)
     {
@@ -267,7 +323,7 @@ Tested models are `gpt-4o`, `gpt-4o-mini`, `gpt-4.5`, `o1-mini`, `o1`, `o3-mini-
     
         UGenOAIChat::SendChatRequest(ChatSettings, OnComplete);
     }
-    ```
+```
 
    ##### Blueprint Example:
 
@@ -441,31 +497,6 @@ Tested models are `claude-3-7-sonnet-latest`, `claude-3-5-sonnet`, `claude-3-5-h
 
 ## Model Control Protocol (MCP):
 This is currently work in progress. The plugin will support various clients like Claude Desktop App, OpenAI Operator API etc.
-
-### Setting up:
-##### 1. Install the Claude Desktop App from [here](https://claude.anthropic.com/).
-##### 2. Setup the `claude_desktop_config.json` file in Claude Desktop App's installation directory. (might ask claude where its located for your platform!)
-The file will look something like this:
-```json
-{
-    "mcpServers": {
-      "unreal-handshake": {
-        "command": "python",
-        "args": ["<your_project_directoy_path~~~~>/Plugins/GenerativeAISupport/Content/Python/mcp_server.py"],
-        "env": {
-          "UNREAL_HOST": "localhost",
-          "UNREAL_PORT": "9877" 
-        }
-      }
-    }
-}
-```
-##### 3. Install MCP[CLI] from with either pip or cv.
-```bash
-pip install mcp[cli]
-```
-##### 4. Enable python plugin in Unreal Engine. (Edit -> Plugins -> Python Editor Script Plugin)
-
 ### Usage:
 
 Running the MCP server:
