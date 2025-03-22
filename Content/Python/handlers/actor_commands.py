@@ -166,7 +166,7 @@ def handle_add_component_with_events(command: Dict[str, Any]) -> Dict[str, Any]:
 
         log.log_command("add_component_with_events", f"Blueprint: {blueprint_path}, Component: {component_name}, Class: {component_class}")
 
-        node_creator = unreal.GenBlueprintNodeCreator
+        node_creator = unreal.GenBlueprintUtils
         result = node_creator.add_component_with_events(blueprint_path, component_name, component_class)
 
         import json
@@ -176,4 +176,19 @@ def handle_add_component_with_events(command: Dict[str, Any]) -> Dict[str, Any]:
 
     except Exception as e:
         log.log_error(f"Error adding component with events: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+def handle_create_game_mode(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        game_mode_path = command.get("game_mode_path")
+        pawn_blueprint_path = command.get("pawn_blueprint_path")
+        base_class = command.get("base_class", "GameModeBase")
+
+        if not game_mode_path or not pawn_blueprint_path:
+            return {"success": False, "error": "Missing game_mode_path or pawn_blueprint_path"}
+
+        node_creator = unreal.GenActorUtils
+        result = node_creator.create_game_mode_with_pawn(game_mode_path, pawn_blueprint_path, base_class)
+        return json.loads(result)
+    except Exception as e:
         return {"success": False, "error": str(e)}

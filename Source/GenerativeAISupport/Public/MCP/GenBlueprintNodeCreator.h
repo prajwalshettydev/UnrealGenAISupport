@@ -40,8 +40,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Blueprint")
 	static FString GetNodeSuggestions(const FString& NodeType);
 	
-	UFUNCTION(BlueprintCallable, Category = "Blueprint")
-	static FString SpawnOverlapEvents(UBlueprint* Blueprint, USCS_Node* ComponentNode);
+
 
 private:
 	// Static map of friendly node names to Unreal Engine node types

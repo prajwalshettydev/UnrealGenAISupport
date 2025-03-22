@@ -46,7 +46,12 @@ public:
     
 	UFUNCTION(BlueprintCallable, Category = "Generative AI|Actor Utils")
 	static bool SetActorScale(const FString& ActorName, const FVector& Scale);
-    
+
+	
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Actor Utils")
+	static FString CreateGameModeWithPawn(const FString& GameModePath, const FString& PawnBlueprintPath,
+	                               const FString& BaseClassName);
+
 	// Utility function to find actors by name
 	static AActor* FindActorByName(const FString& ActorName);
 };

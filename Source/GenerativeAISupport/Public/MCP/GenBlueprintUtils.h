@@ -126,6 +126,10 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "GenBlueprintUtils")
 	static FString GetNodeGUID(const FString& BlueprintPath, const FString& GraphType, const FString& NodeName, const FString& FunctionGuid);
+	
+	UFUNCTION(BlueprintCallable, Category = "Blueprint")
+	static FString AddComponentWithEvents(const FString& BlueprintPath, const FString& ComponentName,
+	                               const FString& ComponentClassName);
 
 private:
 	// Helper functions for internal use

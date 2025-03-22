@@ -19,6 +19,9 @@
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionConstant3Vector.h"
 #include "MaterialEditingLibrary.h"
+#include "Factories/BlueprintFactory.h"
+#include "GameFramework/GameModeBase.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "UObject/SavePackage.h"
 
 AActor* UGenActorUtils::SpawnBasicShape(const FString& ShapeName, const FVector& Location, 
@@ -336,4 +339,98 @@ bool UGenActorUtils::SetActorScale(const FString& ActorName, const FVector& Scal
     UE_LOG(LogTemp, Log, TEXT("Set scale of actor '%s' to (%f, %f, %f)"), 
            *ActorName, Scale.X, Scale.Y, Scale.Z);
     return true;
+}
+
+FString UGenActorUtils::CreateGameModeWithPawn(const FString& GameModePath, const FString& PawnBlueprintPath, const FString& BaseClassName)
+{
+    // Validate paths
+    if (GameModePath.IsEmpty() || PawnBlueprintPath.IsEmpty())
+    {
+        UE_LOG(LogTemp, Error, TEXT("GameModePath or PawnBlueprintPath is empty"));
+        return TEXT("{\"success\": false, \"error\": \"Empty path provided\"}");
+    }
+
+    // Check if game mode already exists
+    if (LoadObject<UBlueprint>(nullptr, *GameModePath))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Game mode already exists at %s"), *GameModePath);
+        return TEXT("{\"success\": false, \"error\": \"Game mode already exists\"}");
+    }
+
+    // Load the base class (default to AGameModeBase if not specified)
+    FString BaseClassToUse = BaseClassName.IsEmpty() ? TEXT("GameModeBase") : BaseClassName;
+    UClass* BaseClass = FindObject<UClass>(ANY_PACKAGE, *BaseClassToUse);
+    if (!BaseClass || !BaseClass->IsChildOf(AGameModeBase::StaticClass()))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Invalid base class %s for game mode"), *BaseClassToUse);
+        return TEXT("{\"success\": false, \"error\": \"Invalid base class\"}");
+    }
+
+    // Load the pawn Blueprint
+    UBlueprint* PawnBP = LoadObject<UBlueprint>(nullptr, *PawnBlueprintPath);
+    if (!PawnBP || !PawnBP->GeneratedClass || !PawnBP->GeneratedClass->IsChildOf(APawn::StaticClass()))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Invalid pawn blueprint: %s"), *PawnBlueprintPath);
+        return TEXT("{\"success\": false, \"error\": \"Invalid pawn blueprint\"}");
+    }
+
+    // Create the new game mode Blueprint
+    IAssetTools& AssetTools = FModuleManager::GetModuleChecked<FAssetToolsModule>("AssetTools").Get();
+    FString PackageName = FPackageName::GetLongPackagePath(GameModePath);
+    FString AssetName = FPackageName::GetShortName(GameModePath);
+
+    UBlueprintFactory* BlueprintFactory = NewObject<UBlueprintFactory>();
+    BlueprintFactory->ParentClass = BaseClass;
+
+    UObject* NewAsset = AssetTools.CreateAsset(AssetName, PackageName, UBlueprint::StaticClass(), BlueprintFactory);
+    UBlueprint* GameModeBP = Cast<UBlueprint>(NewAsset);
+    if (!GameModeBP)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Failed to create game mode blueprint at %s"), *GameModePath);
+        return TEXT("{\"success\": false, \"error\": \"Failed to create game mode\"}");
+    }
+
+    // Set the DefaultPawnClass
+    UClass* GameModeClass = GameModeBP->GeneratedClass;
+    if (!GameModeClass)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Generated class not found for %s"), *GameModePath);
+        return TEXT("{\"success\": false, \"error\": \"No generated class\"}");
+    }
+    if (AGameModeBase* GameModeCDO = Cast<AGameModeBase>(GameModeClass->ClassDefaultObject))
+    {
+        GameModeCDO->DefaultPawnClass = PawnBP->GeneratedClass;
+    }
+
+    // Set as current level's game mode
+    if (GEditor)
+    {
+        UWorld* CurrentWorld = GEditor->GetEditorWorldContext().World();
+        if (CurrentWorld)
+        {
+            ULevel* CurrentLevel = CurrentWorld->GetCurrentLevel();
+            if (CurrentLevel)
+            {
+                CurrentLevel->GetWorldSettings()->DefaultGameMode = GameModeClass;
+                CurrentLevel->GetWorldSettings()->MarkPackageDirty();
+                UE_LOG(LogTemp, Log, TEXT("Set %s as default game mode for current scene"), *GameModePath);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("No current level found to set game mode"));
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("No current world found to set game mode"));
+        }
+    }
+
+    // Mark as modified and compile
+    GameModeBP->Modify();
+    FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(GameModeBP);
+
+    UE_LOG(LogTemp, Log, TEXT("Created game mode %s with pawn %s and set as scene default"), *GameModePath, *PawnBlueprintPath);
+    return FString::Printf(TEXT("{\"success\": true, \"message\": \"Created game mode %s with pawn %s and set as scene default\"}"), 
+                           *GameModePath, *PawnBlueprintPath);
 }

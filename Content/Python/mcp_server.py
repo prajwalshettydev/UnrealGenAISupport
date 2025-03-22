@@ -823,6 +823,26 @@ def get_files_in_folder(folder_path: str) -> str:
     response = send_to_unreal(command)
     return json.dumps(response.get("files", [])) if response.get("success") else f"Failed: {response.get('error')}"
 
+@mcp.tool()
+def create_game_mode(game_mode_path: str, pawn_blueprint_path: str, base_class: str = "GameModeBase") -> str:
+    """Create a game mode Blueprint, set its default pawn, and assign it as the current scene’s default game mode.
+    Args:
+        game_mode_path: Path for new game mode (e.g., "/Game/MyGameMode")
+        pawn_blueprint_path: Path to pawn Blueprint (e.g., "/Game/Blueprints/BP_Player")
+        base_class: Base class for game mode (default: "GameModeBase")
+    """
+    try:
+        command = {
+            "type": "create_game_mode",
+            "game_mode_path": game_mode_path,
+            "pawn_blueprint_path": pawn_blueprint_path,
+            "base_class": base_class
+        }
+        response = send_to_unreal(command)
+        parsed = json.loads(response)
+        return parsed.get("message", f"Failed: {parsed.get('error')}")
+    except Exception as e:
+        return f"Error creating game mode: {str(e)}"
 
 # Input
 @mcp.tool()

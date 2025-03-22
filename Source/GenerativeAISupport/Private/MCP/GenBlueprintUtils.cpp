@@ -4,6 +4,7 @@
 #include "MCP/GenBlueprintUtils.h"
 
 #include "BlueprintEditor.h"
+#include "K2Node_ComponentBoundEvent.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Engine/Blueprint.h"
 #include "Factories/BlueprintFactory.h"
@@ -16,7 +17,10 @@
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
 #include "KismetCompiler.h"
+#include "Components/ShapeComponent.h"
 #include "Dom/JsonObject.h"
+#include "Engine/SCS_Node.h"
+#include "Engine/SimpleConstructionScript.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 
@@ -1063,4 +1067,121 @@ FString UGenBlueprintUtils::GetNodeGUID(const FString& BlueprintPath, const FStr
     TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
     FJsonSerializer::Serialize(ResponseObject.ToSharedRef(), Writer);
     return ResultJson;
+}
+
+
+FString UGenBlueprintUtils::AddComponentWithEvents(const FString& BlueprintPath, const FString& ComponentName, const FString& ComponentClassName)
+{
+    // Load the Blueprint
+    UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *BlueprintPath);
+    if (!Blueprint)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Could not load blueprint at path: %s"), *BlueprintPath);
+        return TEXT("{\"success\": false, \"error\": \"Could not load blueprint\", \"begin_overlap_guid\": \"\", \"end_overlap_guid\": \"\"}");
+    }
+
+    // Get the SCS (Simple Construction Script)
+    USimpleConstructionScript* SCS = Blueprint->SimpleConstructionScript;
+    if (!SCS)
+    {
+        UE_LOG(LogTemp, Error, TEXT("No SimpleConstructionScript found in blueprint: %s"), *BlueprintPath);
+        return TEXT("{\"success\": false, \"error\": \"No SCS found\", \"begin_overlap_guid\": \"\", \"end_overlap_guid\": \"\"}");
+    }
+
+    // Find the component class (must be a shape/collision component)
+    UClass* ComponentClass = FindObject<UClass>(ANY_PACKAGE, *ComponentClassName);
+    if (!ComponentClass || !ComponentClass->IsChildOf(UShapeComponent::StaticClass()))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Component class %s must be a collision component (e.g., BoxComponent, SphereComponent)"), *ComponentClassName);
+        return TEXT("{\"success\": false, \"error\": \"Not a collision component class\", \"begin_overlap_guid\": \"\", \"end_overlap_guid\": \"\"}");
+    }
+
+    // Check for existing component
+    for (USCS_Node* Node : SCS->GetAllNodes())
+    {
+        if (Node->GetVariableName().ToString().Equals(ComponentName, ESearchCase::IgnoreCase))
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Component %s already exists in %s"), *ComponentName, *BlueprintPath);
+            return TEXT("{\"success\": false, \"error\": \"Component already exists\", \"begin_overlap_guid\": \"\", \"end_overlap_guid\": \"\"}");
+        }
+    }
+
+    // Create and add the component node
+    USCS_Node* NewComponentNode = SCS->CreateNode(ComponentClass, FName(*ComponentName));
+    if (!NewComponentNode)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Failed to create component node: %s"), *ComponentName);
+        return TEXT("{\"success\": false, \"error\": \"Failed to create component\", \"begin_overlap_guid\": \"\", \"end_overlap_guid\": \"\"}");
+    }
+    SCS->AddNode(NewComponentNode);
+
+    // Ensure it’s a shape component and enable overlap events
+    UShapeComponent* ShapeComp = Cast<UShapeComponent>(NewComponentNode->ComponentTemplate);
+    if (!ShapeComp)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Component %s template is not a valid shape component"), *ComponentName);
+        return TEXT("{\"success\": false, \"error\": \"Invalid shape component template\", \"begin_overlap_guid\": \"\", \"end_overlap_guid\": \"\"}");
+    }
+    ShapeComp->SetGenerateOverlapEvents(true);
+
+    // Get or create the Event Graph
+    UEdGraph* EventGraph = Blueprint->UbergraphPages.Num() > 0 ? Blueprint->UbergraphPages[0] : nullptr;
+    if (!EventGraph)
+    {
+        EventGraph = FBlueprintEditorUtils::CreateNewGraph(Blueprint, FName(TEXT("EventGraph")),
+                                                           UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
+        Blueprint->UbergraphPages.Add(EventGraph);
+    }
+
+    // Create BeginOverlap event
+    FMulticastDelegateProperty* BeginOverlapDelegate = CastField<FMulticastDelegateProperty>(
+        ShapeComp->GetClass()->FindPropertyByName(FName(TEXT("OnComponentBeginOverlap"))));
+    if (!BeginOverlapDelegate)
+    {
+        UE_LOG(LogTemp, Error, TEXT("No OnComponentBeginOverlap delegate found on %s"), *ComponentClassName);
+        return TEXT("{\"success\": false, \"error\": \"No BeginOverlap delegate\", \"begin_overlap_guid\": \"\", \"end_overlap_guid\": \"\"}");
+    }
+
+    UK2Node_ComponentBoundEvent* BeginOverlapEvent = NewObject<UK2Node_ComponentBoundEvent>(EventGraph);
+    BeginOverlapEvent->ComponentPropertyName = FName(*ComponentName);
+    BeginOverlapEvent->InitializeComponentBoundEventParams(nullptr, BeginOverlapDelegate);
+    BeginOverlapEvent->NodePosX = 0;
+    BeginOverlapEvent->NodePosY = EventGraph->Nodes.Num() * 200;
+    BeginOverlapEvent->AllocateDefaultPins();
+    if (!BeginOverlapEvent->NodeGuid.IsValid())
+    {
+        BeginOverlapEvent->NodeGuid = FGuid::NewGuid();
+    }
+    EventGraph->AddNode(BeginOverlapEvent, false, false);
+    UE_LOG(LogTemp, Log, TEXT("Spawned OnComponentBeginOverlap for %s with GUID %s"), *ComponentName, *BeginOverlapEvent->NodeGuid.ToString());
+
+    // Create EndOverlap event
+    FMulticastDelegateProperty* EndOverlapDelegate = CastField<FMulticastDelegateProperty>(
+        ShapeComp->GetClass()->FindPropertyByName(FName(TEXT("OnComponentEndOverlap"))));
+    if (!EndOverlapDelegate)
+    {
+        UE_LOG(LogTemp, Error, TEXT("No OnComponentEndOverlap delegate found on %s"), *ComponentClassName);
+        return TEXT("{\"success\": false, \"error\": \"No EndOverlap delegate\", \"begin_overlap_guid\": \"\", \"end_overlap_guid\": \"\"}");
+    }
+
+    UK2Node_ComponentBoundEvent* EndOverlapEvent = NewObject<UK2Node_ComponentBoundEvent>(EventGraph);
+    EndOverlapEvent->ComponentPropertyName = FName(*ComponentName);
+    EndOverlapEvent->InitializeComponentBoundEventParams(nullptr, EndOverlapDelegate);
+    EndOverlapEvent->NodePosX = 300; // Offset horizontally
+    EndOverlapEvent->NodePosY = EventGraph->Nodes.Num() * 200;
+    EndOverlapEvent->AllocateDefaultPins();
+    if (!EndOverlapEvent->NodeGuid.IsValid())
+    {
+        EndOverlapEvent->NodeGuid = FGuid::NewGuid();
+    }
+    EventGraph->AddNode(EndOverlapEvent, false, false);
+    UE_LOG(LogTemp, Log, TEXT("Spawned OnComponentEndOverlap for %s with GUID %s"), *ComponentName, *EndOverlapEvent->NodeGuid.ToString());
+
+    // Mark Blueprint as dirty and save
+    Blueprint->Modify();
+    FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+    // Return success with GUIDs
+    return FString::Printf(TEXT("{\"success\": true, \"message\": \"Added collision component %s with overlap events\", \"begin_overlap_guid\": \"%s\", \"end_overlap_guid\": \"%s\"}"),
+                           *ComponentName, *BeginOverlapEvent->NodeGuid.ToString(), *EndOverlapEvent->NodeGuid.ToString());
 }
