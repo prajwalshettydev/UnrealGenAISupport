@@ -26,6 +26,7 @@
 #include "Engine/SCS_Node.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/KismetEditorUtilities.h"
 #include "UObject/UnrealTypePrivate.h"
 
 
@@ -45,15 +46,14 @@ FString UGenBlueprintNodeCreator::AddNode(const FString& BlueprintPath, const FS
 	}
 
 
-
 	UEdGraph* FunctionGraph = GetGraphFromFunctionId(Blueprint, FunctionGuid);
 	if (!FunctionGraph)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Could not find function graph with GUID: %s"), *FunctionGuid);
 		return TEXT("");
 	}
-	
-	if(bFinalizeChanges)
+
+	if (bFinalizeChanges)
 		IsBlueprintDirty = false;
 
 	UK2Node* NewNode = nullptr;
@@ -101,11 +101,13 @@ FString UGenBlueprintNodeCreator::AddNode(const FString& BlueprintPath, const FS
 				if (Pin)
 				{
 					if (PropValue->Type == EJson::String) Pin->DefaultValue = PropValue->AsString();
-					else if (PropValue->Type == EJson::Number) Pin->DefaultValue = FString::SanitizeFloat(
-						PropValue->AsNumber());
-					else if (PropValue->Type == EJson::Boolean) Pin->DefaultValue = PropValue->AsBool()
-						? TEXT("true")
-						: TEXT("false");
+					else if (PropValue->Type == EJson::Number)
+						Pin->DefaultValue = FString::SanitizeFloat(
+							PropValue->AsNumber());
+					else if (PropValue->Type == EJson::Boolean)
+						Pin->DefaultValue = PropValue->AsBool()
+							                    ? TEXT("true")
+							                    : TEXT("false");
 				}
 
 				if ((NodeType.Equals(TEXT("VariableGet"), ESearchCase::IgnoreCase) ||
@@ -142,7 +144,7 @@ FString UGenBlueprintNodeCreator::AddNode(const FString& BlueprintPath, const FS
 					BlueprintEditor->OpenGraphAndBringToFront(FunctionGraph);
 			}
 		}
-		if(IsBlueprintDirty)
+		if (IsBlueprintDirty)
 		{
 			Blueprint->Modify();
 			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
@@ -193,7 +195,7 @@ FString UGenBlueprintNodeCreator::AddNodesBulk(const FString& BlueprintPath, con
 		UE_LOG(LogTemp, Error, TEXT("Could not find function graph with GUID: %s"), *FunctionGuid);
 		return TEXT("");
 	}
-	
+
 	IsBlueprintDirty = false;
 
 	TArray<TSharedPtr<FJsonValue>> NodesArray;
@@ -251,7 +253,7 @@ FString UGenBlueprintNodeCreator::AddNodesBulk(const FString& BlueprintPath, con
 			}
 		}
 
-		if(IsBlueprintDirty)
+		if (IsBlueprintDirty)
 		{
 			Blueprint->Modify();
 			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
@@ -272,31 +274,76 @@ bool UGenBlueprintNodeCreator::DeleteNode(const FString& BlueprintPath, const FS
                                           const FString& NodeGuid)
 {
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *BlueprintPath);
-	if (!Blueprint) return false;
+	if (!Blueprint)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Could not load blueprint at path: %s"), *BlueprintPath);
+		return false;
+	}
 
-	FGuid GraphGuid;
-	if (!FGuid::Parse(FunctionGuid, GraphGuid)) return false;
+	UEdGraph* FunctionGraph = nullptr;
 
-	UEdGraph* FunctionGraph = FindGraphByGuid(Blueprint, GraphGuid);
-	if (!FunctionGraph) return false;
+	// Handle EventGraph special case
+	if (FunctionGuid.Equals(TEXT("EventGraph"), ESearchCase::IgnoreCase))
+	{
+		if (Blueprint->UbergraphPages.Num() > 0)
+			FunctionGraph = Blueprint->UbergraphPages[0];
+	}
+	else
+	{
+		// Parse GUID if not EventGraph
+		FGuid GraphGuidObj;
+		if (!FGuid::Parse(FunctionGuid, GraphGuidObj))
+		{
+			UE_LOG(LogTemp, Error, TEXT("Invalid graph GUID format: %s"), *FunctionGuid);
+			return false;
+		}
 
+		FunctionGraph = FindGraphByGuid(Blueprint, GraphGuidObj);
+	}
+
+	if (!FunctionGraph)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Could not find graph with ID: %s"), *FunctionGuid);
+		return false;
+	}
+
+	// Parse the node GUID
 	FGuid NodeGuidObj;
-	if (!FGuid::Parse(NodeGuid, NodeGuidObj)) return false;
+	if (!FGuid::Parse(NodeGuid, NodeGuidObj))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Invalid node GUID format: %s"), *NodeGuid);
+		return false;
+	}
 
-	UK2Node* NodeToDelete = nullptr;
+	// Log all nodes for debugging
+	UE_LOG(LogTemp, Log, TEXT("Looking for node with GUID: %s in graph with %d nodes"),
+	       *NodeGuidObj.ToString(), FunctionGraph->Nodes.Num());
+
+	UEdGraphNode* NodeToDelete = nullptr;
 	for (UEdGraphNode* Node : FunctionGraph->Nodes)
 	{
+		UE_LOG(LogTemp, Log, TEXT("  - Found node of type %s with GUID: %s"),
+		       *Node->GetClass()->GetName(), *Node->NodeGuid.ToString());
+
 		if (Node->NodeGuid == NodeGuidObj)
 		{
-			NodeToDelete = Cast<UK2Node>(Node);
+			NodeToDelete = Node;
+			UE_LOG(LogTemp, Log, TEXT("  - MATCHED!"));
 			break;
 		}
 	}
 
-	if (!NodeToDelete) return false;
+	if (!NodeToDelete)
+	{
+		UE_LOG(LogTemp, Error, TEXT("No node found with GUID: %s"), *NodeGuidObj.ToString());
+		return false;
+	}
 
+	// Actually remove the node and mark blueprint as modified
 	FBlueprintEditorUtils::RemoveNode(Blueprint, NodeToDelete, true);
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+	UE_LOG(LogTemp, Log, TEXT("Successfully deleted node with GUID: %s"), *NodeGuid);
 	return true;
 }
 
@@ -424,7 +471,7 @@ void UGenBlueprintNodeCreator::InitNodeTypeMap()
 	NodeTypeMap.Add(TEXT("beginplay"), TEXT("EventBeginPlay"));
 	NodeTypeMap.Add(TEXT("receivebeginplay"), TEXT("EventBeginPlay"));
 	NodeTypeMap.Add(TEXT("eventtick"), TEXT("EventTick"));
-	
+
 	// New mappings for InputAction
 	NodeTypeMap.Add(TEXT("inputaction"), TEXT("K2Node_InputAction"));
 	NodeTypeMap.Add(TEXT("input"), TEXT("K2Node_InputAction"));
@@ -444,58 +491,117 @@ bool UGenBlueprintNodeCreator::TryCreateKnownNodeType(UEdGraph* Graph, const FSt
 		ActualNodeType.Equals(TEXT("ReceiveBeginPlay"), ESearchCase::IgnoreCase))
 	{
 		UBlueprint* Blueprint = Cast<UBlueprint>(Graph->GetOuter());
-		if (Blueprint && Blueprint->UbergraphPages.Num() > 0)
+		if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
 		{
-			UEdGraph* DefaultEventGraph = Blueprint->UbergraphPages[0];
-			for (UEdGraphNode* Node : DefaultEventGraph->Nodes)
+			UE_LOG(LogTemp, Error, TEXT("No valid Blueprint or UbergraphPages found for EventBeginPlay"));
+			return false;
+		}
+
+		UEdGraph* DefaultEventGraph = Blueprint->UbergraphPages[0];
+		// Ensure we're adding to the default EventGraph
+		if (Graph != DefaultEventGraph)
+		{
+			UE_LOG(LogTemp, Warning,
+			       TEXT("EventBeginPlay can only be added to the default EventGraph, not a custom function graph"));
+			return false;
+		}
+
+		// Find and delete ALL existing BeginPlay nodes first
+		TArray<UK2Node_Event*> NodesToDelete;
+		for (UEdGraphNode* Node : DefaultEventGraph->Nodes)
+		{
+			if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
 			{
-				if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
+				if (EventNode->EventReference.GetMemberName().ToString().Equals(TEXT("ReceiveBeginPlay")))
 				{
-					if (EventNode->EventReference.GetMemberName().ToString().Equals(TEXT("ReceiveBeginPlay")))
-					{
-						OutNode = EventNode;
-						UE_LOG(LogTemp, Log, TEXT("Found existing EventBeginPlay node in default EventGraph with GUID %s"),
-							   *EventNode->NodeGuid.ToString());
-						return true;
-					}
+					NodesToDelete.Add(EventNode);
+					UE_LOG(LogTemp, Warning, TEXT("Found BeginPlay node to delete with GUID %s"),
+					       *EventNode->NodeGuid.ToString());
 				}
 			}
-			UK2Node_Event* EventNode = NewObject<UK2Node_Event>(DefaultEventGraph);
-			EventNode->EventReference.SetExternalMember(FName(TEXT("ReceiveBeginPlay")), AActor::StaticClass());
-			OutNode = EventNode;
-			DefaultEventGraph->AddNode(OutNode, false, false);
-			UE_LOG(LogTemp, Log, TEXT("Created new EventBeginPlay node in default EventGraph"));
-			IsBlueprintDirty = true;
-			return true;
 		}
+
+		// Delete all found BeginPlay nodes
+		for (UK2Node_Event* NodeToDelete : NodesToDelete)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Deleting BeginPlay node with GUID %s"),
+			       *NodeToDelete->NodeGuid.ToString());
+			FBlueprintEditorUtils::RemoveNode(Blueprint, NodeToDelete);
+		}
+
+		UK2Node_Event* NewEventNode = NewObject<UK2Node_Event>(DefaultEventGraph);
+		NewEventNode->EventReference.SetExternalMember(FName(TEXT("ReceiveBeginPlay")), AActor::StaticClass());
+		NewEventNode->bOverrideFunction = true;
+
+		if (!NewEventNode)
+		{
+			UE_LOG(LogTemp, Error, TEXT("Failed to create EventBeginPlay node using FKismetEditorUtilities"));
+			return false;
+		}
+
+		OutNode = NewEventNode;
+		UE_LOG(LogTemp, Log, TEXT("Created new EventBeginPlay node in default EventGraph with GUID %s"),
+		       *NewEventNode->NodeGuid.ToString());
+
+		IsBlueprintDirty = true;
+		return true;
 	}
 	else if (ActualNodeType.Equals(TEXT("EventTick"), ESearchCase::IgnoreCase))
 	{
 		UBlueprint* Blueprint = Cast<UBlueprint>(Graph->GetOuter());
-		if (Blueprint && Blueprint->UbergraphPages.Num() > 0)
+		if (!Blueprint || Blueprint->UbergraphPages.Num() == 0)
 		{
-			UEdGraph* DefaultEventGraph = Blueprint->UbergraphPages[0];
-			for (UEdGraphNode* Node : DefaultEventGraph->Nodes)
+			UE_LOG(LogTemp, Error, TEXT("No valid Blueprint or UbergraphPages found for EventTick"));
+			return false;
+		}
+
+		UEdGraph* DefaultEventGraph = Blueprint->UbergraphPages[0];
+		if (Graph != DefaultEventGraph)
+		{
+			UE_LOG(LogTemp, Warning,
+			       TEXT("EventTick can only be added to the default EventGraph, not a custom function graph"));
+			return false;
+		}
+
+		// Find and delete ALL existing Tick nodes first
+		TArray<UK2Node_Event*> NodesToDelete;
+		for (UEdGraphNode* Node : DefaultEventGraph->Nodes)
+		{
+			if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
 			{
-				if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
+				if (EventNode->EventReference.GetMemberName().ToString().Equals(TEXT("ReceiveTick")))
 				{
-					if (EventNode->EventReference.GetMemberName().ToString().Equals(TEXT("ReceiveTick")))
-					{
-						OutNode = EventNode;
-						UE_LOG(LogTemp, Log, TEXT("Found existing EventTick node in default EventGraph with GUID %s"),
-							   *EventNode->NodeGuid.ToString());
-						return true;
-					}
+					NodesToDelete.Add(EventNode);
+					UE_LOG(LogTemp, Warning, TEXT("Found Tick node to delete with GUID %s"),
+					       *EventNode->NodeGuid.ToString());
 				}
 			}
-			UK2Node_Event* EventNode = NewObject<UK2Node_Event>(DefaultEventGraph);
-			EventNode->EventReference.SetExternalMember(FName(TEXT("ReceiveTick")), AActor::StaticClass());
-			OutNode = EventNode;
-			DefaultEventGraph->AddNode(OutNode, false, false);
-			UE_LOG(LogTemp, Log, TEXT("Created new EventTick node in default EventGraph"));
-			IsBlueprintDirty = true;
-			return true;
 		}
+
+		// Delete all found Tick nodes
+		for (UK2Node_Event* NodeToDelete : NodesToDelete)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Deleting Tick node with GUID %s"),
+			       *NodeToDelete->NodeGuid.ToString());
+			FBlueprintEditorUtils::RemoveNode(Blueprint, NodeToDelete);
+		}
+
+		UK2Node_Event* NewEventNode = NewObject<UK2Node_Event>(DefaultEventGraph);
+		NewEventNode->EventReference.SetExternalMember(FName(TEXT("ReceiveTick")), AActor::StaticClass());
+		NewEventNode->bOverrideFunction = true;
+
+		if (!NewEventNode)
+		{
+			UE_LOG(LogTemp, Error, TEXT("Failed to create EventTick node"));
+			return false;
+		}
+
+		OutNode = NewEventNode;
+		UE_LOG(LogTemp, Log, TEXT("Created new EventTick node in default EventGraph with GUID %s"),
+		       *NewEventNode->NodeGuid.ToString());
+
+		IsBlueprintDirty = true;
+		return true;
 	}
 	auto NodeTypeLower = ActualNodeType.ToLower();
 	// Special handling for function entry nodes - find existing rather than create new
@@ -612,7 +718,7 @@ bool UGenBlueprintNodeCreator::TryCreateKnownNodeType(UEdGraph* Graph, const FSt
 		return false;
 	}
 	else if (ActualNodeType.Equals(TEXT("VariableSet"), ESearchCase::IgnoreCase) || ActualNodeType.Equals(
-	TEXT("Setter"), ESearchCase::IgnoreCase))
+		TEXT("Setter"), ESearchCase::IgnoreCase))
 	{
 		UK2Node_VariableSet* VarSet = NewObject<UK2Node_VariableSet>(Graph);
 		if (!PropertiesJson.IsEmpty())
@@ -983,98 +1089,117 @@ FString UGenBlueprintNodeCreator::GetNodeSuggestions(const FString& NodeType)
 
 FString UGenBlueprintNodeCreator::SpawnOverlapEvents(UBlueprint* Blueprint, USCS_Node* ComponentNode)
 {
-    if (!Blueprint || !ComponentNode) {
-        UE_LOG(LogTemp, Error, TEXT("Invalid Blueprint or ComponentNode for SpawnOverlapEvents"));
-        return TEXT("{\"begin_guid\": \"\", \"end_guid\": \"\"}");
-    }
+	if (!Blueprint || !ComponentNode)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Invalid Blueprint or ComponentNode for SpawnOverlapEvents"));
+		return TEXT("{\"begin_guid\": \"\", \"end_guid\": \"\"}");
+	}
 
 	bool IsDirty = false;
-    UShapeComponent* ShapeComp = Cast<UShapeComponent>(ComponentNode->ComponentTemplate);
-    if (!ShapeComp) {
-        UE_LOG(LogTemp, Warning, TEXT("Component %s is not a shape component"), *ComponentNode->GetVariableName().ToString());
-        return TEXT("{\"begin_guid\": \"\", \"end_guid\": \"\"}");
-    }
+	UShapeComponent* ShapeComp = Cast<UShapeComponent>(ComponentNode->ComponentTemplate);
+	if (!ShapeComp)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Component %s is not a shape component"),
+		       *ComponentNode->GetVariableName().ToString());
+		return TEXT("{\"begin_guid\": \"\", \"end_guid\": \"\"}");
+	}
 
-    // Enable overlap events by default
-    ShapeComp->SetGenerateOverlapEvents(true);
+	// Enable overlap events by default
+	ShapeComp->SetGenerateOverlapEvents(true);
 
-    // Get or create the Event Graph
-    UEdGraph* EventGraph = Blueprint->UbergraphPages.Num() > 0 ? Blueprint->UbergraphPages[0] : nullptr;
-    if (!EventGraph) {
-        EventGraph = FBlueprintEditorUtils::CreateNewGraph(Blueprint, FName(TEXT("EventGraph")), UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
-        Blueprint->UbergraphPages.Add(EventGraph);
-    	IsDirty = true;
-    }
+	// Get or create the Event Graph
+	UEdGraph* EventGraph = Blueprint->UbergraphPages.Num() > 0 ? Blueprint->UbergraphPages[0] : nullptr;
+	if (!EventGraph)
+	{
+		EventGraph = FBlueprintEditorUtils::CreateNewGraph(Blueprint, FName(TEXT("EventGraph")),
+		                                                   UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
+		Blueprint->UbergraphPages.Add(EventGraph);
+		IsDirty = true;
+	}
 
-    FString ComponentName = ComponentNode->GetVariableName().ToString();
-    UK2Node_ComponentBoundEvent* BeginOverlapEvent = nullptr;
-    UK2Node_ComponentBoundEvent* EndOverlapEvent = nullptr;
+	FString ComponentName = ComponentNode->GetVariableName().ToString();
+	UK2Node_ComponentBoundEvent* BeginOverlapEvent = nullptr;
+	UK2Node_ComponentBoundEvent* EndOverlapEvent = nullptr;
 
-    // Check for existing events
-    for (UEdGraphNode* Node : EventGraph->Nodes) {
-        if (UK2Node_ComponentBoundEvent* EventNode = Cast<UK2Node_ComponentBoundEvent>(Node)) {
-            if (EventNode->ComponentPropertyName == FName(*ComponentName)) {
-                if (EventNode->GetTargetDelegateProperty() && 
-                    EventNode->GetTargetDelegateProperty()->GetFName() == FName(TEXT("OnComponentBeginOverlap"))) {
-                    BeginOverlapEvent = EventNode;
-                } else if (EventNode->GetTargetDelegateProperty() && 
-                           EventNode->GetTargetDelegateProperty()->GetFName() == FName(TEXT("OnComponentEndOverlap"))) {
-                    EndOverlapEvent = EventNode;
-                }
-            }
-        }
-    }
+	// Check for existing events
+	for (UEdGraphNode* Node : EventGraph->Nodes)
+	{
+		if (UK2Node_ComponentBoundEvent* EventNode = Cast<UK2Node_ComponentBoundEvent>(Node))
+		{
+			if (EventNode->ComponentPropertyName == FName(*ComponentName))
+			{
+				if (EventNode->GetTargetDelegateProperty() &&
+					EventNode->GetTargetDelegateProperty()->GetFName() == FName(TEXT("OnComponentBeginOverlap")))
+				{
+					BeginOverlapEvent = EventNode;
+				}
+				else if (EventNode->GetTargetDelegateProperty() &&
+					EventNode->GetTargetDelegateProperty()->GetFName() == FName(TEXT("OnComponentEndOverlap")))
+				{
+					EndOverlapEvent = EventNode;
+				}
+			}
+		}
+	}
 
-    // Find the delegate properties on UShapeComponent
-    FMulticastDelegateProperty* BeginOverlapDelegate = CastField<FMulticastDelegateProperty>(
-        ShapeComp->GetClass()->FindPropertyByName(FName(TEXT("OnComponentBeginOverlap"))));
-    FMulticastDelegateProperty* EndOverlapDelegate = CastField<FMulticastDelegateProperty>(
-        ShapeComp->GetClass()->FindPropertyByName(FName(TEXT("OnComponentEndOverlap"))));
-    if (!BeginOverlapDelegate || !EndOverlapDelegate) {
-        UE_LOG(LogTemp, Error, TEXT("Failed to find OnComponentBeginOverlap or OnComponentEndOverlap delegates on %s"), *ShapeComp->GetClass()->GetName());
-        return TEXT("{\"begin_guid\": \"\", \"end_guid\": \"\"}");
-    }
+	// Find the delegate properties on UShapeComponent
+	FMulticastDelegateProperty* BeginOverlapDelegate = CastField<FMulticastDelegateProperty>(
+		ShapeComp->GetClass()->FindPropertyByName(FName(TEXT("OnComponentBeginOverlap"))));
+	FMulticastDelegateProperty* EndOverlapDelegate = CastField<FMulticastDelegateProperty>(
+		ShapeComp->GetClass()->FindPropertyByName(FName(TEXT("OnComponentEndOverlap"))));
+	if (!BeginOverlapDelegate || !EndOverlapDelegate)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to find OnComponentBeginOverlap or OnComponentEndOverlap delegates on %s"),
+		       *ShapeComp->GetClass()->GetName());
+		return TEXT("{\"begin_guid\": \"\", \"end_guid\": \"\"}");
+	}
 
-    // Create BeginOverlap event if not found
-    if (!BeginOverlapEvent) {
-        BeginOverlapEvent = NewObject<UK2Node_ComponentBoundEvent>(EventGraph);
-        BeginOverlapEvent->ComponentPropertyName = FName(*ComponentName);
-        BeginOverlapEvent->InitializeComponentBoundEventParams(nullptr, BeginOverlapDelegate);  // nullptr for component property since we set name directly
-        BeginOverlapEvent->NodePosX = 0;
-        BeginOverlapEvent->NodePosY = EventGraph->Nodes.Num() * 200;
-        BeginOverlapEvent->AllocateDefaultPins();
-        if (!BeginOverlapEvent->NodeGuid.IsValid()) {
-            BeginOverlapEvent->NodeGuid = FGuid::NewGuid();
-        }
-        EventGraph->AddNode(BeginOverlapEvent, false, false);
-    	IsDirty = true;
-        UE_LOG(LogTemp, Log, TEXT("Spawned OnComponentBeginOverlap for %s with GUID %s"), 
-               *ComponentName, *BeginOverlapEvent->NodeGuid.ToString());
-    }
+	// Create BeginOverlap event if not found
+	if (!BeginOverlapEvent)
+	{
+		BeginOverlapEvent = NewObject<UK2Node_ComponentBoundEvent>(EventGraph);
+		BeginOverlapEvent->ComponentPropertyName = FName(*ComponentName);
+		BeginOverlapEvent->InitializeComponentBoundEventParams(nullptr, BeginOverlapDelegate);
+		// nullptr for component property since we set name directly
+		BeginOverlapEvent->NodePosX = 0;
+		BeginOverlapEvent->NodePosY = EventGraph->Nodes.Num() * 200;
+		BeginOverlapEvent->AllocateDefaultPins();
+		if (!BeginOverlapEvent->NodeGuid.IsValid())
+		{
+			BeginOverlapEvent->NodeGuid = FGuid::NewGuid();
+		}
+		EventGraph->AddNode(BeginOverlapEvent, false, false);
+		IsDirty = true;
+		UE_LOG(LogTemp, Log, TEXT("Spawned OnComponentBeginOverlap for %s with GUID %s"),
+		       *ComponentName, *BeginOverlapEvent->NodeGuid.ToString());
+	}
 
-    // Create EndOverlap event if not found
-    if (!EndOverlapEvent) {
-        EndOverlapEvent = NewObject<UK2Node_ComponentBoundEvent>(EventGraph);
-        EndOverlapEvent->ComponentPropertyName = FName(*ComponentName);
-        EndOverlapEvent->InitializeComponentBoundEventParams(nullptr, EndOverlapDelegate);  // nullptr for component property
-        EndOverlapEvent->NodePosX = 300;  // Offset horizontally
-        EndOverlapEvent->NodePosY = EventGraph->Nodes.Num() * 200;
-        EndOverlapEvent->AllocateDefaultPins();
-        if (!EndOverlapEvent->NodeGuid.IsValid()) {
-            EndOverlapEvent->NodeGuid = FGuid::NewGuid();
-        }
-        EventGraph->AddNode(EndOverlapEvent, false, false);
-    	IsDirty = true;
-        UE_LOG(LogTemp, Log, TEXT("Spawned OnComponentEndOverlap for %s with GUID %s"), 
-               *ComponentName, *EndOverlapEvent->NodeGuid.ToString());
-    }
+	// Create EndOverlap event if not found
+	if (!EndOverlapEvent)
+	{
+		EndOverlapEvent = NewObject<UK2Node_ComponentBoundEvent>(EventGraph);
+		EndOverlapEvent->ComponentPropertyName = FName(*ComponentName);
+		EndOverlapEvent->InitializeComponentBoundEventParams(nullptr, EndOverlapDelegate);
+		// nullptr for component property
+		EndOverlapEvent->NodePosX = 300; // Offset horizontally
+		EndOverlapEvent->NodePosY = EventGraph->Nodes.Num() * 200;
+		EndOverlapEvent->AllocateDefaultPins();
+		if (!EndOverlapEvent->NodeGuid.IsValid())
+		{
+			EndOverlapEvent->NodeGuid = FGuid::NewGuid();
+		}
+		EventGraph->AddNode(EndOverlapEvent, false, false);
+		IsDirty = true;
+		UE_LOG(LogTemp, Log, TEXT("Spawned OnComponentEndOverlap for %s with GUID %s"),
+		       *ComponentName, *EndOverlapEvent->NodeGuid.ToString());
+	}
 
-	if(IsDirty)
+	if (IsDirty)
 	{
 		Blueprint->Modify();
 		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 	}
 
-    return FString::Printf(TEXT("{\"begin_guid\": \"%s\", \"end_guid\": \"%s\"}"), 
-                           *BeginOverlapEvent->NodeGuid.ToString(), *EndOverlapEvent->NodeGuid.ToString());
+	return FString::Printf(TEXT("{\"begin_guid\": \"%s\", \"end_guid\": \"%s\"}"),
+	                       *BeginOverlapEvent->NodeGuid.ToString(), *EndOverlapEvent->NodeGuid.ToString());
 }

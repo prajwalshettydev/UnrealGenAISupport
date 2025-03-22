@@ -3,6 +3,8 @@ import json
 import sys
 from mcp.server.fastmcp import FastMCP
 import re
+import os
+from pathlib import Path
 
 # THIS FILE WILL RUN OUTSIDE THE UNREAL ENGINE SCOPE, 
 # DO NOT IMPORT UNREAL MODULES HERE OR EXECUTE IT IN THE UNREAL ENGINE PYTHON INTERPRETER
@@ -22,6 +24,22 @@ def send_to_unreal(command):
             print(f"Error sending to Unreal: {e}", file=sys.stderr)
             return {"success": False, "error": str(e)}
 
+
+@mcp.tool()
+def how_to_use() -> str:
+    """Hey LLM, this grabs the how_to_use.md from knowledge_base—it's your cheat sheet for running Unreal with this MCP. Fetch it at the start of a new chat session to get the lowdown on quirks and how shit works."""
+    try:
+        current_dir = Path(__file__).parent
+        md_file_path = current_dir / "knowledge_base" / "how_to_use.md"
+
+        if not md_file_path.exists():
+            return "Error: how_to_use.md not found in knowledge_base subfolder."
+
+        with open(md_file_path, "r", encoding="utf-8") as md_file:
+            return md_file.read()
+
+    except Exception as e:
+        return f"Error loading how_to_use.md: {str(e)}—fix your shit."
 
 # Define basic tools for Claude to call
 

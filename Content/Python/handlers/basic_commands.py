@@ -149,9 +149,13 @@ def handle_add_input_binding(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
         action_name = command.get("action_name")
         key = command.get("key")
-        input_settings = unreal.get_editor_subsystem(unreal.InputSettings)
+        # Correctly access the InputSettings singleton
+        input_settings = unreal.InputSettings.get_input_settings()
+        # Create the input action mapping
         action_mapping = unreal.InputActionKeyMapping(action_name=action_name, key=unreal.InputCoreTypes.get_key(key))
+        # Add the mapping to the input settings
         input_settings.add_action_mapping(action_mapping)
+        # Save the changes to the config file
         input_settings.save_config()
         return {"success": True, "message": f"Added input binding {action_name} -> {key}"}
     except Exception as e:
