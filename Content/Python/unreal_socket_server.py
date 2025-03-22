@@ -51,7 +51,19 @@ class CommandDispatcher:
             
             # Python and console
             "execute_python": python_commands.handle_execute_python,
-            "execute_unreal_command": python_commands.handle_execute_unreal_command
+            "execute_unreal_command": python_commands.handle_execute_unreal_command,
+            
+            # New
+            "edit_component_property": actor_commands.handle_edit_component_property,
+            "add_component_with_events": actor_commands.handle_add_component_with_events,
+            
+            # Scene
+            "get_all_scene_objects": basic_commands.handle_get_all_scene_objects,
+            "create_project_folder": basic_commands.handle_create_project_folder,
+            "get_files_in_folder": basic_commands.handle_get_files_in_folder,
+            
+            # Input
+            "add_input_binding": basic_commands.handle_add_input_binding
         }
 
     def dispatch(self, command: Dict[str, Any]) -> Dict[str, Any]:

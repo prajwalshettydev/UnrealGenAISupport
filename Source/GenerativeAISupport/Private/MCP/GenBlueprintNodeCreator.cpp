@@ -17,12 +17,20 @@
 #include "Engine/Blueprint.h"
 #include "BlueprintEditor.h"
 #include "Editor.h"
+#include "K2Node_ComponentBoundEvent.h"
 #include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
+#include "K2Node_InputAction.h"
+#include "K2Node_Literal.h"
+#include "Components/ShapeComponent.h"
+#include "Engine/SCS_Node.h"
+#include "Kismet/KismetMathLibrary.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "UObject/UnrealTypePrivate.h"
 
 
 TMap<FString, FString> UGenBlueprintNodeCreator::NodeTypeMap;
+bool IsBlueprintDirty = false;
 
 
 FString UGenBlueprintNodeCreator::AddNode(const FString& BlueprintPath, const FString& FunctionGuid,
@@ -37,12 +45,16 @@ FString UGenBlueprintNodeCreator::AddNode(const FString& BlueprintPath, const FS
 	}
 
 
+
 	UEdGraph* FunctionGraph = GetGraphFromFunctionId(Blueprint, FunctionGuid);
 	if (!FunctionGraph)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Could not find function graph with GUID: %s"), *FunctionGuid);
 		return TEXT("");
 	}
+	
+	if(bFinalizeChanges)
+		IsBlueprintDirty = false;
 
 	UK2Node* NewNode = nullptr;
 	TArray<FString> Suggestions;
@@ -130,8 +142,11 @@ FString UGenBlueprintNodeCreator::AddNode(const FString& BlueprintPath, const FS
 					BlueprintEditor->OpenGraphAndBringToFront(FunctionGraph);
 			}
 		}
-		Blueprint->Modify();
-		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		if(IsBlueprintDirty)
+		{
+			Blueprint->Modify();
+			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		}
 	}
 
 	if (!NewNode->NodeGuid.IsValid()) NewNode->NodeGuid = FGuid::NewGuid();
@@ -178,6 +193,8 @@ FString UGenBlueprintNodeCreator::AddNodesBulk(const FString& BlueprintPath, con
 		UE_LOG(LogTemp, Error, TEXT("Could not find function graph with GUID: %s"), *FunctionGuid);
 		return TEXT("");
 	}
+	
+	IsBlueprintDirty = false;
 
 	TArray<TSharedPtr<FJsonValue>> NodesArray;
 	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(NodesJson);
@@ -233,8 +250,12 @@ FString UGenBlueprintNodeCreator::AddNodesBulk(const FString& BlueprintPath, con
 					BlueprintEditor->OpenGraphAndBringToFront(FunctionGraph);
 			}
 		}
-		Blueprint->Modify();
-		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+		if(IsBlueprintDirty)
+		{
+			Blueprint->Modify();
+			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+		}
 	}
 
 	FString ResultsJson;
@@ -285,10 +306,21 @@ FString UGenBlueprintNodeCreator::GetAllNodesInGraph(const FString& BlueprintPat
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *BlueprintPath);
 	if (!Blueprint) return TEXT("");
 
-	FGuid GraphGuid;
-	if (!FGuid::Parse(FunctionGuid, GraphGuid)) return TEXT("");
+	UEdGraph* FunctionGraph = nullptr;
+	// In GetAllNodesInGraph:
+	if (FunctionGuid.Equals(TEXT("EventGraph"), ESearchCase::IgnoreCase))
+	{
+		if (Blueprint->UbergraphPages.Num() > 0)
+			FunctionGraph = Blueprint->UbergraphPages[0];
+	}
+	else
+	{
+		FGuid GraphGuid;
+		if (!FGuid::Parse(FunctionGuid, GraphGuid)) return TEXT("");
 
-	UEdGraph* FunctionGraph = FindGraphByGuid(Blueprint, GraphGuid);
+		FunctionGraph = FindGraphByGuid(Blueprint, GraphGuid);
+	}
+
 	if (!FunctionGraph) return TEXT("");
 
 	TArray<TSharedPtr<FJsonValue>> NodesArray;
@@ -387,10 +419,17 @@ void UGenBlueprintNodeCreator::InitNodeTypeMap()
 
 	// Event node mappings
 	NodeTypeMap.Add(TEXT("getvariable"), TEXT("VariableGet"));
+	NodeTypeMap.Add(TEXT("setvariable"), TEXT("VariableSet"));
 	NodeTypeMap.Add(TEXT("event beginplay"), TEXT("EventBeginPlay"));
 	NodeTypeMap.Add(TEXT("beginplay"), TEXT("EventBeginPlay"));
 	NodeTypeMap.Add(TEXT("receivebeginplay"), TEXT("EventBeginPlay"));
 	NodeTypeMap.Add(TEXT("eventtick"), TEXT("EventTick"));
+	
+	// New mappings for InputAction
+	NodeTypeMap.Add(TEXT("inputaction"), TEXT("K2Node_InputAction"));
+	NodeTypeMap.Add(TEXT("input"), TEXT("K2Node_InputAction"));
+	NodeTypeMap.Add(TEXT("actionevent"), TEXT("K2Node_InputAction"));
+	NodeTypeMap.Add(TEXT("inputevent"), TEXT("K2Node_InputAction"));
 }
 
 
@@ -400,59 +439,64 @@ bool UGenBlueprintNodeCreator::TryCreateKnownNodeType(UEdGraph* Graph, const FSt
 	InitNodeTypeMap();
 	FString ActualNodeType = NodeTypeMap.FindRef(NodeType.ToLower(), NodeType);
 
-	// Handle default event nodes (search first, create if not found)
 	if (ActualNodeType.Equals(TEXT("EventBeginPlay"), ESearchCase::IgnoreCase) ||
 		ActualNodeType.Equals(TEXT("BeginPlay"), ESearchCase::IgnoreCase) ||
 		ActualNodeType.Equals(TEXT("ReceiveBeginPlay"), ESearchCase::IgnoreCase))
 	{
-		for (UEdGraphNode* Node : Graph->Nodes)
+		UBlueprint* Blueprint = Cast<UBlueprint>(Graph->GetOuter());
+		if (Blueprint && Blueprint->UbergraphPages.Num() > 0)
 		{
-			if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
+			UEdGraph* DefaultEventGraph = Blueprint->UbergraphPages[0];
+			for (UEdGraphNode* Node : DefaultEventGraph->Nodes)
 			{
-				if (EventNode->EventReference.GetMemberName().ToString().Equals(TEXT("ReceiveBeginPlay")))
+				if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
 				{
-					OutNode = EventNode;
-					UE_LOG(LogTemp, Log, TEXT("Found existing EventBeginPlay node with GUID %s"),
-					       *EventNode->NodeGuid.ToString());
-					return true;
+					if (EventNode->EventReference.GetMemberName().ToString().Equals(TEXT("ReceiveBeginPlay")))
+					{
+						OutNode = EventNode;
+						UE_LOG(LogTemp, Log, TEXT("Found existing EventBeginPlay node in default EventGraph with GUID %s"),
+							   *EventNode->NodeGuid.ToString());
+						return true;
+					}
 				}
 			}
+			UK2Node_Event* EventNode = NewObject<UK2Node_Event>(DefaultEventGraph);
+			EventNode->EventReference.SetExternalMember(FName(TEXT("ReceiveBeginPlay")), AActor::StaticClass());
+			OutNode = EventNode;
+			DefaultEventGraph->AddNode(OutNode, false, false);
+			UE_LOG(LogTemp, Log, TEXT("Created new EventBeginPlay node in default EventGraph"));
+			IsBlueprintDirty = true;
+			return true;
 		}
-		// Not found, create new
-		UK2Node_Event* EventNode = NewObject<UK2Node_Event>(Graph);
-		EventNode->EventReference.SetExternalMember(FName(TEXT("ReceiveBeginPlay")), AActor::StaticClass());
-		OutNode = EventNode;
-		UE_LOG(LogTemp, Log, TEXT("Created new EventBeginPlay node"));
-		return true;
 	}
 	else if (ActualNodeType.Equals(TEXT("EventTick"), ESearchCase::IgnoreCase))
 	{
-		for (UEdGraphNode* Node : Graph->Nodes)
+		UBlueprint* Blueprint = Cast<UBlueprint>(Graph->GetOuter());
+		if (Blueprint && Blueprint->UbergraphPages.Num() > 0)
 		{
-			if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
+			UEdGraph* DefaultEventGraph = Blueprint->UbergraphPages[0];
+			for (UEdGraphNode* Node : DefaultEventGraph->Nodes)
 			{
-				if (EventNode->EventReference.GetMemberName().ToString().Equals(TEXT("ReceiveTick")))
+				if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
 				{
-					OutNode = EventNode;
-					UE_LOG(LogTemp, Log, TEXT("Found existing EventTick node with GUID %s"),
-					       *EventNode->NodeGuid.ToString());
-					return true;
+					if (EventNode->EventReference.GetMemberName().ToString().Equals(TEXT("ReceiveTick")))
+					{
+						OutNode = EventNode;
+						UE_LOG(LogTemp, Log, TEXT("Found existing EventTick node in default EventGraph with GUID %s"),
+							   *EventNode->NodeGuid.ToString());
+						return true;
+					}
 				}
 			}
+			UK2Node_Event* EventNode = NewObject<UK2Node_Event>(DefaultEventGraph);
+			EventNode->EventReference.SetExternalMember(FName(TEXT("ReceiveTick")), AActor::StaticClass());
+			OutNode = EventNode;
+			DefaultEventGraph->AddNode(OutNode, false, false);
+			UE_LOG(LogTemp, Log, TEXT("Created new EventTick node in default EventGraph"));
+			IsBlueprintDirty = true;
+			return true;
 		}
-		// Not found, create new
-		UK2Node_Event* EventNode = NewObject<UK2Node_Event>(Graph);
-		EventNode->EventReference.SetExternalMember(FName(TEXT("ReceiveTick")), AActor::StaticClass());
-		OutNode = EventNode;
-		UE_LOG(LogTemp, Log, TEXT("Created new EventTick node"));
-		return true;
 	}
-	else if (ActualNodeType.Equals(TEXT("VariableGet"), ESearchCase::IgnoreCase))
-	{
-		OutNode = NewObject<UK2Node_VariableGet>(Graph);
-		return true;
-	}
-
 	auto NodeTypeLower = ActualNodeType.ToLower();
 	// Special handling for function entry nodes - find existing rather than create new
 	if (NodeTypeLower.Contains(TEXT("functionentry")) || NodeTypeLower.Contains(TEXT("entrynode")))
@@ -466,50 +510,145 @@ bool UGenBlueprintNodeCreator::TryCreateKnownNodeType(UEdGraph* Graph, const FSt
 				return true;
 			}
 		}
-		// If we don't find one, don't create a new one as it would be a duplicate
+		// Even If we don't find one, don't create a new one as it would be a duplicate
 		return false;
 	}
 
-
+	// New handling for InputAction node
+	if (ActualNodeType.Equals(TEXT("K2Node_InputAction"), ESearchCase::IgnoreCase))
+	{
+		UK2Node_InputAction* InputNode = NewObject<UK2Node_InputAction>(Graph);
+		if (!PropertiesJson.IsEmpty())
+		{
+			TSharedPtr<FJsonObject> JsonObject;
+			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(PropertiesJson);
+			if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
+			{
+				FString ActionName;
+				if (JsonObject->TryGetStringField(TEXT("action_name"), ActionName) && !ActionName.IsEmpty())
+				{
+					InputNode->InputActionName = FName(*ActionName);
+					UE_LOG(LogTemp, Log, TEXT("Created InputAction node for action '%s'"), *ActionName);
+				}
+				else
+				{
+					UE_LOG(LogTemp, Error, TEXT("InputAction node requires 'action_name' in PropertiesJson"));
+					return false;
+				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("Failed to parse PropertiesJson for InputAction node"));
+				return false;
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("InputAction node requires PropertiesJson with 'action_name'"));
+			return false;
+		}
+		OutNode = InputNode;
+		IsBlueprintDirty = true;
+		return true;
+	}
 	if (ActualNodeType.Equals(TEXT("Branch"), ESearchCase::IgnoreCase) || ActualNodeType.Equals(
 		TEXT("IfThenElse"), ESearchCase::IgnoreCase))
 	{
 		OutNode = NewObject<UK2Node_IfThenElse>(Graph);
+		IsBlueprintDirty = true;
 		return true;
 	}
 	else if (ActualNodeType.Equals(TEXT("Sequence"), ESearchCase::IgnoreCase) || ActualNodeType.Equals(
 		TEXT("ExecutionSequence"), ESearchCase::IgnoreCase))
 	{
 		OutNode = NewObject<UK2Node_ExecutionSequence>(Graph);
+		IsBlueprintDirty = true;
 		return true;
 	}
 	else if (ActualNodeType.Equals(TEXT("SwitchEnum"), ESearchCase::IgnoreCase))
 	{
 		OutNode = NewObject<UK2Node_SwitchEnum>(Graph);
+		IsBlueprintDirty = true;
 		return true;
 	}
 	else if (ActualNodeType.Equals(TEXT("SwitchInteger"), ESearchCase::IgnoreCase) || ActualNodeType.Equals(
 		TEXT("SwitchInt"), ESearchCase::IgnoreCase))
 	{
 		OutNode = NewObject<UK2Node_SwitchInteger>(Graph);
+		IsBlueprintDirty = true;
 		return true;
 	}
 	else if (ActualNodeType.Equals(TEXT("SwitchString"), ESearchCase::IgnoreCase))
 	{
 		OutNode = NewObject<UK2Node_SwitchString>(Graph);
+		IsBlueprintDirty = true;
 		return true;
 	}
 	else if (ActualNodeType.Equals(TEXT("VariableGet"), ESearchCase::IgnoreCase) || ActualNodeType.Equals(
 		TEXT("Getter"), ESearchCase::IgnoreCase))
 	{
-		OutNode = NewObject<UK2Node_VariableGet>(Graph);
-		return true;
+		UK2Node_VariableGet* VarGet = NewObject<UK2Node_VariableGet>(Graph);
+		if (!PropertiesJson.IsEmpty())
+		{
+			TSharedPtr<FJsonObject> JsonObject;
+			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(PropertiesJson);
+			if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
+			{
+				FString VarName;
+				if (JsonObject->TryGetStringField(TEXT("VariableName"), VarName) && !VarName.IsEmpty())
+				{
+					FMemberReference VarRef;
+					VarRef.SetSelfMember(FName(*VarName));
+					VarGet->VariableReference = VarRef;
+					VarGet->AllocateDefaultPins(); // Ensure pins are created after setting the reference
+					OutNode = VarGet;
+					IsBlueprintDirty = true;
+					UE_LOG(LogTemp, Log, TEXT("Created VariableGet node for variable '%s'"), *VarName);
+					return true;
+				}
+			}
+		}
+		UE_LOG(LogTemp, Error, TEXT("VariableGet requires 'VariableName' in PropertiesJson"));
+		return false;
 	}
 	else if (ActualNodeType.Equals(TEXT("VariableSet"), ESearchCase::IgnoreCase) || ActualNodeType.Equals(
-		TEXT("Setter"), ESearchCase::IgnoreCase))
+	TEXT("Setter"), ESearchCase::IgnoreCase))
 	{
-		OutNode = NewObject<UK2Node_VariableSet>(Graph);
-		return true;
+		UK2Node_VariableSet* VarSet = NewObject<UK2Node_VariableSet>(Graph);
+		if (!PropertiesJson.IsEmpty())
+		{
+			TSharedPtr<FJsonObject> JsonObject;
+			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(PropertiesJson);
+			if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
+			{
+				FString VarName;
+				if (JsonObject->TryGetStringField(TEXT("VariableName"), VarName) && !VarName.IsEmpty())
+				{
+					FMemberReference VarRef;
+					VarRef.SetSelfMember(FName(*VarName));
+					VarSet->VariableReference = VarRef;
+					VarSet->AllocateDefaultPins(); // Ensure pins are created after setting the reference
+
+					// Optionally set a default value if provided
+					FString Value;
+					if (JsonObject->TryGetStringField(TEXT("Value"), Value))
+					{
+						UEdGraphPin* ValuePin = VarSet->FindPin(FName(TEXT("Value")));
+						if (ValuePin)
+						{
+							ValuePin->DefaultValue = Value;
+						}
+					}
+
+					OutNode = VarSet;
+					IsBlueprintDirty = true;
+					UE_LOG(LogTemp, Log, TEXT("Created VariableSet node for variable '%s'"), *VarName);
+					return true;
+				}
+			}
+		}
+		UE_LOG(LogTemp, Error, TEXT("VariableSet requires 'VariableName' in PropertiesJson"));
+		return false;
 	}
 	else if (ActualNodeType.Equals(TEXT("Multiply"), ESearchCase::IgnoreCase) || ActualNodeType.Equals(
 		TEXT("Multiply_Float"), ESearchCase::IgnoreCase))
@@ -576,6 +715,7 @@ bool UGenBlueprintNodeCreator::TryCreateKnownNodeType(UEdGraph* Graph, const FSt
 	if (NodeClass && NodeClass->IsChildOf(UK2Node::StaticClass()))
 	{
 		OutNode = NewObject<UK2Node>(Graph, NodeClass);
+		IsBlueprintDirty = true;
 		return OutNode != nullptr;
 	}
 
@@ -705,6 +845,7 @@ FString UGenBlueprintNodeCreator::TryCreateNodeFromLibraries(UEdGraph* Graph, co
 	{
 		const FFunctionMatch& BestMatch = Matches[0];
 		UK2Node_CallFunction* FunctionNode = NewObject<UK2Node_CallFunction>(Graph);
+		IsBlueprintDirty = true;
 		if (FunctionNode)
 		{
 			FunctionNode->FunctionReference.SetExternalMember(BestMatch.Function->GetFName(), BestMatch.Class);
@@ -735,6 +876,7 @@ bool UGenBlueprintNodeCreator::CreateMathFunctionNode(UEdGraph* Graph, const FSt
 			{
 				FunctionNode->FunctionReference.SetExternalMember(Function->GetFName(), Class);
 				OutNode = FunctionNode;
+				IsBlueprintDirty = true;
 				return true;
 			}
 		}
@@ -837,4 +979,102 @@ FString UGenBlueprintNodeCreator::GetNodeSuggestions(const FString& NodeType)
 	FString SuggestionStr = FString::Join(Suggestions, TEXT(", "));
 	UE_LOG(LogTemp, Log, TEXT("Suggestions for %s: %s"), *NodeType, *SuggestionStr);
 	return TEXT("SUGGESTIONS:") + SuggestionStr;
+}
+
+FString UGenBlueprintNodeCreator::SpawnOverlapEvents(UBlueprint* Blueprint, USCS_Node* ComponentNode)
+{
+    if (!Blueprint || !ComponentNode) {
+        UE_LOG(LogTemp, Error, TEXT("Invalid Blueprint or ComponentNode for SpawnOverlapEvents"));
+        return TEXT("{\"begin_guid\": \"\", \"end_guid\": \"\"}");
+    }
+
+	bool IsDirty = false;
+    UShapeComponent* ShapeComp = Cast<UShapeComponent>(ComponentNode->ComponentTemplate);
+    if (!ShapeComp) {
+        UE_LOG(LogTemp, Warning, TEXT("Component %s is not a shape component"), *ComponentNode->GetVariableName().ToString());
+        return TEXT("{\"begin_guid\": \"\", \"end_guid\": \"\"}");
+    }
+
+    // Enable overlap events by default
+    ShapeComp->SetGenerateOverlapEvents(true);
+
+    // Get or create the Event Graph
+    UEdGraph* EventGraph = Blueprint->UbergraphPages.Num() > 0 ? Blueprint->UbergraphPages[0] : nullptr;
+    if (!EventGraph) {
+        EventGraph = FBlueprintEditorUtils::CreateNewGraph(Blueprint, FName(TEXT("EventGraph")), UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
+        Blueprint->UbergraphPages.Add(EventGraph);
+    	IsDirty = true;
+    }
+
+    FString ComponentName = ComponentNode->GetVariableName().ToString();
+    UK2Node_ComponentBoundEvent* BeginOverlapEvent = nullptr;
+    UK2Node_ComponentBoundEvent* EndOverlapEvent = nullptr;
+
+    // Check for existing events
+    for (UEdGraphNode* Node : EventGraph->Nodes) {
+        if (UK2Node_ComponentBoundEvent* EventNode = Cast<UK2Node_ComponentBoundEvent>(Node)) {
+            if (EventNode->ComponentPropertyName == FName(*ComponentName)) {
+                if (EventNode->GetTargetDelegateProperty() && 
+                    EventNode->GetTargetDelegateProperty()->GetFName() == FName(TEXT("OnComponentBeginOverlap"))) {
+                    BeginOverlapEvent = EventNode;
+                } else if (EventNode->GetTargetDelegateProperty() && 
+                           EventNode->GetTargetDelegateProperty()->GetFName() == FName(TEXT("OnComponentEndOverlap"))) {
+                    EndOverlapEvent = EventNode;
+                }
+            }
+        }
+    }
+
+    // Find the delegate properties on UShapeComponent
+    FMulticastDelegateProperty* BeginOverlapDelegate = CastField<FMulticastDelegateProperty>(
+        ShapeComp->GetClass()->FindPropertyByName(FName(TEXT("OnComponentBeginOverlap"))));
+    FMulticastDelegateProperty* EndOverlapDelegate = CastField<FMulticastDelegateProperty>(
+        ShapeComp->GetClass()->FindPropertyByName(FName(TEXT("OnComponentEndOverlap"))));
+    if (!BeginOverlapDelegate || !EndOverlapDelegate) {
+        UE_LOG(LogTemp, Error, TEXT("Failed to find OnComponentBeginOverlap or OnComponentEndOverlap delegates on %s"), *ShapeComp->GetClass()->GetName());
+        return TEXT("{\"begin_guid\": \"\", \"end_guid\": \"\"}");
+    }
+
+    // Create BeginOverlap event if not found
+    if (!BeginOverlapEvent) {
+        BeginOverlapEvent = NewObject<UK2Node_ComponentBoundEvent>(EventGraph);
+        BeginOverlapEvent->ComponentPropertyName = FName(*ComponentName);
+        BeginOverlapEvent->InitializeComponentBoundEventParams(nullptr, BeginOverlapDelegate);  // nullptr for component property since we set name directly
+        BeginOverlapEvent->NodePosX = 0;
+        BeginOverlapEvent->NodePosY = EventGraph->Nodes.Num() * 200;
+        BeginOverlapEvent->AllocateDefaultPins();
+        if (!BeginOverlapEvent->NodeGuid.IsValid()) {
+            BeginOverlapEvent->NodeGuid = FGuid::NewGuid();
+        }
+        EventGraph->AddNode(BeginOverlapEvent, false, false);
+    	IsDirty = true;
+        UE_LOG(LogTemp, Log, TEXT("Spawned OnComponentBeginOverlap for %s with GUID %s"), 
+               *ComponentName, *BeginOverlapEvent->NodeGuid.ToString());
+    }
+
+    // Create EndOverlap event if not found
+    if (!EndOverlapEvent) {
+        EndOverlapEvent = NewObject<UK2Node_ComponentBoundEvent>(EventGraph);
+        EndOverlapEvent->ComponentPropertyName = FName(*ComponentName);
+        EndOverlapEvent->InitializeComponentBoundEventParams(nullptr, EndOverlapDelegate);  // nullptr for component property
+        EndOverlapEvent->NodePosX = 300;  // Offset horizontally
+        EndOverlapEvent->NodePosY = EventGraph->Nodes.Num() * 200;
+        EndOverlapEvent->AllocateDefaultPins();
+        if (!EndOverlapEvent->NodeGuid.IsValid()) {
+            EndOverlapEvent->NodeGuid = FGuid::NewGuid();
+        }
+        EventGraph->AddNode(EndOverlapEvent, false, false);
+    	IsDirty = true;
+        UE_LOG(LogTemp, Log, TEXT("Spawned OnComponentEndOverlap for %s with GUID %s"), 
+               *ComponentName, *EndOverlapEvent->NodeGuid.ToString());
+    }
+
+	if(IsDirty)
+	{
+		Blueprint->Modify();
+		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	}
+
+    return FString::Printf(TEXT("{\"begin_guid\": \"%s\", \"end_guid\": \"%s\"}"), 
+                           *BeginOverlapEvent->NodeGuid.ToString(), *EndOverlapEvent->NodeGuid.ToString());
 }

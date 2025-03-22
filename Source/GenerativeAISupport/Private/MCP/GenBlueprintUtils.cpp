@@ -493,22 +493,36 @@ FString UGenBlueprintUtils::ConnectNodes(const FString& BlueprintPath, const FSt
     UBlueprint* Blueprint = LoadBlueprintAsset(BlueprintPath);
     if (!Blueprint) return TEXT("{\"success\": false, \"error\": \"Could not load blueprint\"}");
 
-    FGuid GraphGuid;
-    if (!FGuid::Parse(FunctionGuid, GraphGuid))
-        return TEXT("{\"success\": false, \"error\": \"Invalid function GUID\"}");
+	// Special handling for EventGraph
+	UEdGraph* FunctionGraph = nullptr;
+	if (FunctionGuid.Equals(TEXT("EventGraph"), ESearchCase::IgnoreCase))
+	{
+		// Get the first UbergraphPage (EventGraph)
+		if (Blueprint->UbergraphPages.Num() > 0)
+		{
+			FunctionGraph = Blueprint->UbergraphPages[0];
+		}
+	}
+	else
+	{
+		// Original GUID-based lookup for function graphs
+		FGuid GraphGuid;
+		if (!FGuid::Parse(FunctionGuid, GraphGuid))
+			return TEXT("{\"success\": false, \"error\": \"Invalid function GUID\"}");
 
-    UEdGraph* FunctionGraph = nullptr;
-    for (UEdGraph* Graph : Blueprint->UbergraphPages)
-        if (Graph->GraphGuid == GraphGuid) { FunctionGraph = Graph; break; }
-    if (!FunctionGraph)
-        for (UEdGraph* Graph : Blueprint->FunctionGraphs)
-            if (Graph->GraphGuid == GraphGuid) { FunctionGraph = Graph; break; }
-    if (!FunctionGraph)
-        return TEXT("{\"success\": false, \"error\": \"Could not find function graph\"}");
+		for (UEdGraph* Graph : Blueprint->UbergraphPages)
+			if (Graph->GraphGuid == GraphGuid) { FunctionGraph = Graph; break; }
+		if (!FunctionGraph)
+			for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+				if (Graph->GraphGuid == GraphGuid) { FunctionGraph = Graph; break; }
+	}
 
-    FGuid SourceGuid, TargetGuid;
-    if (!FGuid::Parse(SourceNodeGuid, SourceGuid) || !FGuid::Parse(TargetNodeGuid, TargetGuid))
-        return TEXT("{\"success\": false, \"error\": \"Invalid node GUID\"}");
+	if (!FunctionGraph)
+		return TEXT("{\"success\": false, \"error\": \"Could not find function graph\"}");
+
+	FGuid SourceGuid, TargetGuid;
+	if (!FGuid::Parse(SourceNodeGuid, SourceGuid) || !FGuid::Parse(TargetNodeGuid, TargetGuid))
+		return TEXT("{\"success\": false, \"error\": \"Invalid node GUID\"}");
 
     UK2Node* SourceNode = nullptr;
     UK2Node* TargetNode = nullptr;
@@ -529,9 +543,16 @@ FString UGenBlueprintUtils::ConnectNodes(const FString& BlueprintPath, const FSt
 
     if (!SourcePin || !TargetPin)
     {
-        TSharedPtr<FJsonObject> ResponseObject = MakeShareable(new FJsonObject);
+    	TSharedPtr<FJsonObject> ResponseObject = MakeShareable(new FJsonObject);
+    	ResponseObject->SetBoolField(TEXT("success"), false);
+        
+    	FString ErrorMessage = FString::Printf(
+			TEXT("Pin not found. Source: %s (%s), Target: %s (%s)"),
+			*SourcePinName, SourcePin ? TEXT("found") : TEXT("not found"),
+			*TargetPinName, TargetPin ? TEXT("found") : TEXT("not found"));
+    	
         ResponseObject->SetBoolField(TEXT("success"), false);
-        ResponseObject->SetStringField(TEXT("error"), TEXT("Invalid pin name"));
+        ResponseObject->SetStringField(TEXT("error"), ErrorMessage);
 
         auto AddPins = [](UK2Node* Node, const FString& FieldName, TSharedPtr<FJsonObject> JsonObj, EEdGraphPinDirection Direction)
         {

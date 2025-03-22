@@ -27,8 +27,12 @@ public class GenerativeAISupport : ModuleRules
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"Core", "Engine", "ImageDownload", "ImageDownload",
-				"DeveloperSettings"
+				"Core", "Engine",
+				"ImageDownload",
+				"ImageDownload",
+				"DeveloperSettings",
+				"AutomationTest",
+				"FunctionalTesting"
 				// ... add other public dependencies that you statically link with here ...
 			}
 		);
@@ -43,16 +47,17 @@ public class GenerativeAISupport : ModuleRules
 				"SlateCore",
 				"Json",
 				"HTTP",
-				"EditorScriptingUtilities", 
+				"EditorScriptingUtilities",
 				"Blutility",
 				"UnrealEd",
 				"MaterialEditor",
 				"MaterialUtilities",
-				"BlueprintGraph"
+				"BlueprintGraph",
+				"FunctionalTesting"
 				// ... add private dependencies that you statically link with here ...	
 			}
 		);
-        
+
 		if (Target.Type == TargetRules.TargetType.Editor)
 		{
 			PrivateDependencyModuleNames.AddRange(

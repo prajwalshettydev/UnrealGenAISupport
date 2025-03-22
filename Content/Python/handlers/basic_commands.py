@@ -114,3 +114,45 @@ def handle_create_material(command: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         log.log_error(f"Error creating material: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}
+
+
+def handle_get_all_scene_objects(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        level = unreal.EditorLevelLibrary.get_level(unreal.EditorLevelLibrary.get_editor_world())
+        actors = unreal.GameplayStatics.get_all_actors_of_class(level, unreal.Actor)
+        result = [
+            {"name": actor.get_name(), "class": actor.get_class().get_name(), "location": [actor.get_actor_location().x, actor.get_actor_location().y, actor.get_actor_location().z]}
+            for actor in actors
+        ]
+        return {"success": True, "actors": result}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+def handle_create_project_folder(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        folder_path = command.get("folder_path")
+        full_path = f"/Game/{folder_path}"
+        unreal.EditorAssetLibrary.make_directory(full_path)
+        return {"success": True, "message": f"Created folder at {full_path}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+def handle_get_files_in_folder(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        folder_path = f"/Game/{command.get('folder_path')}"
+        files = unreal.EditorAssetLibrary.list_assets(folder_path, recursive=False)
+        return {"success": True, "files": [str(f) for f in files]}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+def handle_add_input_binding(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        action_name = command.get("action_name")
+        key = command.get("key")
+        input_settings = unreal.get_editor_subsystem(unreal.InputSettings)
+        action_mapping = unreal.InputActionKeyMapping(action_name=action_name, key=unreal.InputCoreTypes.get_key(key))
+        input_settings.add_action_mapping(action_mapping)
+        input_settings.save_config()
+        return {"success": True, "message": f"Added input binding {action_name} -> {key}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}

@@ -1,4 +1,5 @@
 import unreal
+import json
 from typing import Dict, Any, List, Tuple, Union
 
 from utils import unreal_conversions as uc
@@ -92,4 +93,87 @@ def handle_modify_object(command: Dict[str, Any]) -> Dict[str, Any]:
 
     except Exception as e:
         log.log_error(f"Error modifying object: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+def handle_edit_component_property(command: Dict[str, Any]) -> str:  # Change return type to str
+    """
+    Handle a command to edit a component property in a Blueprint or scene actor.
+    
+    Args:
+        command: The command dictionary containing:
+            - blueprint_path: Path to the Blueprint
+            - component_name: Name of the component
+            - property_name: Name of the property to edit
+            - value: New value as a string
+            - is_scene_actor: Boolean flag for scene actor (optional, default False)
+            - actor_name: Name of the scene actor (required if is_scene_actor is True)
+                
+    Returns:
+        JSON string with success/failure status, message, and optional suggestions
+    """
+    try:
+        blueprint_path = command.get("blueprint_path", "")
+        component_name = command.get("component_name")
+        property_name = command.get("property_name")
+        value = command.get("value")
+        is_scene_actor = command.get("is_scene_actor", False)
+        actor_name = command.get("actor_name", "")
+
+        if not component_name or not property_name or not value:
+            log.log_error("Missing required parameters for edit_component_property")
+            return json.dumps({"success": False, "error": "Missing required parameters"})
+
+        if is_scene_actor and not actor_name:
+            log.log_error("Actor name required for scene actor editing")
+            return json.dumps({"success": False, "error": "Actor name required for scene actor"})
+
+        log.log_command("edit_component_property", f"Blueprint: {blueprint_path}, Component: {component_name}, Property: {property_name}, Value: {value}, SceneActor: {is_scene_actor}, Actor: {actor_name}")
+
+        node_creator = unreal.GenObjectProperties
+        result = node_creator.edit_component_property(blueprint_path, component_name, property_name, value, is_scene_actor, actor_name)
+
+        parsed_result = json.loads(result)  # Assuming C++ returns a JSON string
+        log.log_result("edit_component_property", parsed_result["success"], parsed_result.get("message", parsed_result.get("error", "No message")))
+        return json.dumps(parsed_result)  # Return as JSON string
+
+    except Exception as e:
+        log.log_error(f"Error editing component property: {str(e)}", include_traceback=True)
+        return json.dumps({"success": False, "error": str(e)})
+
+
+
+def handle_add_component_with_events(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a command to add a component to a Blueprint with overlap events if applicable.
+    
+    Args:
+        command: The command dictionary containing:
+            - blueprint_path: Path to the Blueprint
+            - component_name: Name of the new component
+            - component_class: Class of the component (e.g., "BoxComponent")
+                
+    Returns:
+        Response dictionary with success/failure status, message, and event GUIDs
+    """
+    try:
+        blueprint_path = command.get("blueprint_path")
+        component_name = command.get("component_name")
+        component_class = command.get("component_class")
+
+        if not blueprint_path or not component_name or not component_class:
+            log.log_error("Missing required parameters for add_component_with_events")
+            return {"success": False, "error": "Missing required parameters"}
+
+        log.log_command("add_component_with_events", f"Blueprint: {blueprint_path}, Component: {component_name}, Class: {component_class}")
+
+        node_creator = unreal.GenBlueprintNodeCreator
+        result = node_creator.add_component_with_events(blueprint_path, component_name, component_class)
+
+        import json
+        parsed_result = json.loads(result)
+        log.log_result("add_component_with_events", parsed_result["success"], parsed_result.get("message", parsed_result.get("error", "No message")))
+        return parsed_result
+
+    except Exception as e:
+        log.log_error(f"Error adding component with events: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}

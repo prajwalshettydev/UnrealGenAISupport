@@ -161,6 +161,57 @@ def spawn_object(actor_class: str, location: list = [0, 0, 0], rotation: list = 
             hint = "\nHint: For basic shapes, use 'Cube', 'Sphere', 'Cylinder', or 'Cone'. For other actors, try using '/Script/Engine.PointLight' format."
             error += hint
         return f"Failed to spawn object: {error}"
+    
+@mcp.tool()
+def edit_component_property(blueprint_path: str, component_name: str, property_name: str, value: str,
+                            is_scene_actor: bool = False, actor_name: str = "") -> str:
+    """
+    Edit a property of a component in a Blueprint or scene actor.
+
+    Args:
+        blueprint_path: Path to the Blueprint (e.g., "/Game/FlappyBird/BP_FlappyBird") or "" for scene actors
+        component_name: Name of the component (e.g., "BirdMesh", "RootComponent")
+        property_name: Name of the property to edit (e.g., "StaticMesh", "RelativeLocation")
+        value: New value as a string (e.g., "'/Engine/BasicShapes/Sphere.Sphere'", "100,200,300")
+        is_scene_actor: If True, edit a component on a scene actor (default: False)
+        actor_name: Name of the actor in the scene (required if is_scene_actor is True, e.g., "Cube_1")
+
+    Returns:
+        Message indicating success or failure, with optional property suggestions if the property is not found.
+
+    Capabilities:
+        - Set component properties in Blueprints (e.g., StaticMesh, bSimulatePhysics).
+        - Modify scene actor components (e.g., position, rotation, scale, material).
+        - Supports scalar types (float, int, bool), objects (e.g., materials), and vectors/rotators (e.g., "100,200,300" for FVector).
+        - Examples:
+            - Set a mesh: edit_component_property("/Game/FlappyBird/BP_FlappyBird", "BirdMesh", "StaticMesh", "'/Engine/BasicShapes/Sphere.Sphere'")
+            - Move an actor: edit_component_property("", "RootComponent", "RelativeLocation", "100,200,300", True, "Cube_1")
+            - Rotate an actor: edit_component_property("", "RootComponent", "RelativeRotation", "0,90,0", True, "Cube_1")
+            - Scale an actor: edit_component_property("", "RootComponent", "RelativeScale3D", "2,2,2", True, "Cube_1")
+            - Enable physics: edit_component_property("/Game/FlappyBird/BP_FlappyBird", "BirdMesh", "bSimulatePhysics", "true")
+    """
+    command = {
+        "type": "edit_component_property",
+        "blueprint_path": blueprint_path,
+        "component_name": component_name,
+        "property_name": property_name,
+        "value": value,
+        "is_scene_actor": is_scene_actor,
+        "actor_name": actor_name
+    }
+    response = send_to_unreal(command)
+    try:
+        import json
+        result = json.loads(response)
+        if result.get("success"):
+            return result.get("message", f"Set {property_name} of {component_name} to {value}")
+        else:
+            error = result.get("error", "Unknown error")
+            if "suggestions" in result:
+                error += f"\nSuggestions: {result['suggestions']}"
+            return f"Failed: {error}"
+    except Exception as e:
+        return f"Error parsing response: {str(e)}\nRaw response: {response}"
 
 @mcp.tool()
 def create_material(material_name: str, color: list) -> str:
@@ -185,107 +236,6 @@ def create_material(material_name: str, color: list) -> str:
         return f"Successfully created material '{material_name}' with path: {response.get('material_path')}"
     else:
         return f"Failed to create material: {response.get('error', 'Unknown error')}"
-
-@mcp.tool()
-def set_object_material(actor_name: str, material_path: str) -> str:
-    """
-    Set the material of an object in the level
-    
-    Args:
-        actor_name: Name of the actor to modify
-        material_path: Path to the material asset (e.g., "/Game/Materials/MyMaterial")
-        
-    Returns:
-        Message indicating success or failure
-    """
-    command = {
-        "type": "modify_object",
-        "actor_name": actor_name,
-        "property_type": "material",
-        "value": material_path
-    }
-
-    response = send_to_unreal(command)
-    if response.get("success"):
-        return f"Successfully set material of '{actor_name}' to {material_path}"
-    else:
-        return f"Failed to set material: {response.get('error', 'Unknown error')}"
-
-@mcp.tool()
-def set_object_position(actor_name: str, position: list) -> str:
-    """
-    Set the position of an object in the level
-    
-    Args:
-        actor_name: Name of the actor to modify
-        position: [X, Y, Z] coordinates
-        
-    Returns:
-        Message indicating success or failure
-    """
-    command = {
-        "type": "modify_object",
-        "actor_name": actor_name,
-        "property_type": "position",
-        "value": position
-    }
-
-    response = send_to_unreal(command)
-    if response.get("success"):
-        return f"Successfully set position of '{actor_name}' to {position}"
-    else:
-        return f"Failed to set position: {response.get('error', 'Unknown error')}"
-
-@mcp.tool()
-def set_object_rotation(actor_name: str, rotation: list) -> str:
-    """
-    Set the rotation of an object in the level
-
-    Args:
-        actor_name: Name of the actor to modify
-        rotation: [Pitch, Yaw, Roll] in degrees
-
-    Returns:
-        Message indicating success or failure
-    """
-    command = {
-        "type": "modify_object",
-        "actor_name": actor_name,
-        "property_type": "rotation",
-        "value": rotation
-    }
-
-    response = send_to_unreal(command)
-    if response.get("success"):
-        return f"Successfully set rotation of '{actor_name}' to {rotation}"
-    else:
-        return f"Failed to set rotation: {response.get('error', 'Unknown error')}"
-
-@mcp.tool()
-def set_object_scale(actor_name: str, scale: list) -> str:
-    """
-    Set the scale of an object in the level
-
-    Args:
-        actor_name: Name of the actor to modify
-        scale: [X, Y, Z] scale factors
-
-    Returns:
-        Message indicating success or failure
-    """
-    command = {
-        "type": "modify_object",
-        "actor_name": actor_name,
-        "property_type": "scale",
-        "value": scale
-    }
-
-    response = send_to_unreal(command)
-    if response.get("success"):
-        return f"Successfully set scale of '{actor_name}' to {scale}"
-    else:
-        return f"Failed to set scale: {response.get('error', 'Unknown error')}"
-
 
 #
 # Blueprint Commands
@@ -316,6 +266,7 @@ def create_blueprint(blueprint_name: str, parent_class: str = "Actor", save_path
         return f"Successfully created Blueprint '{blueprint_name}' with path: {response.get('blueprint_path', save_path + '/' + blueprint_name)}"
     else:
         return f"Failed to create Blueprint: {response.get('error', 'Unknown error')}"
+
 
 @mcp.tool()
 def add_component_to_blueprint(blueprint_path: str, component_class: str, component_name: str = None) -> str:
@@ -621,7 +572,7 @@ def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
 # def add_nodes_to_blueprint_bulk(blueprint_path: str, function_id: str, nodes: list) -> str:
 #     """
 #     Add multiple nodes to a Blueprint graph in a single operation
-#     
+# 
 #     Args:
 #         blueprint_path: Path to the Blueprint asset
 #         function_id: ID of the function to add the nodes to
@@ -630,12 +581,12 @@ def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
 #             - node_type: Type of node to add (see add_node_to_blueprint for supported types)
 #             - node_position: Position of the node in the graph [X, Y]
 #             - node_properties: Properties to set on the node (optional)
-#         
+# 
 #     Returns:
 #         On success: Dictionary mapping your node IDs to the actual node GUIDs created in Unreal
 #         On partial success: Dictionary with successful nodes and suggestions for failed nodes
 #         On failure: Error message with suggestions
-#     
+# 
 #     Example success response:
 #         {
 #           "success": true,
@@ -645,7 +596,7 @@ def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
 #             "return_node": "6436796645ED674F3C64A8A94CBA416C"
 #           }
 #         }
-#     
+# 
 #     Example partial success with suggestions:
 #         {
 #           "success": true,
@@ -661,7 +612,7 @@ def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
 #             }
 #           }
 #         }
-#     
+# 
 #     When you receive suggestions, you can retry adding those nodes using the suggested node types.
 #     """
 #     command = {
@@ -677,7 +628,40 @@ def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
 #         return f"Successfully added {len(node_mapping)} nodes to function {function_id} in Blueprint at {blueprint_path}\nNode mapping: {json.dumps(node_mapping, indent=2)}"
 #     else:
 #         return f"Failed to add nodes: {response.get('error', 'Unknown error')}"
-    
+
+@mcp.tool()
+def add_component_with_events(blueprint_path: str, component_name: str, component_class: str) -> str:
+    """
+    Add a component to a Blueprint with overlap events if applicable.
+
+    Args:
+        blueprint_path: Path to the Blueprint (e.g., "/Game/FlappyBird/BP_FlappyBird")
+        component_name: Name of the new component (e.g., "TriggerBox")
+        component_class: Class of the component (e.g., "BoxComponent")
+
+    Returns:
+        Message with success, error, and event GUIDs if created
+    """
+    command = {
+        "type": "add_component_with_events",
+        "blueprint_path": blueprint_path,
+        "component_name": component_name,
+        "component_class": component_class
+    }
+    response = send_to_unreal(command)
+    try:
+        import json
+        result = json.loads(response)
+        if result.get("success"):
+            msg = result.get("message", f"Added component {component_name}")
+            if "events" in result:
+                events = json.loads(result["events"])
+                if events["begin_guid"] or events["end_guid"]:
+                    msg += f"\nOverlap Events - Begin GUID: {events['begin_guid']}, End GUID: {events['end_guid']}"
+            return msg
+        return f"Failed: {result.get('error', 'Unknown error')}"
+    except Exception as e:
+        return f"Error parsing response: {str(e)}\nRaw response: {response}"
     
 @mcp.tool()
 def connect_blueprint_nodes_bulk(blueprint_path: str, function_id: str, connections: list) -> str:
@@ -781,6 +765,60 @@ def is_potentially_destructive(script: str) -> bool:
         if re.search(keyword, script, re.IGNORECASE):
             return True
     return False
+
+
+# Scene Control
+@mcp.tool()
+def get_all_scene_objects() -> str:
+    """
+    Retrieve all actors in the current Unreal Engine level.
+    
+    Returns:
+        JSON string of actors with their names, classes, and locations.
+    """
+    command = {"type": "get_all_scene_objects"}
+    response = send_to_unreal(command)
+    return json.dumps(response) if response.get("success") else f"Failed: {response.get('error', 'Unknown error')}"
+
+# Project Control
+@mcp.tool()
+def create_project_folder(folder_path: str) -> str:
+    """
+    Create a new folder in the Unreal project content directory.
+    
+    Args:
+        folder_path: Path relative to /Game (e.g., "FlappyBird/Assets")
+    """
+    command = {"type": "create_project_folder", "folder_path": folder_path}
+    response = send_to_unreal(command)
+    return response.get("message", f"Failed: {response.get('error', 'Unknown error')}")
+
+@mcp.tool()
+def get_files_in_folder(folder_path: str) -> str:
+    """
+    List all files in a specified project folder.
+    
+    Args:
+        folder_path: Path relative to /Game (e.g., "FlappyBird/Assets")
+    """
+    command = {"type": "get_files_in_folder", "folder_path": folder_path}
+    response = send_to_unreal(command)
+    return json.dumps(response.get("files", [])) if response.get("success") else f"Failed: {response.get('error')}"
+
+
+# Input
+@mcp.tool()
+def add_input_binding(action_name: str, key: str) -> str:
+    """
+    Add an input action binding to Project Settings.
+    
+    Args:
+        action_name: Name of the action (e.g., "Flap")
+        key: Key to bind (e.g., "Space Bar")
+    """
+    command = {"type": "add_input_binding", "action_name": action_name, "key": key}
+    response = send_to_unreal(command)
+    return response.get("message", f"Failed: {response.get('error')}")
 
 if __name__ == "__main__":
     import traceback
