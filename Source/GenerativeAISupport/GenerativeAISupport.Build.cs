@@ -27,7 +27,8 @@ public class GenerativeAISupport : ModuleRules
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"Core", "Engine", "ImageDownload", "ImageDownload"
+				"Core", "Engine", "ImageDownload", "ImageDownload",
+				"DeveloperSettings"
 				// ... add other public dependencies that you statically link with here ...
 			}
 		);
@@ -51,6 +52,18 @@ public class GenerativeAISupport : ModuleRules
 				// ... add private dependencies that you statically link with here ...	
 			}
 		);
+        
+		if (Target.Type == TargetRules.TargetType.Editor)
+		{
+			PrivateDependencyModuleNames.AddRange(
+				new string[]
+				{
+					// Your existing dependencies...
+					"Settings"
+					// PythonScriptPlugin is no longer needed here
+				}
+			);
+		}
 
 
 		DynamicallyLoadedModuleNames.AddRange(

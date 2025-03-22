@@ -18,6 +18,8 @@ game development, evals and interactive experiences. All suggestions and contrib
 
 ## Current Progress:
 
+### LLM/GenAI API Support:
+
 - OpenAI API Support:
     - OpenAI Chat API ✅ 
       [(models-ref)](https://platform.openai.com/docs/models)
@@ -38,21 +40,6 @@ game development, evals and interactive experiences. All suggestions and contrib
         - `claude-3-5-haiku-latest` Model ✅
         - `claude-3-opus-latest` Model ✅ 
     - Claude Vision API 🚧
-- Model Control Protocol (MCP) 🛠️
-    - Clients Support ✅
-        - Claude Desktop App Support ✅
-        - Cursor IDE Support ✅
-        - OpenAI Operator API Support 🚧
-    - Blueprints Auto Generation 🛠️
-        - Creating new blueprint of types ✅
-        - Adding new functions to blueprint ✅
-        - Adding new variables to blueprint ✅
-        - Adding nodes and connections 🛠️ (buggy)
-    - Level/Scene Control for LLMs 🛠️
-        - Spawning Objects and Shapes ✅
-        - Moving, rotating and scaling objects ✅
-        - Changing materials and color ✅
-        - Advanced scene features 🛠️
 - XAI (Grok 3) API Support:
     - XAI Chat Completions API 🚧
         - `grok-beta` Model 🚧
@@ -98,13 +85,36 @@ game development, evals and interactive experiences. All suggestions and contrib
     - Different Platforms 🚧🤝
     - Different Engine Versions 🚧🤝
 
+### Unreal MCP (Model Control Protocol):
+
+- Clients Support ✅
+    - Claude Desktop App Support ✅
+    - Cursor IDE Support ✅
+    - OpenAI Operator API Support 🚧
+- Blueprints Auto Generation 🛠️
+    - Creating new blueprint of types ✅
+    - Adding new functions, function/blueprint variables ✅
+    - Adding nodes and connections 🛠️ (buggy)
+    - Advanced Blueprints Generation 🛠️
+- Level/Scene Control for LLMs 🛠️
+    - Spawning Objects and Shapes ✅
+    - Moving, rotating and scaling objects ✅
+    - Changing materials and color ✅
+    - Advanced scene features 🛠️
+- Control:
+    - Ability to run Python scripts ✅
+    - Ability to run Console Commands ✅
+- UI:
+    - Widgets generation 🛠️
+    - UI Blueprint generation 🛠️
+
 Where,
 - ✅ - Completed
 - 🛠️ - In Progress
 - 🚧 - Planned
 - 🤝 - Need Contributors
 - ❌ - Won't Support For Now
-
+- 
 ## Quick Links:
 
 - [OpenAI API Documentation](https://platform.openai.com/docs/api-reference)
@@ -127,7 +137,7 @@ A project called become human, where NPCs are OpenAI agentic instances. Built us
 ## Table of Contents
 
 - [Setting API Keys](#setting-api-keys)
-    - [For Editor](#for-editor)~~~~
+    - [For Editor](#for-editor)
     - [For Packaged Builds](#for-packaged-builds)
 - [Setting up MCP](#setting-up-mcp)
 - [Adding the plugin to your project](#adding-the-plugin-to-your-project)

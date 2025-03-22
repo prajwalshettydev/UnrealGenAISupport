@@ -49,8 +49,9 @@ class CommandDispatcher:
             "add_nodes_bulk": blueprint_commands.handle_add_nodes_bulk,      # Add this line
             "connect_nodes_bulk": blueprint_commands.handle_connect_nodes_bulk,
             
-            # Python
-            "execute_python": python_commands.handle_execute_python
+            # Python and console
+            "execute_python": python_commands.handle_execute_python,
+            "execute_unreal_command": python_commands.handle_execute_unreal_command
         }
 
     def dispatch(self, command: Dict[str, Any]) -> Dict[str, Any]:

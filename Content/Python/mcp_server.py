@@ -41,8 +41,6 @@ def handshake_test(message: str) -> str:
     except Exception as e:
         return f"Error communicating with Unreal: {str(e)}"
 
-
-# Execute Python Script in Unreal Engine
 @mcp.tool()
 def execute_python_script(script: str) -> str:
     """
@@ -53,9 +51,15 @@ def execute_python_script(script: str) -> str:
         
     Returns:
         Message indicating success, failure, or a request for confirmation.
+        
+    Note:
+        This tool sends the script to Unreal Engine, where it is executed via a temporary file using Unreal's internal
+        Python execution system (similar to GEngine->Exec). This method is stable but may not handle Blueprint-specific
+        APIs as seamlessly as direct Python API calls. For Blueprint manipulation, consider using dedicated tools like
+        `add_node_to_blueprint` or ensuring the script uses stable `unreal` module functions. Use this tool for Python
+        script execution instead of `execute_unreal_command` with 'py' commands.
     """
     try:
-        # Check for destructive actions
         if is_potentially_destructive(script):
             return ("This script appears to involve potentially destructive actions (e.g., deleting or saving files) "
                     "that were not explicitly requested. Please confirm if you want to proceed by saying 'Yes, execute it' "
@@ -73,6 +77,49 @@ def execute_python_script(script: str) -> str:
             return f"Failed to execute script: {response.get('error', 'Unknown error')}"
     except Exception as e:
         return f"Error sending script to Unreal: {str(e)}"
+
+@mcp.tool()
+def execute_unreal_command(command: str) -> str:
+    """
+    Execute an Unreal Engine command-line (CMD) command.
+    
+    Args:
+        command: A string containing the Unreal Engine command to execute (e.g., "obj list", "stat fps").
+        
+    Returns:
+        Message indicating success or failure, including any output or errors.
+        
+    Note:
+        This tool executes commands directly in Unreal Engine's command system, similar to the editor's console.
+        It is intended for built-in editor commands (e.g., "stat fps", "obj list") and not for running Python scripts.
+        Do not use this tool with 'py' commands (e.g., "py script.py"); instead, use `execute_python_script` for Python
+        execution, which provides dedicated safety checks and output handling. Output capture is limited; for detailed
+        output, consider wrapping the command in a Python script with `execute_python_script`.
+    """
+    try:
+        # Check if the command is attempting to run a Python script
+        if command.strip().lower().startswith("py "):
+            return ("Error: Use `execute_python_script` to run Python scripts instead of `execute_unreal_command` with 'py' commands. "
+                    "For example, use `execute_python_script(script='your_code_here')` for Python execution.")
+
+        # Check for potentially destructive commands
+        destructive_keywords = ["delete", "save", "quit", "exit", "restart"]
+        if any(keyword in command.lower() for keyword in destructive_keywords):
+            return ("This command appears to involve potentially destructive actions (e.g., deleting or saving). "
+                    "Please confirm by saying 'Yes, execute it' or explicitly request such actions.")
+
+        command_dict = {
+            "type": "execute_unreal_command",
+            "command": command
+        }
+        response = send_to_unreal(command_dict)
+        if response.get("success"):
+            output = response.get("output", "Command executed with no detailed output returned")
+            return f"Command '{command}' executed successfully. Output: {output}"
+        else:
+            return f"Failed to execute command '{command}': {response.get('error', 'Unknown error')}"
+    except Exception as e:
+        return f"Error sending command to Unreal: {str(e)}"
 
 #
 # Basic Object Commands
@@ -312,6 +359,10 @@ def add_variable_to_blueprint(blueprint_path: str, variable_name: str, variable_
     Returns:
         Message indicating success or failure
     """
+    # Convert default_value to string if it's a number
+    if default_value is not None and not isinstance(default_value, str):
+        default_value = str(default_value)
+    
     command = {
         "type": "add_variable",
         "blueprint_path": blueprint_path,
@@ -376,13 +427,13 @@ def add_node_to_blueprint(blueprint_path: str, function_id: str, node_type: str,
             - Utilities: "PrintString", "Delay", "GetActorLocation", "SetActorLocation"
             - For other functions, try using the exact function name from Blueprints
               (e.g., "GetWorldLocation", "SpawnActorFromClass")
-            
             If the requested node type isn't found, the system will search for alternatives
             and return suggestions. You can then use these suggestions in a new request.
-            
-        node_position: Position of the node in the graph [X, Y], ALWAYS SPACE THEM WELL, ORGANIZE THEM WELL, TRY TO NOT OVERLAP THEM
+        node_position: Position of the node in the graph [X, Y]. **IMPORTANT**: Space nodes
+            at least 400 units apart horizontally and 300 units vertically to avoid overlap
+            and ensure a clean, organized graph (e.g., [0, 0], [400, 0], [800, 0] for a chain).
         node_properties: Properties to set on the node (optional)
-        
+    
     Returns:
         On success: The node ID (GUID)
         On failure: A response containing "SUGGESTIONS:" followed by alternative node types to try

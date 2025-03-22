@@ -29,16 +29,16 @@ public:
 	static FString AddNodesBulk(const FString& BlueprintPath, const FString& FunctionGuid, const FString& NodesJson);
 
 	UFUNCTION(BlueprintCallable, Category = "Blueprint")
-	bool DeleteNode(const FString& BlueprintPath, const FString& FunctionGuid, const FString& NodeGuid);
+	static bool DeleteNode(const FString& BlueprintPath, const FString& FunctionGuid, const FString& NodeGuid);
 
 	UFUNCTION(BlueprintCallable, Category = "Blueprint")
-	FString GetAllNodesInGraph(const FString& BlueprintPath, const FString& FunctionGuid);
+	static FString GetAllNodesInGraph(const FString& BlueprintPath, const FString& FunctionGuid);
 	
 	UFUNCTION(BlueprintCallable, Category = "Blueprint")
-	UEdGraph* FindGraphByGuid(UBlueprint* Blueprint, const FGuid& GraphGuid);
+	static UEdGraph* FindGraphByGuid(UBlueprint* Blueprint, const FGuid& GraphGuid);
 	
 	UFUNCTION(BlueprintCallable, Category = "Blueprint")
-	FString GetNodeSuggestions(const FString& NodeType);
+	static FString GetNodeSuggestions(const FString& NodeType);
 
 private:
 	// Static map of friendly node names to Unreal Engine node types
@@ -49,6 +49,7 @@ private:
 	// Attempts to create a node of a known type
 	static bool TryCreateKnownNodeType(UEdGraph* Graph, const FString& NodeType, UK2Node*& OutNode,
 									   const FString& PropertiesJson = TEXT(""));
+	static UEdGraph* GetGraphFromFunctionId(UBlueprint* Blueprint, const FString& FunctionGuid);
 
 	// Attempts to create a node by searching Blueprint libraries and actor classes
 	static FString TryCreateNodeFromLibraries(UEdGraph* Graph, const FString& NodeType, UK2Node*& OutNode,
