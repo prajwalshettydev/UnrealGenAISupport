@@ -4,14 +4,13 @@ from typing import Dict, Any, List, Tuple
 from utils import unreal_conversions as uc
 from utils import logging as log
 
-
 def handle_spawn(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a spawn command
     
     Args:
         command: The command dictionary containing:
-            - actor_class: Actor class name or path
+            - actor_class: Actor class name/path or mesh path (e.g., "/Game/Blueprints/BP_Barrel" or "/Game/Meshes/SM_Barrel01.SM_Barrel01")
             - location: [X, Y, Z] coordinates (optional)
             - rotation: [Pitch, Yaw, Roll] in degrees (optional)
             - scale: [X, Y, Z] scale factors (optional)
@@ -28,21 +27,7 @@ def handle_spawn(command: Dict[str, Any]) -> Dict[str, Any]:
         scale = command.get("scale", (1, 1, 1))
         actor_label = command.get("actor_label")
 
-        log.log_command("spawn", f"Class: {actor_class_name}, Label: {actor_label}")
-
-        # Import the C++ utility class
-        gen_actor_utils = unreal.GenActorUtils
-
-        # First handle specific cases for basic shapes
-        actor_class_lower = actor_class_name.lower()
-
-        # Map to properly capitalized names for finding assets
-        shape_map = {
-            "cube": "Cube",
-            "sphere": "Sphere",
-            "cylinder": "Cylinder",
-            "cone": "Cone"
-        }
+        unreal.log(f"Spawn command: Class: {actor_class_name}, Label: {actor_label}")
 
         # Convert parameters to Unreal types
         loc = uc.to_unreal_vector(location)
@@ -50,32 +35,38 @@ def handle_spawn(command: Dict[str, Any]) -> Dict[str, Any]:
         scale_vector = uc.to_unreal_vector(scale)
 
         actor = None
+        gen_actor_utils = unreal.GenActorUtils
 
-        # Use the right C++ function based on the actor type
-        if actor_class_lower in shape_map:
-            proper_name = shape_map[actor_class_lower]
-            actor = gen_actor_utils.spawn_basic_shape(proper_name, loc, rot, scale_vector, actor_label or "")
+        # Check if it's a mesh path (e.g., "/Game/.../SM_Barrel01.SM_Barrel01")
+        if actor_class_name.startswith("/Game") and "." in actor_class_name:
+            # Try loading as a static mesh
+            mesh = unreal.load_object(None, actor_class_name)
+            if isinstance(mesh, unreal.StaticMesh):
+                actor = gen_actor_utils.spawn_static_mesh_actor(actor_class_name, loc, rot, scale_vector, actor_label or "")
+            else:
+                # Fallback to actor class if not a mesh
+                actor = gen_actor_utils.spawn_actor_from_class(actor_class_name, loc, rot, scale_vector, actor_label or "")
         else:
-            actor = gen_actor_utils.spawn_actor_from_class(actor_class_name, loc, rot, scale_vector, actor_label or "")
+            # Handle basic shapes or actor classes
+            shape_map = {"cube": "Cube", "sphere": "Sphere", "cylinder": "Cylinder", "cone": "Cone"}
+            actor_class_lower = actor_class_name.lower()
+            if actor_class_lower in shape_map:
+                proper_name = shape_map[actor_class_lower]
+                actor = gen_actor_utils.spawn_basic_shape(proper_name, loc, rot, scale_vector, actor_label or "")
+            else:
+                actor = gen_actor_utils.spawn_actor_from_class(actor_class_name, loc, rot, scale_vector, actor_label or "")
 
         if not actor:
-            log.log_error(f"Failed to spawn actor of type {actor_class_name}")
+            unreal.log_error(f"Failed to spawn actor of type {actor_class_name}")
             return {"success": False, "error": f"Failed to spawn actor of type {actor_class_name}"}
 
         actor_name = actor.get_actor_label()
-        log.log_result("spawn", True, f"Actor: {actor_name} at {loc}")
+        unreal.log(f"Spawned actor: {actor_name} at {loc}")
         return {"success": True, "actor_name": actor_name}
 
     except Exception as e:
-        log.log_error(f"Error spawning actor: {str(e)}", include_traceback=True)
-
-        # Add hint for Claude to understand what went wrong
-        error_msg = str(e)
-        if "not found" in error_msg:
-            hint = "\nHint: For basic shapes, use 'Cube', 'Sphere', 'Cylinder', or 'Cone'. For other actors, try using '/Script/Engine.PointLight' format."
-            error_msg += hint
-
-        return {"success": False, "error": error_msg}
+        unreal.log_error(f"Error spawning actor: {str(e)}")
+        return {"success": False, "error": str(e)}
 
 
 def handle_create_material(command: Dict[str, Any]) -> Dict[str, Any]:

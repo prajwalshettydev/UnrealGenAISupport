@@ -69,6 +69,58 @@ AActor* UGenActorUtils::SpawnBasicShape(const FString& ShapeName, const FVector&
     return Actor;
 }
 
+AActor* UGenActorUtils::SpawnStaticMeshActor(const FString& MeshPath, const FVector& Location, 
+                                            const FRotator& Rotation, const FVector& Scale, 
+                                            const FString& ActorLabel)
+{
+    // Load the static mesh
+    UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, *MeshPath);
+    if (!Mesh)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Could not load static mesh from: %s"), *MeshPath);
+        return nullptr;
+    }
+
+    // Get the world
+    UWorld* World = GEditor->GetEditorWorldContext().World();
+    if (!World)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Failed to get editor world"));
+        return nullptr;
+    }
+
+    // Spawn a StaticMeshActor
+    AStaticMeshActor* Actor = World->SpawnActor<AStaticMeshActor>(AStaticMeshActor::StaticClass(), Location, Rotation);
+    if (!Actor)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Failed to spawn StaticMeshActor"));
+        return nullptr;
+    }
+
+    // Set the static mesh
+    UStaticMeshComponent* MeshComponent = Actor->GetStaticMeshComponent();
+    if (MeshComponent)
+    {
+        MeshComponent->SetStaticMesh(Mesh);
+        Actor->SetActorScale3D(Scale);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("No StaticMeshComponent found on spawned actor"));
+        Actor->Destroy();
+        return nullptr;
+    }
+
+    // Set custom label if provided
+    if (!ActorLabel.IsEmpty())
+    {
+        Actor->SetActorLabel(*ActorLabel);
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("Spawned StaticMeshActor with mesh %s labeled %s"), *MeshPath, *ActorLabel);
+    return Actor;
+}
+
 AActor* UGenActorUtils::SpawnActorFromClass(const FString& ActorClassName, const FVector& Location, 
                                            const FRotator& Rotation, const FVector& Scale, 
                                            const FString& ActorLabel)

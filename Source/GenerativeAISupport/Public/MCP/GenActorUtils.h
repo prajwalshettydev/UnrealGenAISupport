@@ -22,7 +22,11 @@ public:
 	static AActor* SpawnBasicShape(const FString& ShapeName, const FVector& Location, 
 								  const FRotator& Rotation, const FVector& Scale, 
 								  const FString& ActorLabel);
-    
+	
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Actor Utils")							  
+	static AActor* SpawnStaticMeshActor(const FString& MeshPath, const FVector& Location, const FRotator& Rotation,
+	                             const FVector& Scale, const FString& ActorLabel);
+
 	UFUNCTION(BlueprintCallable, Category = "Generative AI|Actor Utils")
 	static AActor* SpawnActorFromClass(const FString& ActorClassName, const FVector& Location, 
 									  const FRotator& Rotation, const FVector& Scale, 
