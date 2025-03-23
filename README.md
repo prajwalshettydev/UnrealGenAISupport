@@ -1,7 +1,7 @@
 # Unreal Engine Generative AI Support Plugin
 
-> [!CAUTION]  
-> This plugin is currently under rapid development
+> [!WARNING]  
+> This plugin is still under rapid development.
 > 1) Do not use it in production environments. ⚠️
 > 2) Do not use it without version control. ⚠️
 > 
