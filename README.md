@@ -3,8 +3,10 @@
 ## Usage Examples:
 #### MCP Example:
 Claude spawning scene objects and controlling their transformations and materials, generating blueprints, functions, variables, adding components, running python scripts etc.
+
 <img src="Docs/UnrealMcpDemo.gif" width="480"/>
-### API Example:
+
+#### API Example:
 A project called become human, where NPCs are OpenAI agentic instances. Built using this plugin.
 ![Become Human](Docs/BHDemoGif.gif)
 
@@ -113,12 +115,19 @@ game development, evals and interactive experiences. All suggestions and contrib
     - Moving, rotating and scaling objects ✅
     - Changing materials and color ✅
     - Advanced scene features 🛠️
+- Generative AI:
+    - Prompt to 3D model fetch and spawn 🛠️ 
 - Control:
     - Ability to run Python scripts ✅
     - Ability to run Console Commands ✅
 - UI:
     - Widgets generation 🛠️
     - UI Blueprint generation 🛠️
+- Project Files:
+    - Create/Edit project files/folders ️✅
+    - Delete existing project files ❌
+- Others:
+    - Project Cleanup 🛠️ 
 
 Where,
 - ✅ - Completed
@@ -499,17 +508,17 @@ Tested models are `claude-3-7-sonnet-latest`, `claude-3-5-sonnet`, `claude-3-5-h
 <img src="Docs/BpExampleClaudeChat.png" width="782"/>
 
 ## Model Control Protocol (MCP):
-This is currently work in progress. The plugin will support various clients like Claude Desktop App, OpenAI Operator API etc.
+This is currently work in progress. The plugin supports various clients like Claude Desktop App, Cursor etc.
 ### Usage:
 
 Running the MCP server:
 #### 1. Run the MCP server from the plugin's python directory.
 ```bash
-python <your_project_directoy>/ExamplesForUEGenAIPlugin/Plugins/GenerativeAISupport/Content/Python/mcp_server.py
+python <your_project_directoy>/Plugins/GenerativeAISupport/Content/Python/mcp_server.py
 ```
-#### 2. Run the MCP client by opening or restarting the claude desktop app.
+#### 2. Run the MCP client by opening or restarting the Claude desktop app or Cursor IDE.
 
-#### 3. Run the Unreal Engine project and run the python script from the plugin's python directory.
+#### 3. Open a new Unreal Engine project and run the below python script from the plugin's python directory.
 
 > Tools -> Run Python Script -> Select the `Plugins/GenerativeAISupport/Content/Python/unreal_socket_server.py` file.
 
@@ -519,6 +528,12 @@ python <your_project_directoy>/ExamplesForUEGenAIPlugin/Plugins/GenerativeAISupp
 - Nodes fail to connect properly with MCP
 - No undo redo support for MCP
 - No streaming support for Deepseek reasoning model
+- No complex material generation support for the create material tool
+- Issues with running some llm generated valid python scripts
+- When LLM compiles a blueprint no proper error handling in its response
+- Issues spawning certain nodes, especially with getters and setters
+- Doesn't open the right context window during scene and project files edit. 
+- Doesn't dock the window properly in the editor for blueprints.
 
 ## Contribution Guidelines:
 
