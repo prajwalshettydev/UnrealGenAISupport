@@ -1,5 +1,13 @@
 # Unreal Engine Generative AI Support Plugin
 
+## Usage Examples:
+#### MCP Example:
+Claude spawning scene objects and controlling their transformations and materials, generating blueprints, functions, variables, adding components, running python scripts etc.
+<img src="Docs/UnrealMcpDemo.gif" width="480"/>
+### API Example:
+A project called become human, where NPCs are OpenAI agentic instances. Built using this plugin.
+![Become Human](Docs/BHDemoGif.gif)
+
 > [!WARNING]  
 > This plugin is still under rapid development.
 > 1) Do not use it in production environments. ⚠️
@@ -118,25 +126,6 @@ Where,
 - 🚧 - Planned
 - 🤝 - Need Contributors
 - ❌ - Won't Support For Now
-- 
-## Quick Links:
-
-- [OpenAI API Documentation](https://platform.openai.com/docs/api-reference)
-- [Anthropic API Documentation](https://docs.anthropic.com/en/docs/about-claude/models)
-- [XAI API Documentation](https://docs.x.ai/api)
-- [Google Gemini API Documentation](https://ai.google.dev/gemini-api/docs/models/gemini)
-- [Meta AI API Documentation](https://docs.llama-api.com/quickstart#available-models)
-- [Deepseek API Documentation](https://api-docs.deepseek.com/)
-- [Model Control Protocol (MCP) Documentation](https://modelcontextprotocol.io/)
-- [TripoSt Documentation](https://huggingface.co/stabilityai/TripoSR)
-
-## Usage Examples:
-#### MCP Example:
-Claude spawning scene objects and controlling their transformations and materials in Unreal Engine.
-<img src="Docs/SpeedUpClaudeDemo1.gif" width="480"/>
-### API Example:
-A project called become human, where NPCs are OpenAI agentic instances. Built using this plugin.
-![Become Human](Docs/BHDemoGif.gif)
 
 ## Table of Contents
 
@@ -552,3 +541,15 @@ More details will be added soon.
   from: [OpenAI-Api-Unreal by KellanM](https://github.com/KellanM/OpenAI-Api-Unreal/blob/main/Source/OpenAIAPI/Private/OpenAIUtils.cpp)
 * MCP Server inspiration
   from: [Blender-MCP by ahujasid](https://github.com/ahujasid/blender-mcp)
+
+
+## Quick Links:
+
+- [OpenAI API Documentation](https://platform.openai.com/docs/api-reference)
+- [Anthropic API Documentation](https://docs.anthropic.com/en/docs/about-claude/models)
+- [XAI API Documentation](https://docs.x.ai/api)
+- [Google Gemini API Documentation](https://ai.google.dev/gemini-api/docs/models/gemini)
+- [Meta AI API Documentation](https://docs.llama-api.com/quickstart#available-models)
+- [Deepseek API Documentation](https://api-docs.deepseek.com/)
+- [Model Control Protocol (MCP) Documentation](https://modelcontextprotocol.io/)
+- [TripoSt Documentation](https://huggingface.co/stabilityai/TripoSR)
