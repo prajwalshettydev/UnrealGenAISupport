@@ -7,6 +7,7 @@ from typing import Dict, Any, Tuple, List, Optional
 
 # Import handlers
 from handlers import basic_commands, actor_commands, blueprint_commands, python_commands
+from handlers import ui_commands
 from utils import logging as log
 
 # Global queues and state
@@ -63,7 +64,11 @@ class CommandDispatcher:
             "get_files_in_folder": basic_commands.handle_get_files_in_folder,
             
             # Input
-            "add_input_binding": basic_commands.handle_add_input_binding
+            "add_input_binding": basic_commands.handle_add_input_binding,
+
+            # --- NEW UI COMMANDS ---
+            "add_widget_to_user_widget": ui_commands.handle_add_widget_to_user_widget,
+            "edit_widget_property": ui_commands.handle_edit_widget_property,
         }
 
     def dispatch(self, command: Dict[str, Any]) -> Dict[str, Any]:

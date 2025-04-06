@@ -1,39 +1,53 @@
-# Content/Python/init_unreal.py - Simplified config-only version
+# Content/Python/init_unreal.py - Using UE settings integration
 import unreal
 import importlib.util
 import os
 import sys
-import json
 from utils import logging as log
 
 def initialize_socket_server():
     """
-    Initialize the socket server if auto-start is enabled in config
+    Initialize the socket server if auto-start is enabled in UE settings
     """
-    # Use config file approach
-    config_path = None
     auto_start = False
-
-    # Find our plugin's Python directory
-    plugin_python_path = None
-    for path in sys.path:
-        if "GenerativeAISupport/Content/Python" in path:
-            plugin_python_path = path
-            config_path = os.path.join(plugin_python_path, "socket_server_config.json")
-            break
-
-    # Try to read config file
-    if config_path and os.path.exists(config_path):
-        try:
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-                auto_start = config.get("auto_start_socket_server", False)
-        except Exception as e:
-            unreal.log_error(f"Error reading config file: {e}")
+    
+    # Get settings from UE settings system
+    try:
+        # First get the class reference
+        settings_class = unreal.load_class(None, '/Script/GenerativeAISupport.GenerativeAISupportSettings')
+        if settings_class:
+            # Get the settings object using the class reference
+            settings = unreal.get_default_object(settings_class)
+            
+            # Log available properties for debugging
+            log.log_info(f"Settings object properties: {dir(settings)}")
+            
+            # Check if auto-start is enabled
+            if hasattr(settings, 'auto_start_socket_server'):
+                auto_start = settings.auto_start_socket_server
+                log.log_info(f"Socket server auto-start setting: {auto_start}")
+            else:
+                log.log_warning("auto_start_socket_server property not found in settings")
+                # Try alternative property names that might exist
+                for prop in dir(settings):
+                    if 'auto' in prop.lower() or 'socket' in prop.lower() or 'server' in prop.lower():
+                        log.log_info(f"Found similar property: {prop}")
+        else:
+            log.log_error("Could not find GenerativeAISupportSettings class")
+    except Exception as e:
+        log.log_error(f"Error reading UE settings: {e}")
+        log.log_info("Falling back to disabled auto-start")
 
     # Auto-start if configured
     if auto_start:
-        unreal.log("Auto-starting Unreal Socket Server...")
+        log.log_info("Auto-starting Unreal Socket Server...")
+
+        # Find our plugin's Python directory
+        plugin_python_path = None
+        for path in sys.path:
+            if "GenerativeAISupport/Content/Python" in path:
+                plugin_python_path = path
+                break
 
         if plugin_python_path:
             server_path = os.path.join(plugin_python_path, "unreal_socket_server.py")

@@ -5,16 +5,18 @@
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 
-
-class FGenerativeAISupportModule : public IModuleInterface
+class GENERATIVEAISUPPORT_API FGenerativeAISupportModule : public IModuleInterface
 {
 public:
-	virtual void StartupModule() override;
-	virtual void ShutdownModule() override;
+    FGenerativeAISupportModule();
 
-	void RegisterSettings();
-	void UnregisterSettings();
+    // IModuleInterface implementation
+    virtual void StartupModule() override;
+    virtual void ShutdownModule() override;
 
 private:
-	bool bSettingsRegistered = false; // Track whether settings are already registered
+    void RegisterSettings();
+    void UnregisterSettings();
+
+    bool bSettingsRegistered;
 };

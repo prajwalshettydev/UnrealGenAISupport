@@ -9,6 +9,12 @@
 
 #define LOCTEXT_NAMESPACE "FGenerativeAISupportModule"
 
+FGenerativeAISupportModule::FGenerativeAISupportModule()
+    : bSettingsRegistered(false)
+{
+    // Constructor initialization ensures proper state
+}
+
 void FGenerativeAISupportModule::StartupModule()
 {
     // Log to debug module loading
@@ -27,7 +33,6 @@ void FGenerativeAISupportModule::ShutdownModule()
 void FGenerativeAISupportModule::RegisterSettings()
 {
 #if WITH_EDITOR
-    UnregisterSettings();
     // Prevent duplicate registration
     if (bSettingsRegistered)
     {
@@ -38,8 +43,8 @@ void FGenerativeAISupportModule::RegisterSettings()
     if (ISettingsModule* SettingsModule = FModuleManager::GetModulePtr<ISettingsModule>("Settings"))
     {
         ISettingsSectionPtr SettingsSection = SettingsModule->RegisterSettings("Project", "Plugins", "GenerativeAISupport",
-            FText::FromString("Generative AI Support"),
-            FText::FromString("Configuration for the GenerativeAISupport plugin"),
+            LOCTEXT("GenerativeAISupportSettingsName", "Generative AI Support"),
+            LOCTEXT("GenerativeAISupportDescription", "Configuration for the GenerativeAISupport plugin"),
             GetMutableDefault<UGenerativeAISupportSettings>()
         );
 

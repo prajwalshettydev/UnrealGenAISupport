@@ -53,7 +53,8 @@ public class GenerativeAISupport : ModuleRules
 				"MaterialEditor",
 				"MaterialUtilities",
 				"BlueprintGraph",
-				"FunctionalTesting"
+				"FunctionalTesting", "UMGEditor",
+				"UMG"
 				// ... add private dependencies that you statically link with here ...	
 			}
 		);

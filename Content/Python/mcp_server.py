@@ -844,6 +844,94 @@ def create_game_mode(game_mode_path: str, pawn_blueprint_path: str, base_class: 
     except Exception as e:
         return f"Error creating game mode: {str(e)}"
 
+@mcp.tool()
+def add_widget_to_user_widget(user_widget_path: str, widget_type: str, widget_name: str, parent_widget_name: str = "") -> str:
+    """
+    Adds a new widget (like TextBlock, Button, Image, CanvasPanel, VerticalBox) to a User Widget Blueprint.
+
+    Args:
+        user_widget_path: Path to the User Widget Blueprint (e.g., "/Game/UI/WBP_MainMenu").
+        widget_type: Class name of the widget to add (e.g., "TextBlock", "Button", "Image", "CanvasPanel", "VerticalBox", "HorizontalBox", "SizeBox", "Border"). Case-sensitive.
+        widget_name: A unique desired name for the new widget variable (e.g., "TitleText", "StartButton", "PlayerHealthBar"). The actual name might get adjusted for uniqueness.
+        parent_widget_name: Optional. The name of an existing Panel widget (like CanvasPanel, VerticalBox) inside the User Widget to attach this new widget to. If empty, attempts to attach to the root or the first available CanvasPanel.
+
+    Returns:
+        JSON string indicating success (with actual widget name) or failure with an error message.
+    """
+    command = {
+        "type": "add_widget_to_user_widget",
+        "user_widget_path": user_widget_path,
+        "widget_type": widget_type,
+        "widget_name": widget_name,
+        "parent_widget_name": parent_widget_name
+    }
+    # Use json.loads to parse the JSON string returned by send_to_unreal
+    response_str = send_to_unreal(command)
+    try:
+        response_dict = json.loads(response_str)
+        # Return a user-friendly string summary
+        if response_dict.get("success"):
+            actual_name = response_dict.get("widget_name", widget_name)
+            return response_dict.get("message", f"Successfully added widget '{actual_name}' of type '{widget_type}' to '{user_widget_path}'.")
+        else:
+            return f"Failed to add widget: {response_dict.get('error', 'Unknown C++ error')}"
+    except json.JSONDecodeError:
+        return f"Failed to parse response from Unreal: {response_str}"
+    except Exception as e:
+        # Catch potential errors if send_to_unreal itself failed before returning JSON
+        if isinstance(response_str, dict) and not response_str.get("success"):
+            return f"Failed to send command: {response_str.get('error', 'Unknown MCP error')}"
+        return f"An unexpected error occurred: {str(e)} Response: {response_str}"
+
+@mcp.tool()
+def edit_widget_property(user_widget_path: str, widget_name: str, property_name: str, value: str) -> str:
+    """
+    Edits a property of a specific widget within a User Widget Blueprint.
+
+    Args:
+        user_widget_path: Path to the User Widget Blueprint (e.g., "/Game/UI/WBP_MainMenu").
+        widget_name: The name of the widget inside the User Widget whose property you want to change (e.g., "TitleText", "StartButton").
+        property_name: The name of the property to edit. For layout properties controlled by the parent panel (like position, size, anchors in a CanvasPanel), prefix with "Slot." (e.g., "Text", "ColorAndOpacity", "Brush.ImageSize", "Slot.Position", "Slot.Size", "Slot.Anchors", "Slot.Alignment"). Case-sensitive.
+        value: The new value for the property, formatted as a string EXACTLY as Unreal expects for ImportText. Examples:
+            - Text: '"Hello World!"' (Note: String literal requires inner quotes)
+            - Float: '150.0'
+            - Integer: '10'
+            - Boolean: 'true' or 'false'
+            - LinearColor: '(R=1.0,G=0.0,B=0.0,A=1.0)'
+            - Vector2D (for Size, Position): '(X=200.0,Y=50.0)'
+            - Anchors: '(Minimum=(X=0.5,Y=0.0),Maximum=(X=0.5,Y=0.0))' (Top Center Anchor)
+            - Alignment (Vector2D): '(X=0.5,Y=0.5)' (Center Alignment)
+            - Font (FSlateFontInfo): "(FontObject=Font'/Engine/EngineFonts/Roboto.Roboto',Size=24)"
+            - Texture (Object Path): "Texture2D'/Game/Textures/MyIcon.MyIcon'"
+            - Enum (e.g., Stretch): 'ScaleToFit'
+
+    Returns:
+        JSON string indicating success or failure with an error message.
+    """
+    command = {
+        "type": "edit_widget_property",
+        "user_widget_path": user_widget_path,
+        "widget_name": widget_name,
+        "property_name": property_name,
+        "value": value # Pass the string value directly
+    }
+    # Use json.loads to parse the JSON string returned by send_to_unreal
+    response_str = send_to_unreal(command)
+    try:
+        response_dict = json.loads(response_str)
+        # Return a user-friendly string summary
+        if response_dict.get("success"):
+            return response_dict.get("message", f"Successfully set property '{property_name}' on widget '{widget_name}'.")
+        else:
+            return f"Failed to edit widget property: {response_dict.get('error', 'Unknown C++ error')}"
+    except json.JSONDecodeError:
+        return f"Failed to parse response from Unreal: {response_str}"
+    except Exception as e:
+        # Catch potential errors if send_to_unreal itself failed before returning JSON
+        if isinstance(response_str, dict) and not response_str.get("success"):
+            return f"Failed to send command: {response_str.get('error', 'Unknown MCP error')}"
+        return f"An unexpected error occurred: {str(e)} Response: {response_str}"
+
 # Input
 @mcp.tool()
 def add_input_binding(action_name: str, key: str) -> str:

@@ -1,6 +1,9 @@
-// GenerativeAISupportSettings.cpp
+// Copyright Epic Games, Inc. All Rights Reserved.
+
 #include "GenerativeAISupportSettings.h"
 
-
-// No registration code here
-// The registration should only happen in the module file
+UGenerativeAISupportSettings::UGenerativeAISupportSettings()
+    : bAutoStartSocketServer(false) // Default to false for safety
+{
+    // Default constructor
+}
