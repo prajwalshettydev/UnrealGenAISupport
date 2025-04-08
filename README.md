@@ -17,13 +17,14 @@ A project called become human, where NPCs are OpenAI agentic instances. Built us
 > 
 > A stable version will be released soon. 🚀🔥
 
+<p align="center"><img src="Docs/Repo Card - Updated.png" width="512"/></p>
+
+
 Every month, hundreds of new AI models are released by various organizations, making it hard to keep up with the latest advancements.
 
 The Unreal Engine Generative AI Support Plugin allows you to focus on game development without worrying about the LLM/GenAI integration layer.
 
 Currently integrating Model Control Protocol (MCP) with Unreal Engine 5.5.
-
-<p align="center"><img src="Docs/Repo Card - UnrealGenAISupport.png" width="512"/></p>
 
 This project aims to build a long-term support (LTS) plugin for various cutting-edge LLM/GenAI models and foster a
 community around it. It currently includes OpenAI's GPT-4o, Deepseek R1, Claude Sonnet 3.7 and GPT-4o-mini for Unreal Engine 5.1 or higher, with plans to add
@@ -62,12 +63,13 @@ game development, evals and interactive experiences. All suggestions and contrib
 - Google Gemini API Support:
     - Gemini Chat API 🚧🤝
         - `gemini-2.0-flash-lite`, `gemini-2.0-flash` `gemini-1.5-flash` Model 🚧🤝
+        - Gemini 2.5 Pro Model🚧🤝
     - Gemini Imagen API: 🚧
-        - `imagen-3.0-generate-002` Model 🚧
+      - `imagen-3.0-generate-002` Model 🚧
 - Meta AI API Support:
-    - Llama Chat API ❌ (Until new generation models are released)
-        - `llama3.3-70b` Model ❌
-        - `llama3.1-8b` Model ❌
+    - Llama 4 herd:
+      - Llama 4 Behemoth, Llama 4 Maverick, Llama 4 Scout 🚧🤝
+      - llama3.3-70b, llama3.1-8b Model❌
     - Local Llama API 🚧🤝
 - Deepseek API Support:
     - Deepseek Chat API ✅
