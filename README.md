@@ -260,6 +260,10 @@ pip install mcp[cli]
 ```
 ##### 4. Enable python plugin in Unreal Engine. (Edit -> Plugins -> Python Editor Script Plugin)
 
+##### 5. [OPTIONAL] Enable AutoStart MCP server on editor open
+
+<img src="Docs/Settings.png" width="782"/>
+
 
 ## Adding the plugin to your project:
 
@@ -513,14 +517,21 @@ Tested models are `claude-3-7-sonnet-latest`, `claude-3-5-sonnet`, `claude-3-5-h
 This is currently work in progress. The plugin supports various clients like Claude Desktop App, Cursor etc.
 ### Usage:
 
-Running the MCP server:
-#### 1. Run the MCP server from the plugin's python directory.
+#### If Autostart MCP server is enabled: (In plugin's settings)
+##### 1. Open the Unreal Engine Editor.
+##### 2. Open the Claude Desktop App or Cursor IDE or Windsor. 
+
+That's it! You can now use the MCP features of the plugin.
+
+#### If Autostart MCP server is disabled:
+
+##### 1. Run the MCP server from the plugin's python directory.
 ```bash
 python <your_project_directoy>/Plugins/GenerativeAISupport/Content/Python/mcp_server.py
 ```
-#### 2. Run the MCP client by opening or restarting the Claude desktop app or Cursor IDE.
+##### 2. Run the MCP client by opening or restarting the Claude desktop app or Cursor IDE.
 
-#### 3. Open a new Unreal Engine project and run the below python script from the plugin's python directory.
+##### 3. Open a new Unreal Engine project and run the below python script from the plugin's python directory.
 
 > Tools -> Run Python Script -> Select the `Plugins/GenerativeAISupport/Content/Python/unreal_socket_server.py` file.
 
