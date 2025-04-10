@@ -761,8 +761,44 @@ bool SGenEditorWindow::IsUnrealSocketServerRunning() const
 
 bool SGenEditorWindow::IsMCPServerRunning() const
 {
-    return FPlatformProcess::IsApplicationRunning(TEXT("python")) &&
-           (IsClaudeConfigured() || IsCursorConfigured());
+    // Check for MCP server PID file
+    FString PidFilePath = FPaths::Combine(FPlatformProcess::UserHomeDir(), TEXT(".unrealgenai"), TEXT("mcp_server.pid"));
+    
+    if (FPaths::FileExists(PidFilePath))
+    {
+        // Read PID and port from the file
+        FString FileContent;
+        if (FFileHelper::LoadFileToString(FileContent, *PidFilePath))
+        {
+            TArray<FString> Lines;
+            FileContent.ParseIntoArrayLines(Lines, false);
+            
+            if (Lines.Num() >= 1)
+            {
+                int32 ProcessId = FCString::Atoi(*Lines[0]);
+                
+                // Check if process is still running
+                if (ProcessId > 0 && FPlatformProcess::IsApplicationRunning(ProcessId))
+                {
+                    // Process is running, set details
+                    if (Lines.Num() >= 2)
+                    {
+                        // Store port in details if available
+                        MCPServerDetailsText->SetText(FText::FromString(FString::Printf(TEXT("Running on port %s"), *Lines[1])));
+                    }
+                    return true;
+                }
+            }
+        }
+        
+        // If we get here, the PID file exists but the process is not running
+        // Consider deleting the stale PID file
+        IFileManager::Get().Delete(*PidFilePath);
+    }
+    
+    // Fallback to the previous check method
+    return (IsClaudeConfigured() || IsCursorConfigured()) && 
+           FPlatformProcess::IsApplicationRunning(TEXT("python"));
 }
 
 bool SGenEditorWindow::IsClaudeConfigured() const
@@ -1023,3 +1059,4 @@ FString SGenEditorWindow::ShortenPath(const FString& Path) const
     
     return TEXT("...") + Path.Mid(SlashPos);
 }
+
