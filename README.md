@@ -548,6 +548,10 @@ python <your_project_directoy>/Plugins/GenerativeAISupport/Content/Python/mcp_se
 - Doesn't open the right context window during scene and project files edit. 
 - Doesn't dock the window properly in the editor for blueprints.
 
+## Config Window:
+(Still wip)
+<img src="Docs/EditorWindow.png" width="782"/>
+
 ## Contribution Guidelines:
 
 ### Setting up for Development:

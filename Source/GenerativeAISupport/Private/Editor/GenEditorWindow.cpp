@@ -634,7 +634,7 @@ void SGenEditorWindow::RefreshStatus()
     MCPServerStatusText->SetText(
         bMCPServerRunning 
         ? NSLOCTEXT("GenerativeAISupport", "StatusRunning", "Running ✓") 
-        : NSLOCTEXT("GenerativeAISupport", "StatusNotRunning", "Not Running ❌")
+        : NSLOCTEXT("GenerativeAISupport", "StatusNotRunning", "")
     );
     MCPServerStatusText->SetColorAndOpacity(
         bMCPServerRunning 
