@@ -32,7 +32,8 @@ public class GenerativeAISupport : ModuleRules
 				"ImageDownload",
 				"DeveloperSettings",
 				"AutomationTest",
-				"FunctionalTesting"
+				"FunctionalTesting", 
+				"EditorStyle"
 				// ... add other public dependencies that you statically link with here ...
 			}
 		);
@@ -53,8 +54,12 @@ public class GenerativeAISupport : ModuleRules
 				"MaterialEditor",
 				"MaterialUtilities",
 				"BlueprintGraph",
-				"FunctionalTesting", "UMGEditor",
-				"UMG"
+				"FunctionalTesting", 
+				"UMGEditor",
+				"UMG", 
+				"EditorStyle", 
+				"WorkspaceMenuStructure",
+				"Projects"
 				// ... add private dependencies that you statically link with here ...	
 			}
 		);

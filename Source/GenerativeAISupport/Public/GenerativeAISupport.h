@@ -17,6 +17,13 @@ public:
 private:
     void RegisterSettings();
     void UnregisterSettings();
+    
+    bool HandleSettingsSaved();
+    void RegisterMenuExtension();
+    void UnregisterMenuExtension();
+    void OnEditorWindowMenuClicked();
 
     bool bSettingsRegistered;
+    
+    TSharedPtr<FUICommandList> PluginCommands;
 };
