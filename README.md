@@ -56,9 +56,9 @@ game development, evals and interactive experiences. All suggestions and contrib
         - `claude-3-opus-latest` Model ✅ 
     - Claude Vision API 🚧
 - XAI (Grok 3) API Support:
-    - XAI Chat Completions API 🚧
-        - `grok-beta` Model 🚧
-        - `grok-beta` Streaming API 🚧
+    - XAI Chat Completions API ✅
+        - `grok-3-latest`, `grok-3-mini-beta` Model ✅
+        -  Reasoning API 🛠️
     - XAI Image API 🚧
 - Google Gemini API Support:
     - Gemini Chat API 🚧🤝
@@ -159,8 +159,11 @@ Where,
         - [1. Chat and Reasoning](#1-chat-and-reasoning)
     - [Anthropic API](#anthropic-api)
         - [1. Chat](#1-chat-1)
+    - [XAI's Grok 3 API](#xais-grok-3-api)
+        - [1. Chat](#1-chat-2)
     - [Model Control Protocol (MCP)](#model-control-protocol-mcp)
 - [Known Issues](#known-issues)
+- [Config Window](#config-window)
 - [Contribution Guidelines](#contribution-guidelines)
     - [Setting up for Development](#setting-up-for-development)
     - [Project Structure](#project-structure)
@@ -512,6 +515,40 @@ Tested models are `claude-3-7-sonnet-latest`, `claude-3-5-sonnet`, `claude-3-5-h
 
 ##### Blueprint Example:
 <img src="Docs/BpExampleClaudeChat.png" width="782"/>
+
+### XAI's Grok 3 API:
+Currently the plugin supports Chat from XAI's Grok 3 API. Both for C++ and Blueprints.
+
+#### 1. Chat:
+```cpp
+	FGenXAIChatSettings ChatSettings;
+	ChatSettings.Model = TEXT("grok-3-latest");
+		ChatSettings.Messages.Add(FGenXAIMessage{
+		TEXT("system"),
+		TEXT("You are a helpful AI assistant for a game. Please provide concise responses.")
+	});
+	ChatSettings.Messages.Add(FGenXAIMessage{TEXT("user"), TEXT("Create a brief description for a forest level in a fantasy game")});
+	ChatSettings.MaxTokens = 1000;
+
+	UGenXAIChat::SendChatRequest(
+		ChatSettings,
+		FOnXAIChatCompletionResponse::CreateLambda(
+			[this](const FString& Response, const FString& ErrorMessage, bool bSuccess)
+			{
+				if (!UTHelper::IsContextStillValid(this))
+				{
+					return;
+				}
+				
+				UE_LOG(LogTemp, Warning, TEXT("XAI Chat response: %s"), *Response);
+				
+				if (!bSuccess)
+				{
+					UE_LOG(LogTemp, Error, TEXT("XAI Chat error: %s"), *ErrorMessage);
+				}
+			})
+	);
+```
 
 ## Model Control Protocol (MCP):
 This is currently work in progress. The plugin supports various clients like Claude Desktop App, Cursor etc.
