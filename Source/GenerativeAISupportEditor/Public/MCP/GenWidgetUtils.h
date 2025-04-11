@@ -12,7 +12,7 @@ class UWidget;
  * 
  */
 UCLASS()
-class GENERATIVEAISUPPORT_API UGenWidgetUtils : public UBlueprintFunctionLibrary
+class GENERATIVEAISUPPORTEDITOR_API  UGenWidgetUtils : public UBlueprintFunctionLibrary
 {
     GENERATED_BODY()
 

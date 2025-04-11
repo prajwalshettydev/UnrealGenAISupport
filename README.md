@@ -622,3 +622,9 @@ More details will be added soon.
 - [Deepseek API Documentation](https://api-docs.deepseek.com/)
 - [Model Control Protocol (MCP) Documentation](https://modelcontextprotocol.io/)
 - [TripoSt Documentation](https://huggingface.co/stabilityai/TripoSR)
+
+## Support This Project
+
+<iframe src="https://github.com/sponsors/prajwalshettydev/button" title="Sponsor prajwalshettydev" height="32" width="114" style="border: 0; border-radius: 6px;"></iframe>
+
+If you find UnrealGenAISupport helpful, consider sponsoring me to keep the project going! Click the "Sponsor" button above to contribute.

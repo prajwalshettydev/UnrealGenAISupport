@@ -13,7 +13,7 @@
  * Utility functions for Blueprint manipulation from AI/LLM commands
  */
 UCLASS()
-class GENERATIVEAISUPPORT_API UGenBlueprintUtils : public UBlueprintFunctionLibrary
+class GENERATIVEAISUPPORTEDITOR_API  UGenBlueprintUtils : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
 

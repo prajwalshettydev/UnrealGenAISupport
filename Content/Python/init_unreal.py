@@ -81,7 +81,7 @@ def initialize_socket_server():
     # Get settings from UE settings system
     try:
         # First get the class reference
-        settings_class = unreal.load_class(None, '/Script/GenerativeAISupport.GenerativeAISupportSettings')
+        settings_class = unreal.load_class(None, '/Script/GenerativeAISupportEditor.GenerativeAISupportSettings')
         if settings_class:
             # Get the settings object using the class reference
             settings = unreal.get_default_object(settings_class)

@@ -10,7 +10,7 @@
  * 
  */
 UCLASS()
-class GENERATIVEAISUPPORT_API UGenObjectProperties : public UAutomationBlueprintFunctionLibrary
+class GENERATIVEAISUPPORTEDITOR_API  UGenObjectProperties : public UAutomationBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
 	
