@@ -12,7 +12,6 @@ import traceback
 from utils import logging as log
 
 
-
 def execute_script(script_file, output_file, error_file, status_file):
     """Execute a Python script with output and error redirection."""
     with open(output_file, 'w') as output_file_handle, open(error_file, 'w') as error_file_handle:
@@ -36,6 +35,54 @@ def execute_script(script_file, output_file, error_file, status_file):
             f.write('1' if success else '0')
 
 
+def get_log_line_count():
+    """
+    Get the current line count of the Unreal log file
+    """
+    try:
+        log_path = os.path.join(unreal.Paths.project_log_dir(), "Unreal.log")
+        if os.path.exists(log_path):
+            with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                return sum(1 for _ in f)
+        return 0
+    except Exception as e:
+        log.log_error(f"Error getting log line count: {str(e)}")
+        return 0
+
+
+def get_recent_unreal_logs(start_line=None):
+    """
+    Retrieve recent Unreal Engine log entries to provide context for errors
+    
+    Args:
+        start_line: Optional line number to start from (to only get new logs)
+        
+    Returns:
+        String containing log entries or None if logs couldn't be accessed
+    """
+    try:
+        log_path = os.path.join(unreal.Paths.project_log_dir(), "Unreal.log")
+        if os.path.exists(log_path):
+            with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                if start_line is None:
+                    # Legacy behavior - get last 20 lines
+                    lines = f.readlines()
+                    return "".join(lines[-20:])
+                else:
+                    # Skip to the starting line
+                    for i, _ in enumerate(f):
+                        if i >= start_line - 1:
+                            break
+                    
+                    # Get all new lines
+                    new_lines = f.readlines()
+                    return "".join(new_lines) if new_lines else "No new log entries generated"
+        return None
+    except Exception as e:
+        log.log_error(f"Error getting recent logs: {str(e)}")
+        return None
+
+
 def handle_execute_python(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to execute a Python script in Unreal Engine
@@ -57,6 +104,9 @@ def handle_execute_python(command: Dict[str, Any]) -> Dict[str, Any]:
             return {"success": False, "error": "Missing required parameter: script"}
 
         log.log_command("execute_python", f"Script: {script[:50]}...")
+
+        # Get log line count before execution
+        log_start_line = get_log_line_count()
 
         destructive_keywords = [
             "unreal.EditorAssetLibrary.delete_asset",
@@ -113,7 +163,26 @@ def handle_execute_python(command: Dict[str, Any]) -> Dict[str, Any]:
             if os.path.exists(file):
                 os.remove(file)
 
+        # Enhanced error handling for common Unreal API issues
+        if not success and error:
+            if "set_world_location() required argument 'sweep'" in error:
+                error += "\n\nHINT: The set_world_location() method requires a 'sweep' parameter. Try: set_world_location(location, sweep=False)"
+            elif "set_world_location() required argument 'teleport'" in error:
+                error += "\n\nHINT: The set_world_location() method requires 'teleport' parameter. Try: set_world_location(location, sweep=False, teleport=False)"
+            elif "set_actor_location() required argument 'teleport'" in error:
+                error += "\n\nHINT: The set_actor_location() method requires a 'teleport' parameter. Try: set_actor_location(location, sweep=False, teleport=False)"
+
+            # Get only new log entries
+            recent_logs = get_recent_unreal_logs(log_start_line)
+            if recent_logs:
+                error += "\n\nNew Unreal logs during execution:\n" + recent_logs
+
         if success:
+            # Get only new log entries for successful execution as well
+            recent_logs = get_recent_unreal_logs(log_start_line)
+            if recent_logs:
+                output += "\n\nNew Unreal logs during execution:\n" + recent_logs
+                
             log.log_result("execute_python", True, f"Script executed with output: {output}")
             return {"success": True, "output": output}
         else:
@@ -133,6 +202,21 @@ def handle_execute_python(command: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def handle_execute_unreal_command(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a command to execute an Unreal Engine console command
+    
+    Args:
+        command: The command dictionary containing:
+            - command: The Unreal Engine console command to execute
+            - force: Optional boolean to bypass safety checks (default: False)
+            
+    Returns:
+        Response dictionary with success/failure status and output if successful
+    """
+    script_file = None
+    output_file = None
+    error_file = None
+    
     try:
         cmd = command.get("command")
         force = command.get("force", False)
@@ -151,6 +235,9 @@ def handle_execute_unreal_command(command: Dict[str, Any]) -> Dict[str, Any]:
 
         log.log_command("execute_unreal_command", f"Command: {cmd}")
 
+        # Get log line count before execution
+        log_start_line = get_log_line_count()
+
         destructive_keywords = ["delete", "save", "quit", "exit", "restart"]
         is_destructive = any(keyword in cmd.lower() for keyword in destructive_keywords)
 
@@ -162,11 +249,30 @@ def handle_execute_unreal_command(command: Dict[str, Any]) -> Dict[str, Any]:
                           "Please confirm with 'Yes, execute it' or set force=True.")
             }
 
+        # Execute the command
         world = unreal.EditorLevelLibrary.get_editor_world()
         unreal.SystemLibrary.execute_console_command(world, cmd)
+        
+        # Add a short delay to allow logs to be captured
+        time.sleep(1.0)  # Slightly longer delay to ensure logs are written
+        
+        # Get new log entries generated during command execution
+        recent_logs = get_recent_unreal_logs(log_start_line)
+        
+        output = f"Command '{cmd}' executed successfully"
+        if recent_logs:
+            output += "\n\nRelated Unreal logs:\n" + recent_logs
+            
         log.log_result("execute_unreal_command", True, f"Command '{cmd}' executed")
-        return {"success": True, "output": f"Command '{cmd}' executed successfully"}
-
+        return {"success": True, "output": output}
+        
     except Exception as e:
+        # Get new log entries to provide context for the error
+        recent_logs = get_recent_unreal_logs(log_start_line) if 'log_start_line' in locals() else None
+        error_msg = f"Error executing command: {str(e)}"
+        
+        if recent_logs:
+            error_msg += "\n\nUnreal logs around the time of error:\n" + recent_logs
+            
         log.log_error(f"Error handling execute_unreal_command: {str(e)}", include_traceback=True)
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": error_msg}

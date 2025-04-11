@@ -50,9 +50,38 @@ def send_to_unreal(command):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             s.connect(('localhost', 9877))  # Unreal listens on port 9877
-            s.sendall(json.dumps(command).encode())
-            response = s.recv(4096)  # Increased buffer size
-            return json.loads(response.decode())
+            
+            # Ensure proper JSON encoding
+            json_str = json.dumps(command)
+            s.sendall(json_str.encode('utf-8'))
+            
+            # Implement robust response handling
+            buffer_size = 8192  # Increased buffer size
+            response_data = b""
+            
+            # Keep receiving data until we have complete JSON
+            while True:
+                chunk = s.recv(buffer_size)
+                if not chunk:
+                    break
+                    
+                response_data += chunk
+                
+                # Check if we have complete JSON
+                try:
+                    json.loads(response_data.decode('utf-8'))
+                    # If we get here, we have valid JSON
+                    break
+                except json.JSONDecodeError:
+                    # Need more data, continue receiving
+                    continue
+            
+            # Parse the complete response
+            if response_data:
+                return json.loads(response_data.decode('utf-8'))
+            else:
+                return {"success": False, "error": "No response received"}
+                
         except Exception as e:
             print(f"Error sending to Unreal: {e}", file=sys.stderr)
             return {"success": False, "error": str(e)}
@@ -125,6 +154,10 @@ def execute_python_script(script: str) -> str:
             output = response.get("output", "No output returned")
             return f"Script executed successfully. Output: {output}"
         else:
+            error = response.get("error", "Unknown error")
+            output = response.get("output", "")
+            if output:
+                error += f"\n\nPartial output before error: {output}"
             return f"Failed to execute script: {response.get('error', 'Unknown error')}"
     except Exception as e:
         return f"Error sending script to Unreal: {str(e)}"
