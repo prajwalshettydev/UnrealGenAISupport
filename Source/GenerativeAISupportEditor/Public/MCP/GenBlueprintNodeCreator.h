@@ -6,7 +6,6 @@
 
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
-#include "EdGraph/EdGraph.h"
 #include "K2Node.h"
 #include "GenBlueprintNodeCreator.generated.h"
 
@@ -14,7 +13,7 @@
  * 
  */
 UCLASS()
-class GENERATIVEAISUPPORT_API UGenBlueprintNodeCreator : public UBlueprintFunctionLibrary
+class GENERATIVEAISUPPORTEDITOR_API  UGenBlueprintNodeCreator : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
 	

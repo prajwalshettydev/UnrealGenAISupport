@@ -12,7 +12,7 @@
  * 
  */
 UCLASS()
-class GENERATIVEAISUPPORT_API UGenActorUtils : public UBlueprintFunctionLibrary
+class GENERATIVEAISUPPORTEDITOR_API  UGenActorUtils : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
 	
