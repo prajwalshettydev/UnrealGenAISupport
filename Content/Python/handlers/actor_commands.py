@@ -95,7 +95,7 @@ def handle_modify_object(command: Dict[str, Any]) -> Dict[str, Any]:
         log.log_error(f"Error modifying object: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}
 
-def handle_edit_component_property(command: Dict[str, Any]) -> str:  # Change return type to str
+def handle_edit_component_property(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to edit a component property in a Blueprint or scene actor.
     
@@ -109,7 +109,7 @@ def handle_edit_component_property(command: Dict[str, Any]) -> str:  # Change re
             - actor_name: Name of the scene actor (required if is_scene_actor is True)
                 
     Returns:
-        JSON string with success/failure status, message, and optional suggestions
+        Dictionary with success/failure status, message, and optional suggestions
     """
     try:
         blueprint_path = command.get("blueprint_path", "")
@@ -119,27 +119,39 @@ def handle_edit_component_property(command: Dict[str, Any]) -> str:  # Change re
         is_scene_actor = command.get("is_scene_actor", False)
         actor_name = command.get("actor_name", "")
 
-        if not component_name or not property_name or not value:
+        if not component_name or not property_name or value is None:
             log.log_error("Missing required parameters for edit_component_property")
-            return json.dumps({"success": False, "error": "Missing required parameters"})
+            return {"success": False, "error": "Missing required parameters"}
 
         if is_scene_actor and not actor_name:
             log.log_error("Actor name required for scene actor editing")
-            return json.dumps({"success": False, "error": "Actor name required for scene actor"})
+            return {"success": False, "error": "Actor name required for scene actor"}
 
-        log.log_command("edit_component_property", f"Blueprint: {blueprint_path}, Component: {component_name}, Property: {property_name}, Value: {value}, SceneActor: {is_scene_actor}, Actor: {actor_name}")
+        # Log detailed information about what we're trying to do
+        log_msg = f"Blueprint: {blueprint_path}, Component: {component_name}, Property: {property_name}, Value: {value}"
+        if is_scene_actor:
+            log_msg += f", Actor: {actor_name}"
+        log.log_command("edit_component_property", log_msg)
 
+        # Call the C++ implementation
         node_creator = unreal.GenObjectProperties
         result = node_creator.edit_component_property(blueprint_path, component_name, property_name, value, is_scene_actor, actor_name)
 
-        parsed_result = json.loads(result)  # Assuming C++ returns a JSON string
-        log.log_result("edit_component_property", parsed_result["success"], parsed_result.get("message", parsed_result.get("error", "No message")))
-        return json.dumps(parsed_result)  # Return as JSON string
+        # Parse the result - CHANGED: Convert JSON string to dict
+        try:
+            parsed_result = json.loads(result)
+            log.log_result("edit_component_property", parsed_result["success"],
+                           parsed_result.get("message", parsed_result.get("error", "No message")))
+            # CHANGED: Return the parsed dict instead of the original JSON string
+            return parsed_result
+        except json.JSONDecodeError:
+            # If the result is not valid JSON, wrap it in a JSON object
+            log.log_warning(f"Invalid JSON result from C++: {result}")
+            return {"success": False, "error": f"Invalid response format: {result}"}
 
     except Exception as e:
         log.log_error(f"Error editing component property: {str(e)}", include_traceback=True)
-        return json.dumps({"success": False, "error": str(e)})
-
+        return {"success": False, "error": str(e)}
 
 
 def handle_add_component_with_events(command: Dict[str, Any]) -> Dict[str, Any]:
