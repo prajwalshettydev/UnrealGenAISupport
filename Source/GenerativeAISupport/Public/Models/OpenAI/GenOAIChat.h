@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Data/OpenAI/GenOAIChatStructs.h"
+#include "Data/OpenAI/GenOAIModels.h"
 #include "Engine/CancellableAsyncAction.h"
 #include "Interfaces/IHttpRequest.h"
 #include "Kismet/BlueprintAsyncActionBase.h"

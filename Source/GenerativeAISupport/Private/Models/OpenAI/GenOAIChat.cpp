@@ -52,12 +52,16 @@ void UGenOAIChat::MakeRequest(const FGenChatSettings& ChatSettings,
 		return;
 	}
 
+	// Make a mutable copy so we can update the model
+	FGenChatSettings MutableSettings = ChatSettings;
+	MutableSettings.UpdateModel();
+
 	const TSharedPtr<FJsonObject> JsonPayload = MakeShareable(new FJsonObject());
-	JsonPayload->SetStringField(TEXT("model"), ChatSettings.Model);
-	JsonPayload->SetNumberField(TEXT("max_completion_tokens"), ChatSettings.MaxTokens);
+	JsonPayload->SetStringField(TEXT("model"), MutableSettings.Model);
+	JsonPayload->SetNumberField(TEXT("max_completion_tokens"), MutableSettings.MaxTokens);
 
 	TArray<TSharedPtr<FJsonValue>> MessagesArray;
-	for (const auto& [Role, Content] : ChatSettings.Messages)
+	for (const auto& [Role, Content] : MutableSettings.Messages)
 	{
 		const TSharedPtr<FJsonObject> JsonMessage = MakeShareable(new FJsonObject());
 		JsonMessage->SetStringField(TEXT("role"), Role);
