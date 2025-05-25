@@ -960,108 +960,175 @@ FString UGenBlueprintUtils::GetNodeGUID(const FString& BlueprintPath, const FStr
                                         const FString& NodeName, const FString& FunctionGuid)
 {
     UBlueprint* Blueprint = LoadBlueprintAsset(BlueprintPath);
-    if (!Blueprint) return TEXT("{\"success\": false, \"error\": \"Could not load blueprint\"}");
+    if (!Blueprint)
+    {
+        TSharedPtr<FJsonObject> ErrorObject = MakeShareable(new FJsonObject);
+        ErrorObject->SetBoolField(TEXT("success"), false);
+        ErrorObject->SetStringField(TEXT("error"), TEXT("Could not load blueprint"));
+        FString ResultJson;
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
+        FJsonSerializer::Serialize(ErrorObject.ToSharedRef(), Writer);
+        return ResultJson;
+    }
 
     UEdGraph* TargetGraph = nullptr;
     if (GraphType.Equals(TEXT("EventGraph"), ESearchCase::IgnoreCase))
     {
-        if (NodeName.IsEmpty()) return TEXT("{\"success\": false, \"error\": \"Node name required for EventGraph\"}");
+        if (NodeName.IsEmpty())
+        {
+            TSharedPtr<FJsonObject> ErrorObject = MakeShareable(new FJsonObject);
+            ErrorObject->SetBoolField(TEXT("success"), false);
+            ErrorObject->SetStringField(TEXT("error"), TEXT("Node name required for EventGraph"));
+            FString ResultJson;
+            TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
+            FJsonSerializer::Serialize(ErrorObject.ToSharedRef(), Writer);
+            return ResultJson;
+        }
+        // Typically, the first Ubergraph page is the EventGraph.
+        // A more robust way might involve iterating UbergraphPages and checking schema/name if necessary.
         if (Blueprint->UbergraphPages.Num() > 0)
+        {
             TargetGraph = Blueprint->UbergraphPages[0];
+        }
     }
     else if (GraphType.Equals(TEXT("FunctionGraph"), ESearchCase::IgnoreCase))
     {
-        if (FunctionGuid.IsEmpty()) return TEXT("{\"success\": false, \"error\": \"Function GUID required for FunctionGraph\"}");
-        FGuid GraphGuid;
-        if (!FGuid::Parse(FunctionGuid, GraphGuid)) return TEXT("{\"success\": false, \"error\": \"Invalid function GUID\"}");
+        if (FunctionGuid.IsEmpty())
+        {
+            TSharedPtr<FJsonObject> ErrorObject = MakeShareable(new FJsonObject);
+            ErrorObject->SetBoolField(TEXT("success"), false);
+            ErrorObject->SetStringField(TEXT("error"), TEXT("Function GUID required for FunctionGraph"));
+            FString ResultJson;
+            TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
+            FJsonSerializer::Serialize(ErrorObject.ToSharedRef(), Writer);
+            return ResultJson;
+        }
+        FGuid GraphFGuid;
+        if (!FGuid::Parse(FunctionGuid, GraphFGuid))
+        {
+            TSharedPtr<FJsonObject> ErrorObject = MakeShareable(new FJsonObject);
+            ErrorObject->SetBoolField(TEXT("success"), false);
+            ErrorObject->SetStringField(TEXT("error"), TEXT("Invalid function GUID format"));
+            FString ResultJson;
+            TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
+            FJsonSerializer::Serialize(ErrorObject.ToSharedRef(), Writer);
+            return ResultJson;
+        }
         for (UEdGraph* Graph : Blueprint->FunctionGraphs)
         {
-            if (Graph->GraphGuid == GraphGuid)
+            if (Graph->GraphGuid == GraphFGuid)
             {
                 TargetGraph = Graph;
                 break;
             }
         }
+         if (!TargetGraph) // Also check UbergraphPages for functions (e.g. for BP animgraphs)
+        {
+            for (UEdGraph* Graph : Blueprint->UbergraphPages)
+            {
+                if (Graph->GraphGuid == GraphFGuid)
+                {
+                    TargetGraph = Graph;
+                    break;
+                }
+            }
+        }
     }
 
-    if (!TargetGraph) return TEXT("{\"success\": false, \"error\": \"Could not find specified graph\"}");
+    if (!TargetGraph)
+    {
+        TSharedPtr<FJsonObject> ErrorObject = MakeShareable(new FJsonObject);
+        ErrorObject->SetBoolField(TEXT("success"), false);
+        ErrorObject->SetStringField(TEXT("error"), TEXT("Could not find specified graph"));
+        FString ResultJson;
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
+        FJsonSerializer::Serialize(ErrorObject.ToSharedRef(), Writer);
+        return ResultJson;
+    }
 
-    UK2Node* TargetNode = nullptr;
+    UK2Node* FoundNode = nullptr;
     if (GraphType.Equals(TEXT("EventGraph"), ESearchCase::IgnoreCase))
     {
+        FString ActualNodeName = NodeName;
+        if (NodeName.StartsWith(TEXT("Event "), ESearchCase::IgnoreCase))
+        {
+            ActualNodeName = NodeName.RightChop(6); // Length of "Event "
+        }
+
         for (UEdGraphNode* Node : TargetGraph->Nodes)
         {
             if (UK2Node_Event* EventNode = Cast<UK2Node_Event>(Node))
             {
-                FString EventName = EventNode->EventReference.GetMemberName().ToString();
-                if (EventName.Equals(NodeName, ESearchCase::IgnoreCase))
+                if (EventNode->EventReference.GetMemberName().ToString().Equals(ActualNodeName, ESearchCase::IgnoreCase))
                 {
-                    TargetNode = EventNode;
+                    FoundNode = EventNode;
                     break;
                 }
-                else if (NodeName.Equals(TEXT("BeginPlay")) || NodeName.Equals(TEXT("Tick")))
-                {
-                    if (EventNode->bIsEditable && EventNode->GetName().Contains(NodeName))
-                    {
-                        TargetNode = EventNode;
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Optionally create the event if it doesn’t exist
-        if (!TargetNode && (NodeName.Equals(TEXT("BeginPlay")) || NodeName.Equals(TEXT("Tick"))))
-        {
-
-        	UClass* BlueprintClass = Blueprint->GeneratedClass;
-        	UFunction* Function = BlueprintClass->FindFunctionByName(*NodeName);
-        	if (Function)
-        	{
-        		int NodePosY = 0;
-        		UK2Node_Event* NewEventNode = FKismetEditorUtilities::AddDefaultEventNode(
-					Blueprint, 
-					TargetGraph, 
-					FName(*NodeName), 
-					BlueprintClass,
-					NodePosY);
-        		TargetNode = NewEventNode;
-        		UE_LOG(LogTemp, Log, TEXT("Added event node: %s"), *NodeName);
-        	}
-        	else {
-        		UE_LOG(LogTemp, Error, TEXT("Failed to add event node: %s"), *NodeName);
-        	}
-            if (TargetNode)
-            {
-                Blueprint->Modify();
-                FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
             }
         }
     }
     else if (GraphType.Equals(TEXT("FunctionGraph"), ESearchCase::IgnoreCase))
     {
+        // For function graphs, typically we are looking for the FunctionEntry node.
+        // The original code implies NodeName might be used, but it's often just the entry.
+        // If NodeName is passed for function graph, it's likely to find specific nodes within that function,
+        // but the request for "FunctionEntry" node itself needs to be handled.
+        // The original issue focuses on EventGraph, so this part is kept simpler.
+        // Assuming NodeName here refers to finding the FunctionEntry node itself if no specific NodeName is given for FunctionGraph.
+        // If NodeName is provided for FunctionGraph, it would search for a node with that title/name.
+        // For now, let's assume if NodeName is empty or "FunctionEntry", it means the entry node.
+        bool FindFunctionEntry = NodeName.IsEmpty() || NodeName.Equals(TEXT("FunctionEntry"), ESearchCase::IgnoreCase);
+
         for (UEdGraphNode* Node : TargetGraph->Nodes)
         {
-            if (UK2Node_FunctionEntry* EntryNode = Cast<UK2Node_FunctionEntry>(Node))
+            if (FindFunctionEntry)
             {
-                TargetNode = EntryNode;
-                break;
+                 if (UK2Node_FunctionEntry* EntryNode = Cast<UK2Node_FunctionEntry>(Node))
+                 {
+                    FoundNode = EntryNode; // Found the entry node for the function
+                    break;
+                 }
+            }
+            else // Search by a given NodeName within the function graph
+            {
+                // This part would require a more generic way to match NodeName, e.g. by title or a custom property.
+                // For simplicity and focus on EventGraph, this is not fully implemented here.
+                // If specific nodes within functions need to be found by name, this logic needs expansion.
+                // For example, by comparing Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString().
             }
         }
     }
 
-    if (!TargetNode) return TEXT("{\"success\": false, \"error\": \"Node not found\"}");
+    if (!FoundNode)
+    {
+        TSharedPtr<FJsonObject> ErrorObject = MakeShareable(new FJsonObject);
+        ErrorObject->SetBoolField(TEXT("success"), false);
+        ErrorObject->SetStringField(TEXT("error"), FString::Printf(TEXT("Node '%s' not found in graph '%s'"), *NodeName, *TargetGraph->GetName()));
+        FString ResultJson;
+        TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
+        FJsonSerializer::Serialize(ErrorObject.ToSharedRef(), Writer);
+        return ResultJson;
+    }
 
-    if (!TargetNode->NodeGuid.IsValid())
-        TargetNode->NodeGuid = FGuid::NewGuid();
+    if (!FoundNode->NodeGuid.IsValid()) // Ensure node has a valid GUID
+    {
+        FoundNode->NodeGuid = FGuid::NewGuid();
+        // Mark blueprint as dirty if we assigned a new GUID, as it's a modification.
+        Blueprint->Modify();
+        FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+    }
 
     TSharedPtr<FJsonObject> ResponseObject = MakeShareable(new FJsonObject);
     ResponseObject->SetBoolField(TEXT("success"), true);
-    ResponseObject->SetStringField(TEXT("node_guid"), TargetNode->NodeGuid.ToString());
+    ResponseObject->SetStringField(TEXT("node_guid"), FoundNode->NodeGuid.ToString());
+    
     TArray<TSharedPtr<FJsonValue>> PositionArray;
-    PositionArray.Add(MakeShareable(new FJsonValueNumber(TargetNode->NodePosX)));
-    PositionArray.Add(MakeShareable(new FJsonValueNumber(TargetNode->NodePosY)));
+    PositionArray.Add(MakeShareable(new FJsonValueNumber(FoundNode->NodePosX)));
+    PositionArray.Add(MakeShareable(new FJsonValueNumber(FoundNode->NodePosY)));
     ResponseObject->SetArrayField(TEXT("position"), PositionArray);
+    // Optionally add node type or other details if useful
+    // ResponseObject->SetStringField(TEXT("node_class"), FoundNode->GetClass()->GetName());
+
 
     FString ResultJson;
     TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);

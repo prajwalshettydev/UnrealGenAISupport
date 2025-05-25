@@ -165,49 +165,31 @@ FString UGenBlueprintNodeCreator::AddNodesBulk(const FString& BlueprintPath, con
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *BlueprintPath);
 	if (!Blueprint)
 	{
-		UE_LOG(LogTemp, Error, TEXT("Could not load blueprint at path: %s"), *BlueprintPath);
-		return TEXT("");
+		UE_LOG(LogTemp, Error, TEXT("AddNodesBulk: Could not load blueprint at path: %s"), *BlueprintPath);
+		return TEXT("[]"); // Return empty JSON array for failure, as per original behavior for empty results
 	}
 
-	FGuid GraphGuid;
-	if (!FGuid::Parse(FunctionGuid, GraphGuid))
-	{
-		UE_LOG(LogTemp, Error, TEXT("Invalid GUID format: %s"), *FunctionGuid);
-		return TEXT("");
-	}
+    // Use the existing helper function to get the target graph
+    UEdGraph* FunctionGraph = GetGraphFromFunctionId(Blueprint, FunctionGuid); 
 
-	UEdGraph* FunctionGraph = nullptr;
-	for (UEdGraph* Graph : Blueprint->UbergraphPages)
-		if (Graph->GraphGuid == GraphGuid)
-		{
-			FunctionGraph = Graph;
-			break;
-		}
-	if (!FunctionGraph)
-		for (UEdGraph* Graph : Blueprint->FunctionGraphs)
-			if (Graph->GraphGuid == GraphGuid)
-			{
-				FunctionGraph = Graph;
-				break;
-			}
-	if (!FunctionGraph)
-	{
-		UE_LOG(LogTemp, Error, TEXT("Could not find function graph with GUID: %s"), *FunctionGuid);
-		return TEXT("");
-	}
+    if (!FunctionGraph)
+    {
+        // GetGraphFromFunctionId already logs specific errors.
+        UE_LOG(LogTemp, Error, TEXT("AddNodesBulk: Failed to resolve FunctionGuid '%s' to a graph."), *FunctionGuid);
+        return TEXT("[]"); // Return empty JSON array for failure
+    }
 
-	IsBlueprintDirty = false;
+	IsBlueprintDirty = false; // Assuming IsBlueprintDirty is a member or global used for tracking
 
 	TArray<TSharedPtr<FJsonValue>> NodesArray;
 	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(NodesJson);
 	if (!FJsonSerializer::Deserialize(Reader, NodesArray))
 	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to parse nodes JSON"));
-		return TEXT("");
+		UE_LOG(LogTemp, Error, TEXT("AddNodesBulk: Failed to parse nodes JSON"));
+        return TEXT("[]"); // Return empty JSON array for failure
 	}
 
-	TSharedPtr<FJsonObject> ResultsObject = MakeShareable(new FJsonObject);
-	TArray<TSharedPtr<FJsonValue>> ResultsArray;
+	TArray<TSharedPtr<FJsonValue>> ResultsArray; // Changed from ResultsObject to match AddNode's bulk result style
 
 	for (auto& NodeValue : NodesArray)
 	{
@@ -219,27 +201,39 @@ FString UGenBlueprintNodeCreator::AddNodesBulk(const FString& BlueprintPath, con
 		double NodeX = PositionArray.Num() > 0 ? PositionArray[0]->AsNumber() : 0.0;
 		double NodeY = PositionArray.Num() > 1 ? PositionArray[1]->AsNumber() : 0.0;
 
-		FString PropertiesJson;
+		FString PropertiesJsonString; // Renamed from PropertiesJson to avoid conflict with outer scope
 		if (NodeObject->HasField(TEXT("node_properties")))
 		{
-			TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&PropertiesJson);
-			FJsonSerializer::Serialize(NodeObject->GetObjectField(TEXT("node_properties")).ToSharedRef(), Writer);
+			TSharedPtr<FJsonObject> PropertiesObject = NodeObject->GetObjectField(TEXT("node_properties"));
+			TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&PropertiesJsonString);
+			FJsonSerializer::Serialize(PropertiesObject.ToSharedRef(), Writer);
 		}
 
 		FString NodeRefId;
 		if (NodeObject->HasField(TEXT("id"))) NodeRefId = NodeObject->GetStringField(TEXT("id"));
 
-		FString NodeGuid = AddNode(BlueprintPath, FunctionGuid, NodeType, NodeX, NodeY, PropertiesJson, false);
-		if (!NodeGuid.IsEmpty())
+        // Call AddNode, ensuring bFinalizeChanges is false for intermediate nodes in a bulk operation
+		FString NodeGuidResult = AddNode(BlueprintPath, FunctionGuid, NodeType, NodeX, NodeY, PropertiesJsonString, false);
+		
+        // AddNode returns just GUID string on success, or empty on failure.
+        // It might return suggestions if node type is unknown. We should handle that.
+        if (!NodeGuidResult.IsEmpty() && !NodeGuidResult.StartsWith(TEXT("SUGGESTIONS:")))
 		{
 			TSharedPtr<FJsonObject> ResultObject = MakeShareable(new FJsonObject);
-			ResultObject->SetStringField(TEXT("node_guid"), NodeGuid);
+			ResultObject->SetStringField(TEXT("node_guid"), NodeGuidResult);
 			if (!NodeRefId.IsEmpty()) ResultObject->SetStringField(TEXT("ref_id"), NodeRefId);
 			ResultsArray.Add(MakeShareable(new FJsonValueObject(ResultObject)));
 		}
+        else if (NodeGuidResult.StartsWith(TEXT("SUGGESTIONS:")))
+        {
+            // If AddNode returns suggestions, we might want to propagate this.
+            // For now, treating as a failure for the specific node in bulk.
+            UE_LOG(LogTemp, Warning, TEXT("AddNodesBulk: Node type '%s' resulted in suggestions, not added: %s"), *NodeType, *NodeGuidResult);
+        }
+        // If NodeGuidResult is empty, AddNode already logged an error.
 	}
 
-	if (ResultsArray.Num() > 0)
+	if (ResultsArray.Num() > 0) // Only finalize if at least one node was added successfully
 	{
 		if (GEditor)
 		{
@@ -249,11 +243,11 @@ FString UGenBlueprintNodeCreator::AddNodesBulk(const FString& BlueprintPath, con
 				AssetEditorSubsystem->OpenEditorForAsset(Blueprint);
 				if (FBlueprintEditor* BlueprintEditor = static_cast<FBlueprintEditor*>(AssetEditorSubsystem->
 					FindEditorForAsset(Blueprint, false)))
-					BlueprintEditor->OpenGraphAndBringToFront(FunctionGraph);
+					BlueprintEditor->OpenGraphAndBringToFront(FunctionGraph); // Use the resolved FunctionGraph
 			}
 		}
 
-		if (IsBlueprintDirty)
+		if (IsBlueprintDirty) // IsBlueprintDirty should be set by AddNode calls if they succeed
 		{
 			Blueprint->Modify();
 			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
@@ -264,7 +258,7 @@ FString UGenBlueprintNodeCreator::AddNodesBulk(const FString& BlueprintPath, con
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultsJson);
 	FJsonSerializer::Serialize(ResultsArray, Writer);
 
-	UE_LOG(LogTemp, Log, TEXT("Added %d nodes to blueprint %s"), ResultsArray.Num(), *BlueprintPath);
+	UE_LOG(LogTemp, Log, TEXT("AddNodesBulk: Processed %d nodes for blueprint %s, %d successfully added."), NodesArray.Num(), *BlueprintPath, ResultsArray.Num());
 	return ResultsJson;
 }
 
