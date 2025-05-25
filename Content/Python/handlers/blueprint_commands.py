@@ -215,7 +215,7 @@ def handle_add_node(command: Dict[str, Any]) -> Dict[str, Any]:
         node_creator = unreal.GenBlueprintNodeCreator
         node_id = node_creator.add_node(blueprint_path, function_id, node_type,
                                         node_position[0], node_position[1],
-                                        node_properties_json)
+                                        node_properties_json, True)
 
         if node_id:
             log.log_result("add_node", True, f"Added node {node_type} to {blueprint_path} with ID: {node_id}")
