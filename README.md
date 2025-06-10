@@ -85,7 +85,7 @@ game development, evals and interactive experiences. All suggestions and contrib
         - `baidu-chat` Model 🚧
 - 3D generative model APIs:
     -  TripoSR by StabilityAI 🚧
-- Plugin Documentation 🛠️🤝
+- Plugin Documentation ✅ [Comprehensive Documentation Hub](Docs/README.md)
 - Plugin Example Project 🛠️ [here](https://github.com/prajwalshettydev/unreal-llm-api-test-project)
 - Version Control Support
     - Perforce Support 🚧
@@ -595,16 +595,11 @@ python <your_project_directoy>/Plugins/GenerativeAISupport/Content/Python/mcp_se
 
 ### Setting up for Development:
 
-1. Install `unreal` python package and setup the IDE's python interpreter for proper intellisense.
-```bash
-pip install unreal
-```
-
-More details will be added soon.
+Please refer to our comprehensive [Contributing Guidelines](Docs/Contributing/README.md) for detailed setup instructions, coding standards, and development workflow.
 
 ### Project Structure:
 
-More details will be added soon.
+Detailed project structure and architecture documentation is available in the [Documentation Hub](Docs/README.md).
 
 ## References:
 
@@ -613,6 +608,28 @@ More details will be added soon.
 * MCP Server inspiration
   from: [Blender-MCP by ahujasid](https://github.com/ahujasid/blender-mcp)
 
+
+## 📚 Documentation
+
+### [📖 Complete Documentation Hub](Docs/README.md)
+
+Access our comprehensive documentation covering all aspects of the UnrealGenAISupport plugin:
+
+- **🏗️ [Architecture](Docs/Architecture/README.md)** - Technical architecture, core components, and system design
+- **🛠️ [Development](Docs/Development/README.md)** - Setup guides, testing strategies, and debugging tools  
+- **🔌 [API Integrations](Docs/API/README.md)** - Complete guides for OpenAI, Anthropic, DeepSeek, and XAI
+- **🤖 [Model Control Protocol](Docs/MCP/README.md)** - MCP setup, tools, and troubleshooting
+- **🤝 [Contributing](Docs/Contributing/README.md)** - Contribution guidelines, coding standards, and workflows
+
+### Quick Navigation
+
+| Topic | Description | Link |
+|-------|-------------|------|
+| **Getting Started** | New to the plugin? Start here | [Development Setup](Docs/Development/Setup.md) |
+| **API Integration** | Add AI to your project | [API Guide](Docs/API/README.md) |
+| **MCP Control** | Let AI control Unreal Engine | [MCP Setup](Docs/MCP/Server-Setup.md) |
+| **Contributing** | Help improve the plugin | [Contributing Guide](Docs/Contributing/README.md) |
+| **Architecture** | Understand the design | [Architecture Overview](Docs/Architecture/README.md) |
 
 ## Quick Links:
 
