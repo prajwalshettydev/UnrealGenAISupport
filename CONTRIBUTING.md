@@ -84,8 +84,15 @@ This guide includes:
 ### 1. Issues First
 
 - Check [existing issues](https://github.com/prajwalshettydev/UnrealGenAISupport/issues)
-- Create new issue for bugs or feature requests
+- Create new issue for bugs or feature requests using our **issue templates**
 - Discuss major changes before implementation
+
+**Issue Templates Available:**
+- 🐛 **Bug Report** - Comprehensive bug reporting with environment details
+- 🚀 **Feature Request** - Structured feature proposals with use cases
+- 📚 **Documentation** - Links to guides and community discussions
+
+Our templates ensure you provide all necessary information for efficient issue resolution.
 
 ### 2. Development Process
 
@@ -106,11 +113,26 @@ git push origin feature/your-feature-name
 
 ### 3. Pull Request Guidelines
 
+When you create a pull request, our **automated PR template** will guide you through providing all necessary information:
+
 - **Clear title** describing the change
 - **Detailed description** with context and motivation
 - **Reference related issues** using `#issue-number`
 - **Include testing instructions** for reviewers
-- **Ensure CI passes** and address review feedback
+- **Component area** selection (API/MCP/Blueprint/etc.)
+- **Code quality checklist** for self-review
+- **Testing coverage** documentation
+- **Performance impact** assessment
+
+**PR Template Features:**
+- 📋 **Comprehensive checklist** covering all aspects
+- 🔍 **Self-review guidance** for code quality
+- 🧪 **Testing requirements** by component area
+- 📸 **Screenshots/videos** section for visual changes
+- ⚡ **Performance impact** tracking
+- 🔄 **Breaking changes** identification
+
+The template ensures consistent, high-quality pull requests and faster review cycles.
 
 ## 📋 Code Standards
 
