@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📚 Documentation
+    url: https://github.com/prajwalshettydev/UnrealGenAISupport/tree/main/Docs
+    about: Check our comprehensive documentation for guides and examples
+  - name: 💬 GitHub Discussions
+    url: https://github.com/prajwalshettydev/UnrealGenAISupport/discussions
+    about: Ask questions and discuss ideas with the community
+  - name: 🤝 Contributing Guide
+    url: https://github.com/prajwalshettydev/UnrealGenAISupport/blob/main/CONTRIBUTING.md
+    about: Learn how to contribute to the project
