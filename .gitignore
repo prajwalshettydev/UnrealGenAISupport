@@ -74,7 +74,7 @@ Plugins/*/Intermediate/*
 DerivedDataCache/*
 
 # AI Folders
-memory-bank/*
+memory-bank
 Claude.md
 .mcp.json
 .claude
