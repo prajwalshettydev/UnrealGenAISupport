@@ -616,16 +616,15 @@ Detailed project structure and architecture documentation is available in the [D
 Access our comprehensive documentation covering all aspects of the UnrealGenAISupport plugin:
 
 - **🏗️ [Architecture](Docs/Architecture/README.md)** - Technical architecture, core components, and system design
-- **🛠️ [Development](Docs/Development/README.md)** - Setup guides, testing strategies, and debugging tools  
 - **🔌 [API Integrations](Docs/API/README.md)** - Complete guides for OpenAI, Anthropic, DeepSeek, and XAI
 - **🤖 [Model Control Protocol](Docs/MCP/README.md)** - MCP setup, tools, and troubleshooting
-- **🤝 [Contributing](Docs/Contributing/README.md)** - Contribution guidelines, coding standards, and workflows
+- **🤝 [Contributing](Docs/Contributing/README.md)** - Development setup, coding standards, and contribution guidelines
 
 ### Quick Navigation
 
 | Topic | Description | Link |
 |-------|-------------|------|
-| **Getting Started** | New to the plugin? Start here | [Development Setup](Docs/Development/Setup.md) |
+| **Getting Started** | New to the plugin? Start here | [Development Setup](Docs/Contributing/Development-Setup.md) |
 | **API Integration** | Add AI to your project | [API Guide](Docs/API/README.md) |
 | **MCP Control** | Let AI control Unreal Engine | [MCP Setup](Docs/MCP/Server-Setup.md) |
 | **Contributing** | Help improve the plugin | [Contributing Guide](Docs/Contributing/README.md) |
