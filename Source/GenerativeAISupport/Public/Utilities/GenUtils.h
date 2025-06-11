@@ -3,23 +3,23 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "UObject/Object.h"
 #include "GenUtils.generated.h"
+#include "UObject/Object.h"
 
 /**
- * 
+ *
  */
 UCLASS()
 class GENERATIVEAISUPPORT_API UGenUtils : public UObject
 {
 	GENERATED_BODY()
 
-public:
-
+  public:
 	UFUNCTION(BlueprintCallable, Category = "GenAI|Utilities")
 	static FString GetEnumDisplayName(const UEnum* Enum, int32 Value)
 	{
-		if (!Enum) return TEXT("Invalid");
+		if (!Enum)
+			return TEXT("Invalid");
 		return Enum->GetDisplayNameTextByValue(Value).ToString();
 	}
 };

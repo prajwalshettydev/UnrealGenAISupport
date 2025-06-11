@@ -1,12 +1,13 @@
-import unreal
 import traceback
 from typing import Any
+
+import unreal
 
 
 def log_info(message: str) -> None:
     """
     Log an informational message to the Unreal log
-    
+
     Args:
         message: The message to log
     """
@@ -16,7 +17,7 @@ def log_info(message: str) -> None:
 def log_warning(message: str) -> None:
     """
     Log a warning message to the Unreal log
-    
+
     Args:
         message: The message to log
     """
@@ -26,7 +27,7 @@ def log_warning(message: str) -> None:
 def log_error(message: str, include_traceback: bool = False) -> None:
     """
     Log an error message to the Unreal log
-    
+
     Args:
         message: The message to log
         include_traceback: Whether to include the traceback in the log
@@ -42,7 +43,7 @@ def log_error(message: str, include_traceback: bool = False) -> None:
 def log_command(command_type: str, details: Any = None) -> None:
     """
     Log a command being processed
-    
+
     Args:
         command_type: The type of command being processed
         details: Optional details about the command
@@ -56,7 +57,7 @@ def log_command(command_type: str, details: Any = None) -> None:
 def log_result(command_type: str, success: bool, details: Any = None) -> None:
     """
     Log the result of a command
-    
+
     Args:
         command_type: The type of command that was processed
         success: Whether the command was successful

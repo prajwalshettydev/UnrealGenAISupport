@@ -5,19 +5,19 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Kismet/BlueprintFunctionLibrary.h"
-#include "K2Node.h"
 #include "GenBlueprintNodeCreator.generated.h"
+#include "K2Node.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
 
 /**
- * 
+ *
  */
 UCLASS()
-class GENERATIVEAISUPPORTEDITOR_API  UGenBlueprintNodeCreator : public UBlueprintFunctionLibrary
+class GENERATIVEAISUPPORTEDITOR_API UGenBlueprintNodeCreator : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
-	
-public:
+
+  public:
 	// Adds a single node to a Blueprint function graph
 	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Nodes")
 	static FString AddNode(const FString& BlueprintPath, const FString& FunctionGuid, const FString& NodeType,
@@ -32,19 +32,17 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Blueprint")
 	static FString GetAllNodesInGraph(const FString& BlueprintPath, const FString& FunctionGuid);
-	
+
 	UFUNCTION(BlueprintCallable, Category = "Blueprint")
 	static UEdGraph* FindGraphByGuid(UBlueprint* Blueprint, const FGuid& GraphGuid);
-	
+
 	UFUNCTION(BlueprintCallable, Category = "Blueprint")
 	static FString GetNodeSuggestions(const FString& NodeType);
-	
 
-
-private:
+  private:
 	// Static map of friendly node names to Unreal Engine node types
 	static TMap<FString, FString> NodeTypeMap;
-    
+
 	// Function to initialize the map (called once)
 	static void InitNodeTypeMap();
 	// Attempts to create a node of a known type
@@ -54,10 +52,9 @@ private:
 
 	// Attempts to create a node by searching Blueprint libraries and actor classes
 	static FString TryCreateNodeFromLibraries(UEdGraph* Graph, const FString& NodeType, UK2Node*& OutNode,
-	                                          TArray<FString>& OutSuggestions);
+											  TArray<FString>& OutSuggestions);
 
 	// Helper to create function call nodes
 	static bool CreateMathFunctionNode(UEdGraph* Graph, const FString& ClassName, const FString& FunctionName,
 									   UK2Node*& OutNode);
-
 };

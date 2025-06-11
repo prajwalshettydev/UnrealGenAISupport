@@ -1,14 +1,15 @@
-import socket
 import json
-import sys
 import os
-from mcp.server.fastmcp import FastMCP
 import re
+import socket
+import sys
 from pathlib import Path
 
+from mcp.server.fastmcp import FastMCP
 
-# THIS FILE WILL RUN OUTSIDE THE UNREAL ENGINE SCOPE, 
+# THIS FILE WILL RUN OUTSIDE THE UNREAL ENGINE SCOPE,
 # DO NOT IMPORT UNREAL MODULES HERE OR EXECUTE IT IN THE UNREAL ENGINE PYTHON INTERPRETER
+
 
 # Create a PID file to let the Unreal plugin know this process is running
 def write_pid_file():
@@ -23,6 +24,7 @@ def write_pid_file():
 
         # Register to delete the PID file on exit
         import atexit
+
         def cleanup_pid_file():
             try:
                 if os.path.exists(pid_path):
@@ -51,11 +53,11 @@ mcp = FastMCP("UnrealHandshake")
 def send_to_unreal(command):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
-            s.connect(('localhost', 9877))  # Unreal listens on port 9877
+            s.connect(("localhost", 9877))  # Unreal listens on port 9877
 
             # Ensure proper JSON encoding
             json_str = json.dumps(command)
-            s.sendall(json_str.encode('utf-8'))
+            s.sendall(json_str.encode("utf-8"))
 
             # Implement robust response handling
             buffer_size = 8192  # Increased buffer size
@@ -71,7 +73,7 @@ def send_to_unreal(command):
 
                 # Check if we have complete JSON
                 try:
-                    json.loads(response_data.decode('utf-8'))
+                    json.loads(response_data.decode("utf-8"))
                     # If we get here, we have valid JSON
                     break
                 except json.JSONDecodeError:
@@ -80,7 +82,7 @@ def send_to_unreal(command):
 
             # Parse the complete response
             if response_data:
-                return json.loads(response_data.decode('utf-8'))
+                return json.loads(response_data.decode("utf-8"))
             else:
                 return {"success": False, "error": "No response received"}
 
@@ -108,14 +110,12 @@ def how_to_use() -> str:
 
 # Define basic tools for Claude to call
 
+
 @mcp.tool()
 def handshake_test(message: str) -> str:
     """Send a handshake message to Unreal Engine"""
     try:
-        command = {
-            "type": "handshake",
-            "message": message
-        }
+        command = {"type": "handshake", "message": message}
         response = send_to_unreal(command)
         if response.get("success"):
             return f"Handshake successful: {response['message']}"
@@ -129,13 +129,13 @@ def handshake_test(message: str) -> str:
 def execute_python_script(script: str) -> str:
     """
     Execute a Python script within Unreal Engine's Python interpreter.
-    
+
     Args:
         script: A string containing the Python code to execute in Unreal Engine.
-        
+
     Returns:
         Message indicating success, failure, or a request for confirmation.
-        
+
     Note:
         This tool sends the script to Unreal Engine, where it is executed via a temporary file using Unreal's internal
         Python execution system (similar to GEngine->Exec). This method is stable but may not handle Blueprint-specific
@@ -145,14 +145,13 @@ def execute_python_script(script: str) -> str:
     """
     try:
         if is_potentially_destructive(script):
-            return ("This script appears to involve potentially destructive actions (e.g., deleting or saving files) "
-                    "that were not explicitly requested. Please confirm if you want to proceed by saying 'Yes, execute it' "
-                    "or modify your request to explicitly allow such actions.")
+            return (
+                "This script appears to involve potentially destructive actions (e.g., deleting or saving files) "
+                "that were not explicitly requested. Please confirm if you want to proceed by saying 'Yes, execute it' "
+                "or modify your request to explicitly allow such actions."
+            )
 
-        command = {
-            "type": "execute_python",
-            "script": script
-        }
+        command = {"type": "execute_python", "script": script}
         response = send_to_unreal(command)
         if response.get("success"):
             output = response.get("output", "No output returned")
@@ -171,13 +170,13 @@ def execute_python_script(script: str) -> str:
 def execute_unreal_command(command: str) -> str:
     """
     Execute an Unreal Engine command-line (CMD) command.
-    
+
     Args:
         command: A string containing the Unreal Engine command to execute (e.g., "obj list", "stat fps").
-        
+
     Returns:
         Message indicating success or failure, including any output or errors.
-        
+
     Note:
         This tool executes commands directly in Unreal Engine's command system, similar to the editor's console.
         It is intended for built-in editor commands (e.g., "stat fps", "obj list") and not for running Python scripts.
@@ -190,21 +189,23 @@ def execute_unreal_command(command: str) -> str:
         if command.strip().lower().startswith("py "):
             return (
                 "Error: Use `execute_python_script` to run Python scripts instead of `execute_unreal_command` with 'py' commands. "
-                "For example, use `execute_python_script(script='your_code_here')` for Python execution.")
+                "For example, use `execute_python_script(script='your_code_here')` for Python execution."
+            )
 
         # Check for potentially destructive commands
         destructive_keywords = ["delete", "save", "quit", "exit", "restart"]
         if any(keyword in command.lower() for keyword in destructive_keywords):
-            return ("This command appears to involve potentially destructive actions (e.g., deleting or saving). "
-                    "Please confirm by saying 'Yes, execute it' or explicitly request such actions.")
+            return (
+                "This command appears to involve potentially destructive actions (e.g., deleting or saving). "
+                "Please confirm by saying 'Yes, execute it' or explicitly request such actions."
+            )
 
-        command_dict = {
-            "type": "execute_unreal_command",
-            "command": command
-        }
+        command_dict = {"type": "execute_unreal_command", "command": command}
         response = send_to_unreal(command_dict)
         if response.get("success"):
-            output = response.get("output", "Command executed with no detailed output returned")
+            output = response.get(
+                "output", "Command executed with no detailed output returned"
+            )
             return f"Command '{command}' executed successfully. Output: {output}"
         else:
             return f"Failed to execute command '{command}': {response.get('error', 'Unknown error')}"
@@ -216,12 +217,18 @@ def execute_unreal_command(command: str) -> str:
 # Basic Object Commands
 #
 
+
 @mcp.tool()
-def spawn_object(actor_class: str, location: list = [0, 0, 0], rotation: list = [0, 0, 0],
-                 scale: list = [1, 1, 1], actor_label: str = None) -> str:
+def spawn_object(
+    actor_class: str,
+    location: list = [0, 0, 0],
+    rotation: list = [0, 0, 0],
+    scale: list = [1, 1, 1],
+    actor_label: str = None,
+) -> str:
     """
     Spawn an object in the Unreal Engine level
-    
+
     Args:
         actor_class: For basic shapes, use: "Cube", "Sphere", "Cylinder", or "Cone".
                      For other actors, use class name like "PointLight" or full path.
@@ -229,7 +236,7 @@ def spawn_object(actor_class: str, location: list = [0, 0, 0], rotation: list = 
         rotation: [Pitch, Yaw, Roll] in degrees
         scale: [X, Y, Z] scale factors
         actor_label: Optional custom name for the actor
-        
+
     Returns:
         Message indicating success or failure
     """
@@ -239,14 +246,16 @@ def spawn_object(actor_class: str, location: list = [0, 0, 0], rotation: list = 
         "location": location,
         "rotation": rotation,
         "scale": scale,
-        "actor_label": actor_label
+        "actor_label": actor_label,
     }
 
     response = send_to_unreal(command)
     if response.get("success"):
-        return f"Successfully spawned {actor_class}" + (f" with label '{actor_label}'" if actor_label else "")
+        return f"Successfully spawned {actor_class}" + (
+            f" with label '{actor_label}'" if actor_label else ""
+        )
     else:
-        error = response.get('error', 'Unknown error')
+        error = response.get("error", "Unknown error")
         # Add hint for Claude to understand what went wrong
         if "not found" in error:
             hint = "\nHint: For basic shapes, use 'Cube', 'Sphere', 'Cylinder', or 'Cone'. For other actors, try using '/Script/Engine.PointLight' format."
@@ -255,8 +264,14 @@ def spawn_object(actor_class: str, location: list = [0, 0, 0], rotation: list = 
 
 
 @mcp.tool()
-def edit_component_property(blueprint_path: str, component_name: str, property_name: str, value: str,
-                            is_scene_actor: bool = False, actor_name: str = "") -> str:
+def edit_component_property(
+    blueprint_path: str,
+    component_name: str,
+    property_name: str,
+    value: str,
+    is_scene_actor: bool = False,
+    actor_name: str = "",
+) -> str:
     """
     Edit a property of a component in a Blueprint or scene actor.
 
@@ -289,7 +304,7 @@ def edit_component_property(blueprint_path: str, component_name: str, property_n
         "property_name": property_name,
         "value": value,
         "is_scene_actor": is_scene_actor,
-        "actor_name": actor_name
+        "actor_name": actor_name,
     }
     response = send_to_unreal(command)
 
@@ -301,12 +316,15 @@ def edit_component_property(blueprint_path: str, component_name: str, property_n
         # Handle case where response is a string
         elif isinstance(response, str):
             import json
+
             result = json.loads(response)
         else:
             return f"Error: Unexpected response type: {type(response)}"
 
         if result.get("success"):
-            return result.get("message", f"Set {property_name} of {component_name} to {value}")
+            return result.get(
+                "message", f"Set {property_name} of {component_name} to {value}"
+            )
         else:
             error = result.get("error", "Unknown error")
             if "suggestions" in result:
@@ -320,18 +338,18 @@ def edit_component_property(blueprint_path: str, component_name: str, property_n
 def create_material(material_name: str, color: list) -> str:
     """
     Create a new material with the specified color
-    
+
     Args:
         material_name: Name for the new material
         color: [R, G, B] color values (0-1)
-        
+
     Returns:
         Message indicating success or failure, and the material path if successful
     """
     command = {
         "type": "create_material",
         "material_name": material_name,
-        "color": color
+        "color": color,
     }
 
     response = send_to_unreal(command)
@@ -345,16 +363,21 @@ def create_material(material_name: str, color: list) -> str:
 # Blueprint Commands
 #
 
+
 @mcp.tool()
-def create_blueprint(blueprint_name: str, parent_class: str = "Actor", save_path: str = "/Game/Blueprints") -> str:
+def create_blueprint(
+    blueprint_name: str,
+    parent_class: str = "Actor",
+    save_path: str = "/Game/Blueprints",
+) -> str:
     """
     Create a new Blueprint class
-    
+
     Args:
         blueprint_name: Name for the new Blueprint
         parent_class: Parent class name or path (e.g., "Actor", "/Script/Engine.Actor")
         save_path: Path to save the Blueprint asset
-        
+
     Returns:
         Message indicating success or failure
     """
@@ -362,7 +385,7 @@ def create_blueprint(blueprint_name: str, parent_class: str = "Actor", save_path
         "type": "create_blueprint",
         "blueprint_name": blueprint_name,
         "parent_class": parent_class,
-        "save_path": save_path
+        "save_path": save_path,
     }
 
     response = send_to_unreal(command)
@@ -373,15 +396,17 @@ def create_blueprint(blueprint_name: str, parent_class: str = "Actor", save_path
 
 
 @mcp.tool()
-def add_component_to_blueprint(blueprint_path: str, component_class: str, component_name: str = None) -> str:
+def add_component_to_blueprint(
+    blueprint_path: str, component_class: str, component_name: str = None
+) -> str:
     """
     Add a component to a Blueprint
-    
+
     Args:
         blueprint_path: Path to the Blueprint asset
         component_class: Component class to add (e.g., "StaticMeshComponent", "PointLightComponent")
         component_name: Name for the new component (optional)
-        
+
     Returns:
         Message indicating success or failure
     """
@@ -389,7 +414,7 @@ def add_component_to_blueprint(blueprint_path: str, component_class: str, compon
         "type": "add_component",
         "blueprint_path": blueprint_path,
         "component_class": component_class,
-        "component_name": component_name
+        "component_name": component_name,
     }
 
     response = send_to_unreal(command)
@@ -400,18 +425,23 @@ def add_component_to_blueprint(blueprint_path: str, component_class: str, compon
 
 
 @mcp.tool()
-def add_variable_to_blueprint(blueprint_path: str, variable_name: str, variable_type: str,
-                              default_value: str = None, category: str = "Default") -> str:
+def add_variable_to_blueprint(
+    blueprint_path: str,
+    variable_name: str,
+    variable_type: str,
+    default_value: str = None,
+    category: str = "Default",
+) -> str:
     """
     Add a variable to a Blueprint
-    
+
     Args:
         blueprint_path: Path to the Blueprint asset
         variable_name: Name for the new variable
         variable_type: Type of the variable (e.g., "float", "vector", "boolean")
         default_value: Default value for the variable (optional)
         category: Category for organizing variables in the Blueprint editor (optional)
-        
+
     Returns:
         Message indicating success or failure
     """
@@ -425,7 +455,7 @@ def add_variable_to_blueprint(blueprint_path: str, variable_name: str, variable_
         "variable_name": variable_name,
         "variable_type": variable_type,
         "default_value": default_value,
-        "category": category
+        "category": category,
     }
 
     response = send_to_unreal(command)
@@ -436,17 +466,18 @@ def add_variable_to_blueprint(blueprint_path: str, variable_name: str, variable_
 
 
 @mcp.tool()
-def add_function_to_blueprint(blueprint_path: str, function_name: str,
-                              inputs: list = None, outputs: list = None) -> str:
+def add_function_to_blueprint(
+    blueprint_path: str, function_name: str, inputs: list = None, outputs: list = None
+) -> str:
     """
     Add a function to a Blueprint
-    
+
     Args:
         blueprint_path: Path to the Blueprint asset
         function_name: Name for the new function
         inputs: List of input parameters [{"name": "param1", "type": "float"}, ...]
         outputs: List of output parameters [{"name": "return", "type": "boolean"}, ...]
-        
+
     Returns:
         Message indicating success or failure
     """
@@ -460,7 +491,7 @@ def add_function_to_blueprint(blueprint_path: str, function_name: str,
         "blueprint_path": blueprint_path,
         "function_name": function_name,
         "inputs": inputs,
-        "outputs": outputs
+        "outputs": outputs,
     }
 
     response = send_to_unreal(command)
@@ -471,11 +502,16 @@ def add_function_to_blueprint(blueprint_path: str, function_name: str,
 
 
 @mcp.tool()
-def add_node_to_blueprint(blueprint_path: str, function_id: str, node_type: str,
-                          node_position: list = [0, 0], node_properties: dict = None) -> str:
+def add_node_to_blueprint(
+    blueprint_path: str,
+    function_id: str,
+    node_type: str,
+    node_position: list = [0, 0],
+    node_properties: dict = None,
+) -> str:
     """
     Add a node to a Blueprint graph
-    
+
     Args:
         blueprint_path: Path to the Blueprint asset
         function_id: ID of the function to add the node to
@@ -491,14 +527,14 @@ def add_node_to_blueprint(blueprint_path: str, function_id: str, node_type: str,
             at least 400 units apart horizontally and 300 units vertically to avoid overlap
             and ensure a clean, organized graph (e.g., [0, 0], [400, 0], [800, 0] for a chain).
         node_properties: Properties to set on the node (optional)
-    
+
     Returns:
         On success: The node ID (GUID)
         On failure: A response containing "SUGGESTIONS:" followed by alternative node types to try
-    
+
     Note:
-        Function libraries like KismetMathLibrary, KismetSystemLibrary, and KismetStringLibrary 
-        contain most common Blueprint functions. If a simple node name doesn't work, try the 
+        Function libraries like KismetMathLibrary, KismetSystemLibrary, and KismetStringLibrary
+        contain most common Blueprint functions. If a simple node name doesn't work, try the
         full function name, e.g., "Multiply_FloatFloat" instead of just "Multiply".
     """
     if node_properties is None:
@@ -510,7 +546,7 @@ def add_node_to_blueprint(blueprint_path: str, function_id: str, node_type: str,
         "function_id": function_id,
         "node_type": node_type,
         "node_position": node_position,
-        "node_properties": node_properties
+        "node_properties": node_properties,
     }
 
     response = send_to_unreal(command)
@@ -524,17 +560,14 @@ def add_node_to_blueprint(blueprint_path: str, function_id: str, node_type: str,
 def get_node_suggestions(node_type: str) -> str:
     """
     Get suggestions for a node type in Unreal Blueprints
-    
+
     Args:
         node_type: The partial or full node type to get suggestions for (e.g., "Add", "FloatToDouble")
-        
+
     Returns:
         A string indicating success with suggestions or an error message
     """
-    command = {
-        "type": "get_node_suggestions",
-        "node_type": node_type
-    }
+    command = {"type": "get_node_suggestions", "node_type": node_type}
 
     response = send_to_unreal(command)
     if response.get("success"):
@@ -549,15 +582,17 @@ def get_node_suggestions(node_type: str) -> str:
 
 
 @mcp.tool()
-def delete_node_from_blueprint(blueprint_path: str, function_id: str, node_id: str) -> str:
+def delete_node_from_blueprint(
+    blueprint_path: str, function_id: str, node_id: str
+) -> str:
     """
     Delete a node from a Blueprint graph
-    
+
     Args:
         blueprint_path: Path to the Blueprint asset
         function_id: ID of the function containing the node
         node_id: ID of the node to delete
-        
+
     Returns:
         Success or failure message
     """
@@ -565,7 +600,7 @@ def delete_node_from_blueprint(blueprint_path: str, function_id: str, node_id: s
         "type": "delete_node",
         "blueprint_path": blueprint_path,
         "function_id": function_id,
-        "node_id": node_id
+        "node_id": node_id,
     }
 
     response = send_to_unreal(command)
@@ -579,18 +614,18 @@ def delete_node_from_blueprint(blueprint_path: str, function_id: str, node_id: s
 def get_all_nodes_in_graph(blueprint_path: str, function_id: str) -> str:
     """
     Get all nodes in a Blueprint graph with their positions and types
-    
+
     Args:
         blueprint_path: Path to the Blueprint asset
         function_id: ID of the function to get nodes from
-        
+
     Returns:
         JSON string containing all nodes with their GUIDs, types, and positions
     """
     command = {
         "type": "get_all_nodes",
         "blueprint_path": blueprint_path,
-        "function_id": function_id
+        "function_id": function_id,
     }
 
     response = send_to_unreal(command)
@@ -601,9 +636,14 @@ def get_all_nodes_in_graph(blueprint_path: str, function_id: str) -> str:
 
 
 @mcp.tool()
-def connect_blueprint_nodes(blueprint_path: str, function_id: str,
-                            source_node_id: str, source_pin: str,
-                            target_node_id: str, target_pin: str) -> str:
+def connect_blueprint_nodes(
+    blueprint_path: str,
+    function_id: str,
+    source_node_id: str,
+    source_pin: str,
+    target_node_id: str,
+    target_pin: str,
+) -> str:
     command = {
         "type": "connect_nodes",
         "blueprint_path": blueprint_path,
@@ -611,7 +651,7 @@ def connect_blueprint_nodes(blueprint_path: str, function_id: str,
         "source_node_id": source_node_id,
         "source_pin": source_pin,
         "target_node_id": target_node_id,
-        "target_pin": target_pin
+        "target_pin": target_pin,
     }
 
     response = send_to_unreal(command)
@@ -629,17 +669,14 @@ def connect_blueprint_nodes(blueprint_path: str, function_id: str,
 def compile_blueprint(blueprint_path: str) -> str:
     """
     Compile a Blueprint
-    
+
     Args:
         blueprint_path: Path to the Blueprint asset
-        
+
     Returns:
         Message indicating success or failure
     """
-    command = {
-        "type": "compile_blueprint",
-        "blueprint_path": blueprint_path
-    }
+    command = {"type": "compile_blueprint", "blueprint_path": blueprint_path}
 
     response = send_to_unreal(command)
     if response.get("success"):
@@ -649,19 +686,23 @@ def compile_blueprint(blueprint_path: str) -> str:
 
 
 @mcp.tool()
-def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
-                          rotation: list = [0, 0, 0], scale: list = [1, 1, 1],
-                          actor_label: str = None) -> str:
+def spawn_blueprint_actor(
+    blueprint_path: str,
+    location: list = [0, 0, 0],
+    rotation: list = [0, 0, 0],
+    scale: list = [1, 1, 1],
+    actor_label: str = None,
+) -> str:
     """
     Spawn a Blueprint actor in the level
-    
+
     Args:
         blueprint_path: Path to the Blueprint asset
         location: [X, Y, Z] coordinates
         rotation: [Pitch, Yaw, Roll] in degrees
         scale: [X, Y, Z] scale factors
         actor_label: Optional custom name for the actor
-        
+
     Returns:
         Message indicating success or failure
     """
@@ -671,13 +712,14 @@ def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
         "location": location,
         "rotation": rotation,
         "scale": scale,
-        "actor_label": actor_label
+        "actor_label": actor_label,
     }
 
     response = send_to_unreal(command)
     if response.get("success"):
         return f"Successfully spawned Blueprint {blueprint_path}" + (
-            f" with label '{actor_label}'" if actor_label else "")
+            f" with label '{actor_label}'" if actor_label else ""
+        )
     else:
         return f"Failed to spawn Blueprint: {response.get('error', 'Unknown error')}"
 
@@ -686,7 +728,7 @@ def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
 # def add_nodes_to_blueprint_bulk(blueprint_path: str, function_id: str, nodes: list) -> str:
 #     """
 #     Add multiple nodes to a Blueprint graph in a single operation
-# 
+#
 #     Args:
 #         blueprint_path: Path to the Blueprint asset
 #         function_id: ID of the function to add the nodes to
@@ -695,12 +737,12 @@ def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
 #             - node_type: Type of node to add (see add_node_to_blueprint for supported types)
 #             - node_position: Position of the node in the graph [X, Y]
 #             - node_properties: Properties to set on the node (optional)
-# 
+#
 #     Returns:
 #         On success: Dictionary mapping your node IDs to the actual node GUIDs created in Unreal
 #         On partial success: Dictionary with successful nodes and suggestions for failed nodes
 #         On failure: Error message with suggestions
-# 
+#
 #     Example success response:
 #         {
 #           "success": true,
@@ -710,7 +752,7 @@ def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
 #             "return_node": "6436796645ED674F3C64A8A94CBA416C"
 #           }
 #         }
-# 
+#
 #     Example partial success with suggestions:
 #         {
 #           "success": true,
@@ -726,7 +768,7 @@ def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
 #             }
 #           }
 #         }
-# 
+#
 #     When you receive suggestions, you can retry adding those nodes using the suggested node types.
 #     """
 #     command = {
@@ -735,7 +777,7 @@ def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
 #         "function_id": function_id,
 #         "nodes": nodes
 #     }
-# 
+#
 #     response = send_to_unreal(command)
 #     if response.get("success"):
 #         node_mapping = response.get("nodes", {})
@@ -743,8 +785,11 @@ def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
 #     else:
 #         return f"Failed to add nodes: {response.get('error', 'Unknown error')}"
 
+
 @mcp.tool()
-def add_component_with_events(blueprint_path: str, component_name: str, component_class: str) -> str:
+def add_component_with_events(
+    blueprint_path: str, component_name: str, component_class: str
+) -> str:
     """
     Add a component to a Blueprint with overlap events if applicable.
 
@@ -760,11 +805,12 @@ def add_component_with_events(blueprint_path: str, component_name: str, componen
         "type": "add_component_with_events",
         "blueprint_path": blueprint_path,
         "component_name": component_name,
-        "component_class": component_class
+        "component_class": component_class,
     }
     response = send_to_unreal(command)
     try:
         import json
+
         result = json.loads(response)
         if result.get("success"):
             msg = result.get("message", f"Added component {component_name}")
@@ -779,10 +825,12 @@ def add_component_with_events(blueprint_path: str, component_name: str, componen
 
 
 @mcp.tool()
-def connect_blueprint_nodes_bulk(blueprint_path: str, function_id: str, connections: list) -> str:
+def connect_blueprint_nodes_bulk(
+    blueprint_path: str, function_id: str, connections: list
+) -> str:
     """
     Connect multiple pairs of nodes in a Blueprint graph
-    
+
     Args:
         blueprint_path: Path to the Blueprint asset
         function_id: ID of the function containing the nodes
@@ -791,7 +839,7 @@ def connect_blueprint_nodes_bulk(blueprint_path: str, function_id: str, connecti
             - source_pin: Name of the source pin
             - target_node_id: ID of the target node
             - target_pin: Name of the target pin
-        
+
     Returns:
         Message indicating success or failure, with details on which connections succeeded or failed
     """
@@ -799,7 +847,7 @@ def connect_blueprint_nodes_bulk(blueprint_path: str, function_id: str, connecti
         "type": "connect_nodes_bulk",
         "blueprint_path": blueprint_path,
         "function_id": function_id,
-        "connections": connections
+        "connections": connections,
     }
 
     response = send_to_unreal(command)
@@ -822,7 +870,9 @@ def connect_blueprint_nodes_bulk(blueprint_path: str, function_id: str, connecti
                     src = result.get("source_node", "unknown")
                     tgt = result.get("target_node", "unknown")
                     err = result.get("error", "unknown error")
-                    failed_connections.append(f"Connection {idx}: {src} to {tgt} - {err}")
+                    failed_connections.append(
+                        f"Connection {idx}: {src} to {tgt} - {err}"
+                    )
 
         # Format error message with details
         if failed_connections:
@@ -833,17 +883,21 @@ def connect_blueprint_nodes_bulk(blueprint_path: str, function_id: str, connecti
 
 
 @mcp.tool()
-def get_blueprint_node_guid(blueprint_path: str, graph_type: str = "EventGraph", node_name: str = None,
-                            function_id: str = None) -> str:
+def get_blueprint_node_guid(
+    blueprint_path: str,
+    graph_type: str = "EventGraph",
+    node_name: str = None,
+    function_id: str = None,
+) -> str:
     """
     Retrieve the GUID of a pre-existing node in a Blueprint graph.
-    
+
     Args:
         blueprint_path: Path to the Blueprint asset (e.g., "/Game/Blueprints/TestBulkBlueprint")
         graph_type: Type of graph to query ("EventGraph" or "FunctionGraph", default: "EventGraph")
         node_name: Name of the node to find (e.g., "BeginPlay" for EventGraph, optional if using function_id)
         function_id: ID of the function to get the FunctionEntry node for (optional, used with graph_type="FunctionGraph")
-    
+
     Returns:
         Message with the node's GUID or an error if not found
     """
@@ -852,7 +906,7 @@ def get_blueprint_node_guid(blueprint_path: str, graph_type: str = "EventGraph",
         "blueprint_path": blueprint_path,
         "graph_type": graph_type,
         "node_name": node_name if node_name else "",
-        "function_id": function_id if function_id else ""
+        "function_id": function_id if function_id else "",
     }
 
     response = send_to_unreal(command)
@@ -870,13 +924,13 @@ def is_potentially_destructive(script: str) -> bool:
     Returns True if such actions are detected and not explicitly requested.
     """
     destructive_keywords = [
-        r'unreal\.EditorAssetLibrary\.delete_asset',
-        r'unreal\.EditorLevelLibrary\.destroy_actor',
-        r'unreal\.save_package',
-        r'os\.remove',
-        r'shutil\.rmtree',
-        r'file\.write',
-        r'unreal\.EditorAssetLibrary\.save_asset'
+        r"unreal\.EditorAssetLibrary\.delete_asset",
+        r"unreal\.EditorLevelLibrary\.destroy_actor",
+        r"unreal\.save_package",
+        r"os\.remove",
+        r"shutil\.rmtree",
+        r"file\.write",
+        r"unreal\.EditorAssetLibrary\.save_asset",
     ]
     for keyword in destructive_keywords:
         if re.search(keyword, script, re.IGNORECASE):
@@ -889,13 +943,17 @@ def is_potentially_destructive(script: str) -> bool:
 def get_all_scene_objects() -> str:
     """
     Retrieve all actors in the current Unreal Engine level.
-    
+
     Returns:
         JSON string of actors with their names, classes, and locations.
     """
     command = {"type": "get_all_scene_objects"}
     response = send_to_unreal(command)
-    return json.dumps(response) if response.get("success") else f"Failed: {response.get('error', 'Unknown error')}"
+    return (
+        json.dumps(response)
+        if response.get("success")
+        else f"Failed: {response.get('error', 'Unknown error')}"
+    )
 
 
 # Project Control
@@ -903,7 +961,7 @@ def get_all_scene_objects() -> str:
 def create_project_folder(folder_path: str) -> str:
     """
     Create a new folder in the Unreal project content directory.
-    
+
     Args:
         folder_path: Path relative to /Game (e.g., "FlappyBird/Assets")
     """
@@ -916,17 +974,23 @@ def create_project_folder(folder_path: str) -> str:
 def get_files_in_folder(folder_path: str) -> str:
     """
     List all files in a specified project folder.
-    
+
     Args:
         folder_path: Path relative to /Game (e.g., "FlappyBird/Assets")
     """
     command = {"type": "get_files_in_folder", "folder_path": folder_path}
     response = send_to_unreal(command)
-    return json.dumps(response.get("files", [])) if response.get("success") else f"Failed: {response.get('error')}"
+    return (
+        json.dumps(response.get("files", []))
+        if response.get("success")
+        else f"Failed: {response.get('error')}"
+    )
 
 
 @mcp.tool()
-def create_game_mode(game_mode_path: str, pawn_blueprint_path: str, base_class: str = "GameModeBase") -> str:
+def create_game_mode(
+    game_mode_path: str, pawn_blueprint_path: str, base_class: str = "GameModeBase"
+) -> str:
     """Create a game mode Blueprint, set its default pawn, and assign it as the current scene’s default game mode.
     Args:
         game_mode_path: Path for new game mode (e.g., "/Game/MyGameMode")
@@ -938,7 +1002,7 @@ def create_game_mode(game_mode_path: str, pawn_blueprint_path: str, base_class: 
             "type": "create_game_mode",
             "game_mode_path": game_mode_path,
             "pawn_blueprint_path": pawn_blueprint_path,
-            "base_class": base_class
+            "base_class": base_class,
         }
         response = send_to_unreal(command)
         parsed = json.loads(response)
@@ -948,8 +1012,12 @@ def create_game_mode(game_mode_path: str, pawn_blueprint_path: str, base_class: 
 
 
 @mcp.tool()
-def add_widget_to_user_widget(user_widget_path: str, widget_type: str, widget_name: str,
-                              parent_widget_name: str = "") -> str:
+def add_widget_to_user_widget(
+    user_widget_path: str,
+    widget_type: str,
+    widget_name: str,
+    parent_widget_name: str = "",
+) -> str:
     """
     Adds a new widget (like TextBlock, Button, Image, CanvasPanel, VerticalBox) to a User Widget Blueprint.
 
@@ -967,7 +1035,7 @@ def add_widget_to_user_widget(user_widget_path: str, widget_type: str, widget_na
         "user_widget_path": user_widget_path,
         "widget_type": widget_type,
         "widget_name": widget_name,
-        "parent_widget_name": parent_widget_name
+        "parent_widget_name": parent_widget_name,
     }
     # Use json.loads to parse the JSON string returned by send_to_unreal
     response_str = send_to_unreal(command)
@@ -976,8 +1044,10 @@ def add_widget_to_user_widget(user_widget_path: str, widget_type: str, widget_na
         # Return a user-friendly string summary
         if response_dict.get("success"):
             actual_name = response_dict.get("widget_name", widget_name)
-            return response_dict.get("message",
-                                     f"Successfully added widget '{actual_name}' of type '{widget_type}' to '{user_widget_path}'.")
+            return response_dict.get(
+                "message",
+                f"Successfully added widget '{actual_name}' of type '{widget_type}' to '{user_widget_path}'.",
+            )
         else:
             return f"Failed to add widget: {response_dict.get('error', 'Unknown C++ error')}"
     except json.JSONDecodeError:
@@ -990,7 +1060,9 @@ def add_widget_to_user_widget(user_widget_path: str, widget_type: str, widget_na
 
 
 @mcp.tool()
-def edit_widget_property(user_widget_path: str, widget_name: str, property_name: str, value: str) -> str:
+def edit_widget_property(
+    user_widget_path: str, widget_name: str, property_name: str, value: str
+) -> str:
     """
     Edits a property of a specific widget within a User Widget Blueprint.
 
@@ -1019,7 +1091,7 @@ def edit_widget_property(user_widget_path: str, widget_name: str, property_name:
         "user_widget_path": user_widget_path,
         "widget_name": widget_name,
         "property_name": property_name,
-        "value": value  # Pass the string value directly
+        "value": value,  # Pass the string value directly
     }
     # Use json.loads to parse the JSON string returned by send_to_unreal
     response_str = send_to_unreal(command)
@@ -1027,8 +1099,10 @@ def edit_widget_property(user_widget_path: str, widget_name: str, property_name:
         response_dict = json.loads(response_str)
         # Return a user-friendly string summary
         if response_dict.get("success"):
-            return response_dict.get("message",
-                                     f"Successfully set property '{property_name}' on widget '{widget_name}'.")
+            return response_dict.get(
+                "message",
+                f"Successfully set property '{property_name}' on widget '{widget_name}'.",
+            )
         else:
             return f"Failed to edit widget property: {response_dict.get('error', 'Unknown C++ error')}"
     except json.JSONDecodeError:
@@ -1045,7 +1119,7 @@ def edit_widget_property(user_widget_path: str, widget_name: str, property_name:
 def add_input_binding(action_name: str, key: str) -> str:
     """
     Add an input action binding to Project Settings.
-    
+
     Args:
         action_name: Name of the action (e.g., "Flap")
         key: Key to bind (e.g., "Space Bar")

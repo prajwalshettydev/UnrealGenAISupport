@@ -9,86 +9,85 @@
 USTRUCT(BlueprintType)
 struct FMessage
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    UPROPERTY(BlueprintReadWrite)
-    FString role;
+	UPROPERTY(BlueprintReadWrite)
+	FString role;
 
-    UPROPERTY(BlueprintReadWrite)
-    FString content;
+	UPROPERTY(BlueprintReadWrite)
+	FString content;
 };
 
 USTRUCT(BlueprintType)
 struct FChoice
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    UPROPERTY(BlueprintReadWrite)
-    FMessage message;
+	UPROPERTY(BlueprintReadWrite)
+	FMessage message;
 };
 
 USTRUCT(BlueprintType)
 struct FResponse
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    UPROPERTY(BlueprintReadWrite)
-    TArray<FChoice> choices;
+	UPROPERTY(BlueprintReadWrite)
+	TArray<FChoice> choices;
 
-    UPROPERTY(BlueprintReadWrite)
-    FString error;
+	UPROPERTY(BlueprintReadWrite)
+	FString error;
 };
-
 
 USTRUCT(BlueprintType)
 struct FGenChatMessage
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
-    FString Role = TEXT("user");
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
+	FString Role = TEXT("user");
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
-    FString Content;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
+	FString Content;
 };
 
 USTRUCT(BlueprintType)
 struct FGenChatSettings
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    // Model selection using enum
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
-    EGenOAIChatModel ModelEnum = EGenOAIChatModel::GPT_35_Turbo;
-    
-    // Custom model name if ModelEnum is set to Custom
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI", meta = (EditCondition = "ModelEnum == EGenOAIChatModel::Custom", EditConditionHides))
-    FString CustomModel;
+	// Model selection using enum
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
+	EGenOAIChatModel ModelEnum = EGenOAIChatModel::GPT_35_Turbo;
 
-    // Legacy field for C++ compatibility - will be populated automatically from ModelEnum or CustomModel
-    UPROPERTY(BlueprintReadOnly, Category = "GenAI|OpenAI")
-    FString Model = TEXT("gpt-3.5-turbo");
+	// Custom model name if ModelEnum is set to Custom
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI",
+			  meta = (EditCondition = "ModelEnum == EGenOAIChatModel::Custom", EditConditionHides))
+	FString CustomModel;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
-    int32 MaxTokens = 10000;
+	// Legacy field for C++ compatibility - will be populated automatically from ModelEnum or CustomModel
+	UPROPERTY(BlueprintReadOnly, Category = "GenAI|OpenAI")
+	FString Model = TEXT("gpt-3.5-turbo");
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
-    TArray<FGenChatMessage> Messages;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
+	int32 MaxTokens = 10000;
 
-    // Helper function to ensure the Model field is correctly set from enum or custom value
-    void UpdateModel()
-    {
-        if (ModelEnum == EGenOAIChatModel::Custom && !CustomModel.IsEmpty())
-        {
-            Model = CustomModel;
-        }
-        else
-        {
-            Model = UGenOAIModelUtils::ChatModelToString(ModelEnum);
-        }
-    }
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
+	TArray<FGenChatMessage> Messages;
+
+	// Helper function to ensure the Model field is correctly set from enum or custom value
+	void UpdateModel()
+	{
+		if (ModelEnum == EGenOAIChatModel::Custom && !CustomModel.IsEmpty())
+		{
+			Model = CustomModel;
+		}
+		else
+		{
+			Model = UGenOAIModelUtils::ChatModelToString(ModelEnum);
+		}
+	}
 };
-
 
 /**
  * Structured Output Chat Settings
@@ -96,21 +95,20 @@ struct FGenChatSettings
 USTRUCT(BlueprintType)
 struct GENERATIVEAISUPPORT_API FGenOAIStructuredChatSettings
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "GenAI")
-    FGenChatSettings ChatSettings;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "GenAI")
+	FGenChatSettings ChatSettings;
 
-    // Use schema for structured outputs
-    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "GenAI")
-    bool bUseSchema = true;
+	// Use schema for structured outputs
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "GenAI")
+	bool bUseSchema = true;
 
-    // name
-    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "GenAI")
-    FString Name;
+	// name
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "GenAI")
+	FString Name;
 
-    // JSON schema for structured outputs
-    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "GenAI")
-    FString SchemaJson;
-
+	// JSON schema for structured outputs
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "GenAI")
+	FString SchemaJson;
 };
