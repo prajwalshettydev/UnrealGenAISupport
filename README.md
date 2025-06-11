@@ -4,11 +4,11 @@
 #### MCP Example:
 Claude spawning scene objects and controlling their transformations and materials, generating blueprints, functions, variables, adding components, running python scripts etc.
 
-<img src="Docs/UnrealMcpDemo.gif" width="480"/>
+<img src="Docs/_images/UnrealMcpDemo.gif" width="480"/>
 
 #### API Example:
 A project called become human, where NPCs are OpenAI agentic instances. Built using this plugin.
-![Become Human](Docs/BHDemoGif.gif)
+![Become Human](Docs/_images/BHDemoGif.gif)
 
 > [!WARNING]  
 > This plugin is still under rapid development.
@@ -17,7 +17,7 @@ A project called become human, where NPCs are OpenAI agentic instances. Built us
 > 
 > A stable version will be released soon. 🚀🔥
 
-<p align="center"><img src="Docs/Repo Card - Updated.png" width="512"/></p>
+<p align="center"><img src="Docs/_images/Repo Card - Updated.png" width="512"/></p>
 
 
 Every month, hundreds of new AI models are released by various organizations, making it hard to keep up with the latest advancements.
@@ -267,7 +267,7 @@ pip install mcp[cli]
 
 ##### 5. [OPTIONAL] Enable AutoStart MCP server on editor open
 
-<img src="Docs/Settings.png" width="782"/>
+<img src="Docs/_images/Settings.png" width="782"/>
 
 
 ## Adding the plugin to your project:
@@ -350,7 +350,7 @@ Tested models are `gpt-4o`, `gpt-4o-mini`, `gpt-4.5`, `o1-mini`, `o1`, `o3-mini-
 
    ##### Blueprint Example:
 
-<img src="Docs/BpExampleOAIChat.png" width="782"/>
+<img src="Docs/_images/BpExampleOAIChat.png" width="782"/>
 
 #### 2. Structured Outputs:
    ##### C++ Example 1:
@@ -424,7 +424,7 @@ Tested models are `gpt-4o`, `gpt-4o-mini`, `gpt-4.5`, `o1-mini`, `o1`, `o3-mini-
    ```
 
 ##### Blueprint Example:
-<img src="Docs/BpExampleOAIStructuredOp.png" width="782"/>
+<img src="Docs/_images/BpExampleOAIStructuredOp.png" width="782"/>
 
 ### DeepSeek API:
 
@@ -476,7 +476,7 @@ Points to note:
    ```
 
 ##### Blueprint Example:
-<img src="Docs/BpExampleDeepseekChat.png" width="782"/>
+<img src="Docs/_images/BpExampleDeepseekChat.png" width="782"/>
 
 ### Anthropic API:
 Currently the plugin supports Chat from Anthropic API. Both for C++ and Blueprints.
@@ -516,7 +516,7 @@ Tested models are `claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-
 ```
 
 ##### Blueprint Example:
-<img src="Docs/BpExampleClaudeChat.png" width="782"/>
+<img src="Docs/_images/BpExampleClaudeChat.png" width="782"/>
 
 ### XAI's Grok 3 API:
 Currently the plugin supports Chat from XAI's Grok 3 API. Both for C++ and Blueprints.
@@ -589,7 +589,7 @@ python <your_project_directoy>/Plugins/GenerativeAISupport/Content/Python/mcp_se
 
 ## Config Window:
 (Still wip)
-<img src="Docs/EditorWindow.png" width="782"/>
+<img src="Docs/_images/EditorWindow.png" width="782"/>
 
 ## Contribution Guidelines:
 
