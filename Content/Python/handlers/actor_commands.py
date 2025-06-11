@@ -1,21 +1,21 @@
-import unreal
 import json
-from typing import Dict, Any, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
-from utils import unreal_conversions as uc
+import unreal
 from utils import logging as log
+from utils import unreal_conversions as uc
 
 
 def handle_modify_object(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a modify_object command
-    
+
     Args:
         command: The command dictionary containing:
             - actor_name: Name of the actor to modify
             - property_type: Type of property to modify (material, position, rotation, scale)
             - value: Value to set for the property
-            
+
     Returns:
         Response dictionary with success/failure status
     """
@@ -29,7 +29,9 @@ def handle_modify_object(command: Dict[str, Any]) -> Dict[str, Any]:
             log.log_error("Missing required parameters for modify_object")
             return {"success": False, "error": "Missing required parameters"}
 
-        log.log_command("modify_object", f"Actor: {actor_name}, Property: {property_type}")
+        log.log_command(
+            "modify_object", f"Actor: {actor_name}, Property: {property_type}"
+        )
 
         # Use the C++ utility class
         gen_actor_utils = unreal.GenActorUtils
@@ -38,12 +40,21 @@ def handle_modify_object(command: Dict[str, Any]) -> Dict[str, Any]:
         if property_type == "material":
             # Set the material
             material_path = value
-            success = gen_actor_utils.set_actor_material_by_path(actor_name, material_path)
+            success = gen_actor_utils.set_actor_material_by_path(
+                actor_name, material_path
+            )
             if success:
-                log.log_result("modify_object", True, f"Material of {actor_name} set to {material_path}")
+                log.log_result(
+                    "modify_object",
+                    True,
+                    f"Material of {actor_name} set to {material_path}",
+                )
                 return {"success": True}
             log.log_error(f"Failed to set material for {actor_name}")
-            return {"success": False, "error": f"Failed to set material for {actor_name}"}
+            return {
+                "success": False,
+                "error": f"Failed to set material for {actor_name}",
+            }
 
         elif property_type == "position":
             # Set position
@@ -51,10 +62,15 @@ def handle_modify_object(command: Dict[str, Any]) -> Dict[str, Any]:
                 vec = uc.to_unreal_vector(value)
                 success = gen_actor_utils.set_actor_position(actor_name, vec)
                 if success:
-                    log.log_result("modify_object", True, f"Position of {actor_name} set to {vec}")
+                    log.log_result(
+                        "modify_object", True, f"Position of {actor_name} set to {vec}"
+                    )
                     return {"success": True}
                 log.log_error(f"Failed to set position for {actor_name}")
-                return {"success": False, "error": f"Failed to set position for {actor_name}"}
+                return {
+                    "success": False,
+                    "error": f"Failed to set position for {actor_name}",
+                }
             except ValueError as e:
                 log.log_error(str(e))
                 return {"success": False, "error": str(e)}
@@ -65,10 +81,15 @@ def handle_modify_object(command: Dict[str, Any]) -> Dict[str, Any]:
                 rot = uc.to_unreal_rotator(value)
                 success = gen_actor_utils.set_actor_rotation(actor_name, rot)
                 if success:
-                    log.log_result("modify_object", True, f"Rotation of {actor_name} set to {rot}")
+                    log.log_result(
+                        "modify_object", True, f"Rotation of {actor_name} set to {rot}"
+                    )
                     return {"success": True}
                 log.log_error(f"Failed to set rotation for {actor_name}")
-                return {"success": False, "error": f"Failed to set rotation for {actor_name}"}
+                return {
+                    "success": False,
+                    "error": f"Failed to set rotation for {actor_name}",
+                }
             except ValueError as e:
                 log.log_error(str(e))
                 return {"success": False, "error": str(e)}
@@ -79,26 +100,35 @@ def handle_modify_object(command: Dict[str, Any]) -> Dict[str, Any]:
                 scale = uc.to_unreal_vector(value)
                 success = gen_actor_utils.set_actor_scale(actor_name, scale)
                 if success:
-                    log.log_result("modify_object", True, f"Scale of {actor_name} set to {scale}")
+                    log.log_result(
+                        "modify_object", True, f"Scale of {actor_name} set to {scale}"
+                    )
                     return {"success": True}
                 log.log_error(f"Failed to set scale for {actor_name}")
-                return {"success": False, "error": f"Failed to set scale for {actor_name}"}
+                return {
+                    "success": False,
+                    "error": f"Failed to set scale for {actor_name}",
+                }
             except ValueError as e:
                 log.log_error(str(e))
                 return {"success": False, "error": str(e)}
 
         else:
             log.log_error(f"Unknown property type: {property_type}")
-            return {"success": False, "error": f"Unknown property type: {property_type}"}
+            return {
+                "success": False,
+                "error": f"Unknown property type: {property_type}",
+            }
 
     except Exception as e:
         log.log_error(f"Error modifying object: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}
 
+
 def handle_edit_component_property(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to edit a component property in a Blueprint or scene actor.
-    
+
     Args:
         command: The command dictionary containing:
             - blueprint_path: Path to the Blueprint
@@ -107,7 +137,7 @@ def handle_edit_component_property(command: Dict[str, Any]) -> Dict[str, Any]:
             - value: New value as a string
             - is_scene_actor: Boolean flag for scene actor (optional, default False)
             - actor_name: Name of the scene actor (required if is_scene_actor is True)
-                
+
     Returns:
         Dictionary with success/failure status, message, and optional suggestions
     """
@@ -135,13 +165,23 @@ def handle_edit_component_property(command: Dict[str, Any]) -> Dict[str, Any]:
 
         # Call the C++ implementation
         node_creator = unreal.GenObjectProperties
-        result = node_creator.edit_component_property(blueprint_path, component_name, property_name, value, is_scene_actor, actor_name)
+        result = node_creator.edit_component_property(
+            blueprint_path,
+            component_name,
+            property_name,
+            value,
+            is_scene_actor,
+            actor_name,
+        )
 
         # Parse the result - CHANGED: Convert JSON string to dict
         try:
             parsed_result = json.loads(result)
-            log.log_result("edit_component_property", parsed_result["success"],
-                           parsed_result.get("message", parsed_result.get("error", "No message")))
+            log.log_result(
+                "edit_component_property",
+                parsed_result["success"],
+                parsed_result.get("message", parsed_result.get("error", "No message")),
+            )
             # CHANGED: Return the parsed dict instead of the original JSON string
             return parsed_result
         except json.JSONDecodeError:
@@ -150,20 +190,22 @@ def handle_edit_component_property(command: Dict[str, Any]) -> Dict[str, Any]:
             return {"success": False, "error": f"Invalid response format: {result}"}
 
     except Exception as e:
-        log.log_error(f"Error editing component property: {str(e)}", include_traceback=True)
+        log.log_error(
+            f"Error editing component property: {str(e)}", include_traceback=True
+        )
         return {"success": False, "error": str(e)}
 
 
 def handle_add_component_with_events(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to add a component to a Blueprint with overlap events if applicable.
-    
+
     Args:
         command: The command dictionary containing:
             - blueprint_path: Path to the Blueprint
             - component_name: Name of the new component
             - component_class: Class of the component (e.g., "BoxComponent")
-                
+
     Returns:
         Response dictionary with success/failure status, message, and event GUIDs
     """
@@ -176,19 +218,32 @@ def handle_add_component_with_events(command: Dict[str, Any]) -> Dict[str, Any]:
             log.log_error("Missing required parameters for add_component_with_events")
             return {"success": False, "error": "Missing required parameters"}
 
-        log.log_command("add_component_with_events", f"Blueprint: {blueprint_path}, Component: {component_name}, Class: {component_class}")
+        log.log_command(
+            "add_component_with_events",
+            f"Blueprint: {blueprint_path}, Component: {component_name}, Class: {component_class}",
+        )
 
         node_creator = unreal.GenBlueprintUtils
-        result = node_creator.add_component_with_events(blueprint_path, component_name, component_class)
+        result = node_creator.add_component_with_events(
+            blueprint_path, component_name, component_class
+        )
 
         import json
+
         parsed_result = json.loads(result)
-        log.log_result("add_component_with_events", parsed_result["success"], parsed_result.get("message", parsed_result.get("error", "No message")))
+        log.log_result(
+            "add_component_with_events",
+            parsed_result["success"],
+            parsed_result.get("message", parsed_result.get("error", "No message")),
+        )
         return parsed_result
 
     except Exception as e:
-        log.log_error(f"Error adding component with events: {str(e)}", include_traceback=True)
+        log.log_error(
+            f"Error adding component with events: {str(e)}", include_traceback=True
+        )
         return {"success": False, "error": str(e)}
+
 
 def handle_create_game_mode(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
@@ -197,10 +252,15 @@ def handle_create_game_mode(command: Dict[str, Any]) -> Dict[str, Any]:
         base_class = command.get("base_class", "GameModeBase")
 
         if not game_mode_path or not pawn_blueprint_path:
-            return {"success": False, "error": "Missing game_mode_path or pawn_blueprint_path"}
+            return {
+                "success": False,
+                "error": "Missing game_mode_path or pawn_blueprint_path",
+            }
 
         node_creator = unreal.GenActorUtils
-        result = node_creator.create_game_mode_with_pawn(game_mode_path, pawn_blueprint_path, base_class)
+        result = node_creator.create_game_mode_with_pawn(
+            game_mode_path, pawn_blueprint_path, base_class
+        )
         return json.loads(result)
     except Exception as e:
         return {"success": False, "error": str(e)}

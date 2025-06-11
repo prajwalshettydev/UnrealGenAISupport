@@ -4,10 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "Data/OpenAI/GenOAIChatStructs.h"
-#include "UObject/Object.h"
 #include "GenClaudeChatStructs.generated.h"
-
-
+#include "UObject/Object.h"
 
 UENUM(BlueprintType)
 enum class EClaudeModels : uint8
@@ -42,7 +40,7 @@ struct FGenClaudeChatSettings
 };
 
 /**
- * 
+ *
  */
 UCLASS()
 class GENERATIVEAISUPPORT_API UGenClaudeChatStructs : public UObject

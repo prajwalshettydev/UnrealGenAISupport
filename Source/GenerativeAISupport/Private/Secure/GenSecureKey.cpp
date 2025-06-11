@@ -2,7 +2,6 @@
 // Licensed under the MIT License. See LICENSE file in the root directory of this
 // source tree or http://opensource.org/licenses/MIT.
 
-
 #include "Secure/GenSecureKey.h"
 #include "Data/GenAIOrgs.h"
 #include "Modules/ModuleManager.h"
@@ -13,7 +12,7 @@ bool UGenSecureKey::bUseApiKeyFromEnv = true;
 
 void UGenSecureKey::SetGenAIApiKeyRuntime(EGenAIOrgs Org, const FString& APIKey)
 {
-    APIKeys.Add(Org, APIKey);
+	APIKeys.Add(Org, APIKey);
 }
 
 FString UGenSecureKey::GetGenerativeAIApiKey(EGenAIOrgs Org)
@@ -24,26 +23,26 @@ FString UGenSecureKey::GetGenerativeAIApiKey(EGenAIOrgs Org)
 		FString EnvKey;
 		switch (Org)
 		{
-		case EGenAIOrgs::OpenAI:
-			EnvKey = TEXT("PS_OPENAIAPIKEY");
-			break;
-		case EGenAIOrgs::DeepSeek:
-			EnvKey = TEXT("PS_DEEPSEEKAPIKEY");
-			break;
-		case EGenAIOrgs::Anthropic:
-			EnvKey = TEXT("PS_ANTHROPICAPIKEY");
-			break;
-		case EGenAIOrgs::Meta:
-			EnvKey = TEXT("PS_METAAPIKEY");
-			break;
-		case EGenAIOrgs::Google:
-			EnvKey = TEXT("PS_GOOGLEAPIKEY");
-			break;
-		case EGenAIOrgs::XAI:
-			EnvKey = TEXT("PS_XAIAPIKEY");
-			break;
-		default:
-			return TEXT("");
+			case EGenAIOrgs::OpenAI:
+				EnvKey = TEXT("PS_OPENAIAPIKEY");
+				break;
+			case EGenAIOrgs::DeepSeek:
+				EnvKey = TEXT("PS_DEEPSEEKAPIKEY");
+				break;
+			case EGenAIOrgs::Anthropic:
+				EnvKey = TEXT("PS_ANTHROPICAPIKEY");
+				break;
+			case EGenAIOrgs::Meta:
+				EnvKey = TEXT("PS_METAAPIKEY");
+				break;
+			case EGenAIOrgs::Google:
+				EnvKey = TEXT("PS_GOOGLEAPIKEY");
+				break;
+			case EGenAIOrgs::XAI:
+				EnvKey = TEXT("PS_XAIAPIKEY");
+				break;
+			default:
+				return TEXT("");
 		}
 
 		// Check the environment variable

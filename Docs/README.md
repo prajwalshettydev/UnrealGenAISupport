@@ -23,12 +23,11 @@ Detailed technical architecture, component design, and system integration patter
 - [MCP System](Architecture/MCP-System.md) - Dual-server architecture and communication protocols  
 - [API Integration](Architecture/API-Integration.md) - Async patterns, data structures, delegates
 
-### 🛠️ [Development](Development/README.md)
-Developer guides, setup instructions, and best practices for using and contributing to the plugin.
+### 🛠️ [Contributing](Contributing/README.md)
+Developer guides, setup instructions, and best practices for contributing to the plugin.
 
-- [Setup](Development/Setup.md) - Environment configuration, dependencies, installation
-- [Testing](Development/Testing.md) - Testing strategies, examples, validation procedures
-- [Debugging](Development/Debugging.md) - Troubleshooting, logging, development tools
+- [Development Setup](Contributing/Development-Setup.md) - Environment configuration, dependencies, installation
+- [Coding Standards](Contributing/Coding-Standards.md) - C++ and Python coding guidelines, best practices
 
 ### 🔌 [API Integrations](API/README.md)
 Complete documentation for all supported AI service APIs with implementation examples.
@@ -55,7 +54,7 @@ Complete guide for contributors including setup, standards, and workflow.
 
 ## Getting Started
 
-1. **Installation**: Follow the [Setup Guide](Development/Setup.md) to install and configure the plugin
+1. **Installation**: Follow the [Development Setup](Contributing/Development-Setup.md) to install and configure the plugin
 2. **API Keys**: Configure your AI service API keys using environment variables
 3. **First API Call**: Try the [OpenAI Integration](API/OpenAI/README.md) examples
 4. **MCP Setup**: Enable AI control with [MCP Server Setup](MCP/Server-Setup.md)

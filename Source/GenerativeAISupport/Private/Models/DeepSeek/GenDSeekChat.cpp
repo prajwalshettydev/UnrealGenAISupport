@@ -1,30 +1,30 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "Models/DeepSeek/GenDSeekChat.h"
 
-#include "HttpModule.h"
 #include "Data/GenAIOrgs.h"
 #include "Data/OpenAI/GenOAIChatStructs.h"
+#include "HttpModule.h"
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
 #include "Secure/GenSecureKey.h"
 #include "Utilities/GenUtils.h"
 
-
 void UGenDSeekChat::SendChatRequest(const FGenDSeekChatSettings& ChatSettings,
-                                    const FOnDSeekChatCompletionResponse& OnComplete)
+									const FOnDSeekChatCompletionResponse& OnComplete)
 {
-	MakeRequest(ChatSettings, [OnComplete](const FString& Response, const FString& Error, bool Success)
-	{
-		if (OnComplete.IsBound())
-		{
-			OnComplete.Execute(Response, Error, Success);
-		}
-	});
+	MakeRequest(ChatSettings,
+				[OnComplete](const FString& Response, const FString& Error, bool Success)
+				{
+					if (OnComplete.IsBound())
+					{
+						OnComplete.Execute(Response, Error, Success);
+					}
+				});
 }
 
-UGenDSeekChat* UGenDSeekChat::RequestDeepseekChat(UObject* WorldContextObject, const FGenDSeekChatSettings& ChatSettings)
+UGenDSeekChat* UGenDSeekChat::RequestDeepseekChat(UObject* WorldContextObject,
+												  const FGenDSeekChatSettings& ChatSettings)
 {
 	UGenDSeekChat* AsyncAction = NewObject<UGenDSeekChat>();
 	AsyncAction->ChatSettings = ChatSettings;
@@ -33,15 +33,16 @@ UGenDSeekChat* UGenDSeekChat::RequestDeepseekChat(UObject* WorldContextObject, c
 
 void UGenDSeekChat::Activate()
 {
-	MakeRequest(ChatSettings, [this](const FString& Response, const FString& Error, bool Success)
-	{
-		OnComplete.Broadcast(Response, Error, Success);
-		Cancel();
-	});
+	MakeRequest(ChatSettings,
+				[this](const FString& Response, const FString& Error, bool Success)
+				{
+					OnComplete.Broadcast(Response, Error, Success);
+					Cancel();
+				});
 }
 
 void UGenDSeekChat::MakeRequest(const FGenDSeekChatSettings& ChatSettings,
-                                const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
+								const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
 {
 	FString ApiKey = UGenSecureKey::GetGenerativeAIApiKey(EGenAIOrgs::DeepSeek);
 	if (ApiKey.IsEmpty())
@@ -50,12 +51,10 @@ void UGenDSeekChat::MakeRequest(const FGenDSeekChatSettings& ChatSettings,
 		return;
 	}
 
-
 	// Construct JSON payload
 	TSharedPtr<FJsonObject> JsonPayload = MakeShareable(new FJsonObject());
-	JsonPayload->SetStringField(
-		TEXT("model"),
-		UGenUtils::GetEnumDisplayName(StaticEnum<EDeepSeekModels>(), static_cast<int32>(ChatSettings.Model)));
+	JsonPayload->SetStringField(TEXT("model"), UGenUtils::GetEnumDisplayName(StaticEnum<EDeepSeekModels>(),
+																			 static_cast<int32>(ChatSettings.Model)));
 	JsonPayload->SetNumberField(TEXT("max_tokens"), ChatSettings.MaxTokens);
 	JsonPayload->SetBoolField(TEXT("stream"), ChatSettings.bStreamResponse);
 
@@ -86,7 +85,7 @@ void UGenDSeekChat::MakeRequest(const FGenDSeekChatSettings& ChatSettings,
 	// UE_LOG(LogTemp, Warning, TEXT("Unreal HTTP Timeouts: Total: %f, Connection: %f"),
 	// FHttpModule::Get().GetHttpTotalTimeout(),
 	// FHttpModule::Get().GetHttpConnectionTimeout());
-	
+
 	UE_LOG(LogTemp, Log, TEXT("Payload: %s"), *PayloadString);
 
 	HttpRequest->OnProcessRequestComplete().BindLambda(
@@ -94,13 +93,15 @@ void UGenDSeekChat::MakeRequest(const FGenDSeekChatSettings& ChatSettings,
 		{
 			if (!bSuccess || !Response.IsValid())
 			{
-				FString ErrorMessage = Response.IsValid() ? Response->GetContentAsString() : TEXT("Request failed. No response received.");
+				FString ErrorMessage =
+					Response.IsValid() ? Response->GetContentAsString() : TEXT("Request failed. No response received.");
 				int32 ResponseCode = Response.IsValid() ? Response->GetResponseCode() : -1;
-				if(ResponseCode == 0)
+				if (ResponseCode == 0)
 				{
 					ErrorMessage = TEXT("Request most likely timed out. No response received.");
 				}
-				UE_LOG(LogTemp, Error, TEXT("DeepSeek API request failed. HTTP Code: %d, Error: %s"), ResponseCode, *ErrorMessage);
+				UE_LOG(LogTemp, Error, TEXT("DeepSeek API request failed. HTTP Code: %d, Error: %s"), ResponseCode,
+					   *ErrorMessage);
 
 				ResponseCallback(TEXT(""), ErrorMessage, false);
 				return;
@@ -111,9 +112,8 @@ void UGenDSeekChat::MakeRequest(const FGenDSeekChatSettings& ChatSettings,
 	HttpRequest->ProcessRequest();
 }
 
-
 void UGenDSeekChat::ProcessResponse(const FString& ResponseStr,
-                                    const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
+									const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
 {
 	TSharedPtr<FJsonObject> JsonObject;
 	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ResponseStr);

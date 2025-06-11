@@ -1,18 +1,17 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "MCP/GenObjectProperties.h"
 
-#include "EngineUtils.h"
-#include "K2Node_Event.h"
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
+#include "EngineUtils.h"
+#include "K2Node_Event.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Misc/OutputDeviceNull.h"
 
 FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath, const FString& ComponentName,
-                                                    const FString& PropertyName, const FString& Value,
-                                                    bool bIsSceneActor, const FString& ActorName)
+													const FString& PropertyName, const FString& Value,
+													bool bIsSceneActor, const FString& ActorName)
 {
 	UObject* TargetObject = nullptr;
 	UBlueprint* Blueprint = nullptr;
@@ -22,25 +21,26 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 	if (bIsSceneActor)
 	{
 		UWorld* World = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr;
-		if (!World) return TEXT("{\"success\": false, \"error\": \"No editor world found\"}");
-		
+		if (!World)
+			return TEXT("{\"success\": false, \"error\": \"No editor world found\"}");
+
 		// Store available actors for better error messages
 		TArray<FString> AvailableActors;
-		
+
 		for (TActorIterator<AActor> It(World); It; ++It)
 		{
 			// Add to available actors list for error reporting
 			AvailableActors.Add(It->GetActorLabel());
-			
+
 			// CHANGE: Use GetActorLabel() instead of GetName()
 			if (It->GetActorLabel() == ActorName)
 			{
 				SceneActor = *It;
 				UE_LOG(LogTemp, Log, TEXT("Found scene actor: %s"), *ActorName);
-				
+
 				// Get available component names for better error messages
 				TArray<FString> AvailableComponents;
-				
+
 				for (UActorComponent* Comp : SceneActor->GetComponents())
 				{
 					AvailableComponents.Add(Comp->GetName());
@@ -51,36 +51,40 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 						break;
 					}
 				}
-				
+
 				// If we found the actor but not the component, return detailed error
-				if (SceneActor && !TargetObject) {
+				if (SceneActor && !TargetObject)
+				{
 					FString ComponentsList = FString::Join(AvailableComponents, TEXT(", "));
-					return FString::Printf(
-						TEXT("{\"success\": false, \"error\": \"Component '%s' not found on actor '%s'. Available components: ['%s']\"}"),
-						*ComponentName, *ActorName, *ComponentsList);
+					return FString::Printf(TEXT("{\"success\": false, \"error\": \"Component '%s' not found on actor "
+												"'%s'. Available components: ['%s']\"}"),
+										   *ComponentName, *ActorName, *ComponentsList);
 				}
-				
+
 				break;
 			}
 		}
-		
+
 		// If we didn't find the actor, return detailed error
-		if (!SceneActor) {
+		if (!SceneActor)
+		{
 			FString ActorsList = FString::Join(AvailableActors, TEXT(", "));
 			return FString::Printf(
 				TEXT("{\"success\": false, \"error\": \"Scene actor not found: %s. Available actors: %s\"}"),
 				*ActorName, *ActorsList);
 		}
-		
+
 		// If we didn't find the component, the detailed error is already returned above
-		if (!TargetObject) return TEXT("{\"success\": false, \"error\": \"Scene actor or component not found\"}");
+		if (!TargetObject)
+			return TEXT("{\"success\": false, \"error\": \"Scene actor or component not found\"}");
 	}
 	else
 	{
 		// Blueprint code remains unchanged
 		Blueprint = LoadObject<UBlueprint>(nullptr, *BlueprintPath);
-		if (!Blueprint) return TEXT("{\"success\": false, \"error\": \"Could not load blueprint at path: ") +
-			BlueprintPath + TEXT("\"}");
+		if (!Blueprint)
+			return TEXT("{\"success\": false, \"error\": \"Could not load blueprint at path: ") + BlueprintPath +
+				   TEXT("\"}");
 		for (USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
 		{
 			if (Node->GetVariableName().ToString() == ComponentName)
@@ -89,19 +93,19 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 				break;
 			}
 		}
-		if (!TargetObject) return TEXT("{\"success\": false, \"error\": \"Component ") + ComponentName +
-			TEXT(" not found in ") + BlueprintPath + TEXT("\"}");
+		if (!TargetObject)
+			return TEXT("{\"success\": false, \"error\": \"Component ") + ComponentName + TEXT(" not found in ") +
+				   BlueprintPath + TEXT("\"}");
 	}
 
 	UActorComponent* Component = Cast<UActorComponent>(TargetObject);
-	if (!Component) return TEXT("{\"success\": false, \"error\": \"Invalid component template for ") + ComponentName +
-		TEXT("\"}");
+	if (!Component)
+		return TEXT("{\"success\": false, \"error\": \"Invalid component template for ") + ComponentName + TEXT("\"}");
 
 	// Handle material setting for mesh components
 	FString PropertyNameLower = PropertyName.ToLower();
-	bool IsMaterialProperty = (PropertyNameLower == TEXT("material") ||
-		PropertyNameLower == TEXT("setmaterial") ||
-		PropertyNameLower == TEXT("basematerial"));
+	bool IsMaterialProperty = (PropertyNameLower == TEXT("material") || PropertyNameLower == TEXT("setmaterial") ||
+							   PropertyNameLower == TEXT("basematerial"));
 
 	if (IsMaterialProperty)
 	{
@@ -115,13 +119,16 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 		UE_LOG(LogTemp, Log, TEXT("Attempting to load material at path: %s"), *CleanValue);
 
 		UMaterialInterface* Material = LoadObject<UMaterialInterface>(nullptr, *CleanValue);
-		if (!Material) {
+		if (!Material)
+		{
 			// Try appending the asset name as a fallback (e.g., "/Game/Materials/M_BirdYellow.M_BirdYellow")
 			FString FallbackPath = CleanValue + TEXT(".") + FName(*CleanValue).GetPlainNameString();
 			UE_LOG(LogTemp, Log, TEXT("Fallback attempt with path: %s"), *FallbackPath);
 			Material = LoadObject<UMaterialInterface>(nullptr, *FallbackPath);
-			if (!Material) {
-				return FString::Printf(TEXT("{\"success\": false, \"error\": \"Failed to load material at path: %s\"}"), *CleanValue);
+			if (!Material)
+			{
+				return FString::Printf(TEXT("{\"success\": false, \"error\": \"Failed to load material at path: %s\"}"),
+									   *CleanValue);
 			}
 		}
 
@@ -137,8 +144,8 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 		}
 		else
 		{
-			return TEXT(
-				"{\"success\": false, \"error\": \"Material setting only supported on StaticMeshComponent or SkeletalMeshComponent\"}");
+			return TEXT("{\"success\": false, \"error\": \"Material setting only supported on StaticMeshComponent or "
+						"SkeletalMeshComponent\"}");
 		}
 
 		if (Blueprint)
@@ -151,7 +158,7 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 			SceneActor->Modify();
 		}
 		return FString::Printf(TEXT("{\"success\": true, \"message\": \"Set material on %s to %s at index %d\"}"),
-		                       *ComponentName, *Value, MaterialIndex);
+							   *ComponentName, *Value, MaterialIndex);
 	}
 
 	// Special handling for StaticMesh property
@@ -160,7 +167,8 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 		UStaticMeshComponent* StaticMeshComp = Cast<UStaticMeshComponent>(Component);
 		if (!StaticMeshComp)
 		{
-			return TEXT("{\"success\": false, \"error\": \"StaticMesh property only applicable to StaticMeshComponent\"}");
+			return TEXT(
+				"{\"success\": false, \"error\": \"StaticMesh property only applicable to StaticMeshComponent\"}");
 		}
 
 		// Strip quotes from the value
@@ -178,12 +186,13 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 			Mesh = LoadObject<UStaticMesh>(nullptr, *FallbackPath);
 			if (!Mesh)
 			{
-				return FString::Printf(TEXT("{\"success\": false, \"error\": \"Failed to load static mesh at path: %s\"}"), *CleanValue);
+				return FString::Printf(
+					TEXT("{\"success\": false, \"error\": \"Failed to load static mesh at path: %s\"}"), *CleanValue);
 			}
 		}
 
 		StaticMeshComp->SetStaticMesh(Mesh);
-		
+
 		if (Blueprint)
 		{
 			Blueprint->Modify();
@@ -193,9 +202,9 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 		{
 			SceneActor->Modify();
 		}
-		
-		return FString::Printf(TEXT("{\"success\": true, \"message\": \"Set StaticMesh of %s to %s\"}"),
-			*ComponentName, *CleanValue);
+
+		return FString::Printf(TEXT("{\"success\": true, \"message\": \"Set StaticMesh of %s to %s\"}"), *ComponentName,
+							   *CleanValue);
 	}
 
 	// Generic property handling
@@ -213,8 +222,8 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 		}
 		FString SuggestionStr = Suggestions.Num() > 0 ? FString::Join(Suggestions, TEXT(", ")) : TEXT("none");
 		return FString::Printf(
-			TEXT("{\"success\": false, \"error\": \"Property %s not found\", \"suggestions\": \"%s\"}"),
-			*PropertyName, *SuggestionStr);
+			TEXT("{\"success\": false, \"error\": \"Property %s not found\", \"suggestions\": \"%s\"}"), *PropertyName,
+			*SuggestionStr);
 	}
 
 	bool bSuccess = false;
@@ -243,9 +252,9 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 		}
 		else
 		{
-			return FString::Printf(
-				TEXT("{\"success\": false, \"error\": \"Could not load object or type mismatch. Expected %s, trying to load %s\"}"),
-				*ObjProp->PropertyClass->GetName(), *CleanValue);
+			return FString::Printf(TEXT("{\"success\": false, \"error\": \"Could not load object or type mismatch. "
+										"Expected %s, trying to load %s\"}"),
+								   *ObjProp->PropertyClass->GetName(), *CleanValue);
 		}
 	}
 	else if (FFloatProperty* FloatProp = CastField<FFloatProperty>(Property))
@@ -308,7 +317,7 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 			FString CleanValue = Value;
 			CleanValue.RemoveFromStart(TEXT("("));
 			CleanValue.RemoveFromEnd(TEXT(")"));
-			
+
 			TArray<FString> Components;
 			// Try comma delimiter first
 			if (CleanValue.Contains(TEXT(",")))
@@ -316,18 +325,18 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 				CleanValue.ParseIntoArray(Components, TEXT(","), true);
 			}
 			// Try space delimiter if comma didn't work or didn't produce enough components
-			else 
+			else
 			{
 				CleanValue.ParseIntoArray(Components, TEXT(" "), true);
 			}
-			
+
 			// Support both 3-component and 2-component vectors (Z=0 for 2D)
 			if (Components.Num() >= 2)
 			{
 				float X = FCString::Atof(*Components[0]);
 				float Y = FCString::Atof(*Components[1]);
 				float Z = Components.Num() >= 3 ? FCString::Atof(*Components[2]) : 0.0f;
-				
+
 				FVector Vector(X, Y, Z);
 				StructProp->CopyCompleteValue_InContainer(Component, &Vector);
 				bSuccess = true;
@@ -339,23 +348,23 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 			FString CleanValue = Value;
 			CleanValue.RemoveFromStart(TEXT("("));
 			CleanValue.RemoveFromEnd(TEXT(")"));
-			
+
 			TArray<FString> Components;
 			if (CleanValue.Contains(TEXT(",")))
 			{
 				CleanValue.ParseIntoArray(Components, TEXT(","), true);
 			}
-			else 
+			else
 			{
 				CleanValue.ParseIntoArray(Components, TEXT(" "), true);
 			}
-			
+
 			if (Components.Num() >= 3)
 			{
 				float Pitch = FCString::Atof(*Components[0]);
 				float Yaw = FCString::Atof(*Components[1]);
 				float Roll = FCString::Atof(*Components[2]);
-				
+
 				FRotator Rotator(Pitch, Yaw, Roll);
 				StructProp->CopyCompleteValue_InContainer(Component, &Rotator);
 				bSuccess = true;
@@ -367,24 +376,24 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 			FString CleanValue = Value;
 			CleanValue.RemoveFromStart(TEXT("("));
 			CleanValue.RemoveFromEnd(TEXT(")"));
-			
+
 			TArray<FString> Components;
 			if (CleanValue.Contains(TEXT(",")))
 			{
 				CleanValue.ParseIntoArray(Components, TEXT(","), true);
 			}
-			else 
+			else
 			{
 				CleanValue.ParseIntoArray(Components, TEXT(" "), true);
 			}
-			
+
 			if (Components.Num() >= 3)
 			{
 				float R = FCString::Atof(*Components[0]);
 				float G = FCString::Atof(*Components[1]);
 				float B = FCString::Atof(*Components[2]);
 				float A = Components.Num() >= 4 ? FCString::Atof(*Components[3]) : 1.0f;
-				
+
 				FLinearColor Color(R, G, B, A);
 				StructProp->CopyCompleteValue_InContainer(Component, &Color);
 				bSuccess = true;
@@ -393,7 +402,8 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 		else if (StructProp->Struct->GetName() == TEXT("Transform"))
 		{
 			// Basic support for transforms - advanced use should use individual components
-			FString Message = TEXT("Transform property detected. For best results, set individual components like RelativeLocation instead.");
+			FString Message = TEXT("Transform property detected. For best results, set individual components like "
+								   "RelativeLocation instead.");
 			UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
 			return FString::Printf(TEXT("{\"success\": false, \"error\": \"%s\"}"), *Message);
 		}
@@ -406,13 +416,16 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 				FString ImportErrorMsg;
 				const TCHAR* ImportText = *Value;
 				FOutputDeviceNull ImportErrorDevice;
-				if (StructProp->Struct->ImportText(ImportText, StructPtr, nullptr, PPF_None, &ImportErrorDevice, StructProp->Struct->GetName()))
+				if (StructProp->Struct->ImportText(ImportText, StructPtr, nullptr, PPF_None, &ImportErrorDevice,
+												   StructProp->Struct->GetName()))
 				{
 					bSuccess = true;
 				}
 				else
 				{
-					return FString::Printf(TEXT("{\"success\": false, \"error\": \"Failed to import struct value: %s\"}"), *ImportErrorMsg);
+					return FString::Printf(
+						TEXT("{\"success\": false, \"error\": \"Failed to import struct value: %s\"}"),
+						*ImportErrorMsg);
 				}
 			}
 		}
@@ -457,7 +470,8 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 							EnumValues.Add(Enum->GetNameStringByIndex(i));
 						}
 						FString ValidValues = FString::Join(EnumValues, TEXT(", "));
-						return FString::Printf(TEXT("{\"success\": false, \"error\": \"Invalid enum value: %s. Valid values: %s\"}"), 
+						return FString::Printf(
+							TEXT("{\"success\": false, \"error\": \"Invalid enum value: %s. Valid values: %s\"}"),
 							*CleanValue, *ValidValues);
 					}
 				}
@@ -509,7 +523,8 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 	}
 	else if (FArrayProperty* ArrayProp = CastField<FArrayProperty>(Property))
 	{
-		return FString::Printf(TEXT("{\"success\": false, \"error\": \"Array properties are not directly supported yet. Use individual element access in a script.\"}"));
+		return FString::Printf(TEXT("{\"success\": false, \"error\": \"Array properties are not directly supported "
+									"yet. Use individual element access in a script.\"}"));
 	}
 
 	if (!bSuccess)
@@ -529,14 +544,15 @@ FString UGenObjectProperties::EditComponentProperty(const FString& BlueprintPath
 		SceneActor->Modify();
 	}
 
-	return FString::Printf(TEXT("{\"success\": true, \"message\": \"Set %s.%s to %s\"}"),
-	                       *ComponentName, *PropertyName, *Value);
+	return FString::Printf(TEXT("{\"success\": true, \"message\": \"Set %s.%s to %s\"}"), *ComponentName, *PropertyName,
+						   *Value);
 }
 
 FString UGenObjectProperties::GetAllSceneObjects()
 {
 	UWorld* World = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr;
-	if (!World) return TEXT("[]");
+	if (!World)
+		return TEXT("[]");
 
 	TArray<TSharedPtr<FJsonValue>> ActorsArray;
 	for (TActorIterator<AActor> It(World); It; ++It)

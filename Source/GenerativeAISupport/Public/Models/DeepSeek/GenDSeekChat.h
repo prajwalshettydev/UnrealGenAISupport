@@ -12,7 +12,8 @@ struct FGenChatMessage;
 DECLARE_DELEGATE_ThreeParams(FOnDSeekChatCompletionResponse, const FString&, const FString&, bool);
 
 // Blueprint async delegate
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FGenDSeekChatCompletionDelegate, const FString&, Response, const FString&, Error, bool, Success);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FGenDSeekChatCompletionDelegate, const FString&, Response,
+											   const FString&, Error, bool, Success);
 
 // Chat settings structure
 USTRUCT(BlueprintType)
@@ -33,35 +34,38 @@ struct FGenDSeekChatSettings
 	bool bStreamResponse = false;
 };
 
-
 /**
- * 
+ *
  */
 UCLASS()
 class GENERATIVEAISUPPORT_API UGenDSeekChat : public UCancellableAsyncAction
 {
 	GENERATED_BODY()
-	
-public:
+
+  public:
 	// Static function for native C++
-	static void SendChatRequest(const FGenDSeekChatSettings& ChatSettings, const FOnDSeekChatCompletionResponse& OnComplete);
+	static void SendChatRequest(const FGenDSeekChatSettings& ChatSettings,
+								const FOnDSeekChatCompletionResponse& OnComplete);
 
 	// Blueprint async function
 	UPROPERTY(BlueprintAssignable)
 	FGenDSeekChatCompletionDelegate OnComplete;
 
 	// Blueprint latent function
-	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject"), Category = "GenAI|DeepSeek")
+	UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject"),
+			  Category = "GenAI|DeepSeek")
 	static UGenDSeekChat* RequestDeepseekChat(UObject* WorldContextObject, const FGenDSeekChatSettings& ChatSettings);
 
-private:
+  private:
 	// Stores settings for request
 	FGenDSeekChatSettings ChatSettings;
 
 	// Internal request processing
-	static void MakeRequest(const FGenDSeekChatSettings& ChatSettings, const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback);
-	static void ProcessResponse(const FString& ResponseStr, const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback);
+	static void MakeRequest(const FGenDSeekChatSettings& ChatSettings,
+							const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback);
+	static void ProcessResponse(const FString& ResponseStr,
+								const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback);
 
-protected:
+  protected:
 	virtual void Activate() override;
 };

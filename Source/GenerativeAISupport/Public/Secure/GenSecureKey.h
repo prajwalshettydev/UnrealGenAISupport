@@ -2,7 +2,6 @@
 // Licensed under the MIT License. See LICENSE file in the root directory of this
 // source tree or http://opensource.org/licenses/MIT.
 
-
 #pragma once
 
 #include "CoreMinimal.h"
@@ -29,23 +28,23 @@ class GENERATIVEAISUPPORT_API UGenSecureKey : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
 
-private:
+  private:
 	// A map to store API keys by organization
 	static TMap<EGenAIOrgs, FString> APIKeys;
 
 	// Flag to determine whether to use environment variables for API keys
 	static bool bUseApiKeyFromEnv;
 
-public:
+  public:
 	/**
-	 * Stores the API key in memory for runtime use. 
+	 * Stores the API key in memory for runtime use.
 	 * This does NOT modify system environment variables.
 	 * If environment variables are enabled (via SetUseApiKeyFromEnvironmentVars),
 	 * it will prioritize reading from the system instead of the stored key.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "GenAI|Secure Key")
 	static void SetGenAIApiKeyRuntime(EGenAIOrgs Org, const FString& APIKey);
-	
+
 	// Gets the API key for a specific organization
 	UFUNCTION(BlueprintCallable, Category = "GenAI|Secure Key")
 	static FString GetGenerativeAIApiKey(EGenAIOrgs Org);

@@ -1,29 +1,28 @@
 // Copyright Prajwal Shetty 2024. All rights Reserved. https://prajwalshetty.com/terms
 
-
 #include "Models/OpenAI/GenOAIChat.h"
-#include "Secure/GenSecureKey.h"
-#include "Http.h"
-#include "LatentActions.h"
 #include "Data/GenAIOrgs.h"
 #include "Data/OpenAI/GenOAIChatStructs.h"
 #include "Dom/JsonObject.h"
+#include "Engine/Engine.h" // For GEngine and screen logging
+#include "Http.h"
+#include "LatentActions.h"
+#include "Secure/GenSecureKey.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
-#include "Engine/Engine.h"  // For GEngine and screen logging
 #include "Utilities/GenGlobalDefinitions.h"
-
 
 void UGenOAIChat::SendChatRequest(const FGenChatSettings& ChatSettings, const FOnChatCompletionResponse& OnComplete)
 {
-	MakeRequest(ChatSettings, [OnComplete](const FString& Response, const FString& Error, bool Success)
-	{
-		// Explicitly state this is intended as an action
-		if (OnComplete.IsBound())
-		{
-			OnComplete.Execute(Response, Error, Success);
-		}
-	});
+	MakeRequest(ChatSettings,
+				[OnComplete](const FString& Response, const FString& Error, bool Success)
+				{
+					// Explicitly state this is intended as an action
+					if (OnComplete.IsBound())
+					{
+						OnComplete.Execute(Response, Error, Success);
+					}
+				});
 }
 
 UGenOAIChat* UGenOAIChat::RequestOpenAIChat(UObject* WorldContextObject, const FGenChatSettings& ChatSettings)
@@ -35,15 +34,16 @@ UGenOAIChat* UGenOAIChat::RequestOpenAIChat(UObject* WorldContextObject, const F
 
 void UGenOAIChat::Activate()
 {
-	MakeRequest(ChatSettings, [this](const FString& Response, const FString& Error, bool Success)
-	{
-		OnComplete.Broadcast(Response, Error, Success);
-		Cancel();
-	});
+	MakeRequest(ChatSettings,
+				[this](const FString& Response, const FString& Error, bool Success)
+				{
+					OnComplete.Broadcast(Response, Error, Success);
+					Cancel();
+				});
 }
 
 void UGenOAIChat::MakeRequest(const FGenChatSettings& ChatSettings,
-                              const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
+							  const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
 {
 	const FString ApiKey = UGenSecureKey::GetGenerativeAIApiKey(EGenAIOrgs::OpenAI);
 	if (ApiKey.IsEmpty())
@@ -81,7 +81,7 @@ void UGenOAIChat::MakeRequest(const FGenChatSettings& ChatSettings,
 	HttpRequest->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *ApiKey));
 	HttpRequest->SetContentAsString(PayloadString);
 
-	//UE_LOG(LogGenAIVerbose, Log, TEXT("Sending chat request... Payload: %s"), *PayloadString);
+	// UE_LOG(LogGenAIVerbose, Log, TEXT("Sending chat request... Payload: %s"), *PayloadString);
 
 	HttpRequest->OnProcessRequestComplete().BindLambda(
 		[ResponseCallback](FHttpRequestPtr Request, const FHttpResponsePtr& Response, const bool bSuccess)
@@ -90,7 +90,7 @@ void UGenOAIChat::MakeRequest(const FGenChatSettings& ChatSettings,
 			{
 				ResponseCallback(TEXT(""), TEXT("Request failed"), false);
 				UE_LOG(LogGenAI, Error, TEXT("Request failed, Response code: %d"),
-				       Response.IsValid() ? Response->GetResponseCode() : -1);
+					   Response.IsValid() ? Response->GetResponseCode() : -1);
 				return;
 			}
 			ProcessResponse(Response->GetContentAsString(), ResponseCallback);
@@ -100,7 +100,7 @@ void UGenOAIChat::MakeRequest(const FGenChatSettings& ChatSettings,
 }
 
 void UGenOAIChat::ProcessResponse(const FString& ResponseStr,
-                                  const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
+								  const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
 {
 	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ResponseStr);
 
@@ -109,18 +109,18 @@ void UGenOAIChat::ProcessResponse(const FString& ResponseStr,
 	{
 		if (JsonObject->HasField(TEXT("choices")))
 		{
-			if (TArray<TSharedPtr<FJsonValue>> ChoicesArray = JsonObject->GetArrayField(TEXT("choices")); ChoicesArray.
-				Num() > 0)
+			if (TArray<TSharedPtr<FJsonValue>> ChoicesArray = JsonObject->GetArrayField(TEXT("choices"));
+				ChoicesArray.Num() > 0)
 			{
-				if (const TSharedPtr<FJsonObject> FirstChoice = ChoicesArray[0]->AsObject(); FirstChoice.IsValid() &&
-					FirstChoice->HasField(TEXT("message")))
+				if (const TSharedPtr<FJsonObject> FirstChoice = ChoicesArray[0]->AsObject();
+					FirstChoice.IsValid() && FirstChoice->HasField(TEXT("message")))
 				{
 					if (const TSharedPtr<FJsonObject> MessageObject = FirstChoice->GetObjectField(TEXT("message"));
 						MessageObject.IsValid() && MessageObject->HasField(TEXT("content")))
 					{
 						const FString Content = MessageObject->GetStringField(TEXT("content"));
 						ResponseCallback(Content, TEXT(""), true);
-						//UE_LOG(LogGenAIVerbose, Log, TEXT("Chat response: %s"), *Content);
+						// UE_LOG(LogGenAIVerbose, Log, TEXT("Chat response: %s"), *Content);
 						return;
 					}
 				}

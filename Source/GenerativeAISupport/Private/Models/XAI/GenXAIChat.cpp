@@ -1,26 +1,28 @@
 // Copyright Prajwal Shetty 2024. All rights Reserved. https://prajwalshetty.com/terms
 
 #include "Models/XAI/GenXAIChat.h"
-#include "Secure/GenSecureKey.h"
-#include "Http.h"
-#include "LatentActions.h"
 #include "Data/GenAIOrgs.h"
 #include "Data/XAI/GenXAIChatStructs.h"
 #include "Dom/JsonObject.h"
+#include "Engine/Engine.h" // For GEngine and screen logging
+#include "Http.h"
+#include "LatentActions.h"
+#include "Secure/GenSecureKey.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
-#include "Engine/Engine.h"  // For GEngine and screen logging
 #include "Utilities/GenGlobalDefinitions.h"
 
-void UGenXAIChat::SendChatRequest(const FGenXAIChatSettings& ChatSettings, const FOnXAIChatCompletionResponse& OnComplete)
+void UGenXAIChat::SendChatRequest(const FGenXAIChatSettings& ChatSettings,
+								  const FOnXAIChatCompletionResponse& OnComplete)
 {
-	MakeRequest(ChatSettings, [OnComplete](const FString& Response, const FString& Error, bool Success)
-	{
-		if (OnComplete.IsBound())
-		{
-			OnComplete.Execute(Response, Error, Success);
-		}
-	});
+	MakeRequest(ChatSettings,
+				[OnComplete](const FString& Response, const FString& Error, bool Success)
+				{
+					if (OnComplete.IsBound())
+					{
+						OnComplete.Execute(Response, Error, Success);
+					}
+				});
 }
 
 UGenXAIChat* UGenXAIChat::RequestXAIChat(UObject* WorldContextObject, const FGenXAIChatSettings& ChatSettings)
@@ -32,15 +34,16 @@ UGenXAIChat* UGenXAIChat::RequestXAIChat(UObject* WorldContextObject, const FGen
 
 void UGenXAIChat::Activate()
 {
-	MakeRequest(ChatSettings, [this](const FString& Response, const FString& Error, bool Success)
-	{
-		OnComplete.Broadcast(Response, Error, Success);
-		Cancel();
-	});
+	MakeRequest(ChatSettings,
+				[this](const FString& Response, const FString& Error, bool Success)
+				{
+					OnComplete.Broadcast(Response, Error, Success);
+					Cancel();
+				});
 }
 
 void UGenXAIChat::MakeRequest(const FGenXAIChatSettings& ChatSettings,
-                              const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
+							  const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
 {
 	const FString ApiKey = UGenSecureKey::GetGenerativeAIApiKey(EGenAIOrgs::XAI);
 	if (ApiKey.IsEmpty())
@@ -81,7 +84,7 @@ void UGenXAIChat::MakeRequest(const FGenXAIChatSettings& ChatSettings,
 			{
 				ResponseCallback(TEXT(""), TEXT("Request failed"), false);
 				UE_LOG(LogGenAI, Error, TEXT("XAI Request failed, Response code: %d"),
-				       Response.IsValid() ? Response->GetResponseCode() : -1);
+					   Response.IsValid() ? Response->GetResponseCode() : -1);
 				return;
 			}
 			ProcessResponse(Response->GetContentAsString(), ResponseCallback);
@@ -91,7 +94,7 @@ void UGenXAIChat::MakeRequest(const FGenXAIChatSettings& ChatSettings,
 }
 
 void UGenXAIChat::ProcessResponse(const FString& ResponseStr,
-                                  const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
+								  const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
 {
 	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ResponseStr);
 
@@ -100,11 +103,11 @@ void UGenXAIChat::ProcessResponse(const FString& ResponseStr,
 	{
 		if (JsonObject->HasField(TEXT("choices")))
 		{
-			if (TArray<TSharedPtr<FJsonValue>> ChoicesArray = JsonObject->GetArrayField(TEXT("choices")); ChoicesArray.
-				Num() > 0)
+			if (TArray<TSharedPtr<FJsonValue>> ChoicesArray = JsonObject->GetArrayField(TEXT("choices"));
+				ChoicesArray.Num() > 0)
 			{
-				if (const TSharedPtr<FJsonObject> FirstChoice = ChoicesArray[0]->AsObject(); FirstChoice.IsValid() &&
-					FirstChoice->HasField(TEXT("message")))
+				if (const TSharedPtr<FJsonObject> FirstChoice = ChoicesArray[0]->AsObject();
+					FirstChoice.IsValid() && FirstChoice->HasField(TEXT("message")))
 				{
 					if (const TSharedPtr<FJsonObject> MessageObject = FirstChoice->GetObjectField(TEXT("message"));
 						MessageObject.IsValid() && MessageObject->HasField(TEXT("content")))
