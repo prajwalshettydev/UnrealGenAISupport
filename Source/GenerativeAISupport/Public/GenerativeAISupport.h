@@ -7,10 +7,10 @@
 
 class GENERATIVEAISUPPORT_API FGenerativeAISupportModule : public IModuleInterface
 {
-public:
-    FGenerativeAISupportModule();
+  public:
+	FGenerativeAISupportModule();
 
-    // IModuleInterface implementation
-    virtual void StartupModule() override;
-    virtual void ShutdownModule() override;
+	// IModuleInterface implementation
+	virtual void StartupModule() override;
+	virtual void ShutdownModule() override;
 };

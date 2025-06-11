@@ -4,11 +4,11 @@
 #### MCP Example:
 Claude spawning scene objects and controlling their transformations and materials, generating blueprints, functions, variables, adding components, running python scripts etc.
 
-<img src="Docs/UnrealMcpDemo.gif" width="480"/>
+<img src="Docs/_images/UnrealMcpDemo.gif" width="480"/>
 
 #### API Example:
 A project called become human, where NPCs are OpenAI agentic instances. Built using this plugin.
-![Become Human](Docs/BHDemoGif.gif)
+![Become Human](Docs/_images/BHDemoGif.gif)
 
 > [!WARNING]  
 > This plugin is still under rapid development.
@@ -17,7 +17,7 @@ A project called become human, where NPCs are OpenAI agentic instances. Built us
 > 
 > A stable version will be released soon. 🚀🔥
 
-<p align="center"><img src="Docs/Repo Card - Updated.png" width="512"/></p>
+<p align="center"><img src="Docs/_images/Repo Card - Updated.png" width="512"/></p>
 
 
 Every month, hundreds of new AI models are released by various organizations, making it hard to keep up with the latest advancements.
@@ -85,7 +85,7 @@ game development, evals and interactive experiences. All suggestions and contrib
         - `baidu-chat` Model 🚧
 - 3D generative model APIs:
     -  TripoSR by StabilityAI 🚧
-- Plugin Documentation 🛠️🤝
+- Plugin Documentation ✅ [Comprehensive Documentation Hub](Docs/README.md)
 - Plugin Example Project 🛠️ [here](https://github.com/prajwalshettydev/unreal-llm-api-test-project)
 - Version Control Support
     - Perforce Support 🚧
@@ -267,7 +267,7 @@ pip install mcp[cli]
 
 ##### 5. [OPTIONAL] Enable AutoStart MCP server on editor open
 
-<img src="Docs/Settings.png" width="782"/>
+<img src="Docs/_images/Settings.png" width="782"/>
 
 
 ## Adding the plugin to your project:
@@ -350,7 +350,7 @@ Tested models are `gpt-4o`, `gpt-4o-mini`, `gpt-4.5`, `o1-mini`, `o1`, `o3-mini-
 
    ##### Blueprint Example:
 
-<img src="Docs/BpExampleOAIChat.png" width="782"/>
+<img src="Docs/_images/BpExampleOAIChat.png" width="782"/>
 
 #### 2. Structured Outputs:
    ##### C++ Example 1:
@@ -424,7 +424,7 @@ Tested models are `gpt-4o`, `gpt-4o-mini`, `gpt-4.5`, `o1-mini`, `o1`, `o3-mini-
    ```
 
 ##### Blueprint Example:
-<img src="Docs/BpExampleOAIStructuredOp.png" width="782"/>
+<img src="Docs/_images/BpExampleOAIStructuredOp.png" width="782"/>
 
 ### DeepSeek API:
 
@@ -476,7 +476,7 @@ Points to note:
    ```
 
 ##### Blueprint Example:
-<img src="Docs/BpExampleDeepseekChat.png" width="782"/>
+<img src="Docs/_images/BpExampleDeepseekChat.png" width="782"/>
 
 ### Anthropic API:
 Currently the plugin supports Chat from Anthropic API. Both for C++ and Blueprints.
@@ -516,7 +516,7 @@ Tested models are `claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-
 ```
 
 ##### Blueprint Example:
-<img src="Docs/BpExampleClaudeChat.png" width="782"/>
+<img src="Docs/_images/BpExampleClaudeChat.png" width="782"/>
 
 ### XAI's Grok 3 API:
 Currently the plugin supports Chat from XAI's Grok 3 API. Both for C++ and Blueprints.
@@ -589,22 +589,17 @@ python <your_project_directoy>/Plugins/GenerativeAISupport/Content/Python/mcp_se
 
 ## Config Window:
 (Still wip)
-<img src="Docs/EditorWindow.png" width="782"/>
+<img src="Docs/_images/EditorWindow.png" width="782"/>
 
 ## Contribution Guidelines:
 
 ### Setting up for Development:
 
-1. Install `unreal` python package and setup the IDE's python interpreter for proper intellisense.
-```bash
-pip install unreal
-```
-
-More details will be added soon.
+Please refer to our comprehensive [Contributing Guidelines](Docs/Contributing/README.md) for detailed setup instructions, coding standards, and development workflow.
 
 ### Project Structure:
 
-More details will be added soon.
+Detailed project structure and architecture documentation is available in the [Documentation Hub](Docs/README.md).
 
 ## References:
 
@@ -613,6 +608,27 @@ More details will be added soon.
 * MCP Server inspiration
   from: [Blender-MCP by ahujasid](https://github.com/ahujasid/blender-mcp)
 
+
+## 📚 Documentation
+
+### [📖 Complete Documentation Hub](Docs/README.md)
+
+Access our comprehensive documentation covering all aspects of the UnrealGenAISupport plugin:
+
+- **🏗️ [Architecture](Docs/Architecture/README.md)** - Technical architecture, core components, and system design
+- **🔌 [API Integrations](Docs/API/README.md)** - Complete guides for OpenAI, Anthropic, DeepSeek, and XAI
+- **🤖 [Model Control Protocol](Docs/MCP/README.md)** - MCP setup, tools, and troubleshooting
+- **🤝 [Contributing](Docs/Contributing/README.md)** - Development setup, coding standards, and contribution guidelines
+
+### Quick Navigation
+
+| Topic | Description | Link |
+|-------|-------------|------|
+| **Getting Started** | New to the plugin? Start here | [Development Setup](Docs/Contributing/Development-Setup.md) |
+| **API Integration** | Add AI to your project | [API Guide](Docs/API/README.md) |
+| **MCP Control** | Let AI control Unreal Engine | [MCP Setup](Docs/MCP/Server-Setup.md) |
+| **Contributing** | Help improve the plugin | [Contributing Guide](Docs/Contributing/README.md) |
+| **Architecture** | Understand the design | [Architecture Overview](Docs/Architecture/README.md) |
 
 ## Quick Links:
 

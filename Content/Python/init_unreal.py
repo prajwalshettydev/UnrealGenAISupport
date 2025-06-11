@@ -1,14 +1,16 @@
 # Content/Python/init_unreal.py - Using UE settings integration
-import unreal
+import atexit
 import importlib.util
 import os
-import sys
 import subprocess
-import atexit
+import sys
+
+import unreal
 from utils import logging as log
 
 # Global process handle for MCP server
 mcp_server_process = None
+
 
 def shutdown_mcp_server():
     """Shutdown the MCP server process when Unreal Editor closes"""
@@ -21,6 +23,7 @@ def shutdown_mcp_server():
             log.log_info("MCP server process terminated successfully")
         except Exception as e:
             log.log_error(f"Error terminating MCP server: {e}")
+
 
 def start_mcp_server():
     """Start the external MCP server process"""
@@ -52,7 +55,7 @@ def start_mcp_server():
         # Create a detached process that will continue running
         # even if Unreal crashes (we'll handle proper shutdown with atexit)
         creationflags = 0
-        if sys.platform == 'win32':
+        if sys.platform == "win32":
             creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
 
         mcp_server_process = subprocess.Popen(
@@ -60,7 +63,7 @@ def start_mcp_server():
             creationflags=creationflags,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
         )
 
         log.log_info(f"MCP server started with PID: {mcp_server_process.pid}")
@@ -72,32 +75,42 @@ def start_mcp_server():
     except Exception as e:
         log.log_error(f"Error starting MCP server: {e}")
         return False
+
+
 def initialize_socket_server():
     """
     Initialize the socket server if auto-start is enabled in UE settings
     """
     auto_start = False
-    
+
     # Get settings from UE settings system
     try:
         # First get the class reference
-        settings_class = unreal.load_class(None, '/Script/GenerativeAISupportEditor.GenerativeAISupportSettings')
+        settings_class = unreal.load_class(
+            None, "/Script/GenerativeAISupportEditor.GenerativeAISupportSettings"
+        )
         if settings_class:
             # Get the settings object using the class reference
             settings = unreal.get_default_object(settings_class)
-            
+
             # Log available properties for debugging
             log.log_info(f"Settings object properties: {dir(settings)}")
-            
+
             # Check if auto-start is enabled
-            if hasattr(settings, 'auto_start_socket_server'):
+            if hasattr(settings, "auto_start_socket_server"):
                 auto_start = settings.auto_start_socket_server
                 log.log_info(f"Socket server auto-start setting: {auto_start}")
             else:
-                log.log_warning("auto_start_socket_server property not found in settings")
+                log.log_warning(
+                    "auto_start_socket_server property not found in settings"
+                )
                 # Try alternative property names that might exist
                 for prop in dir(settings):
-                    if 'auto' in prop.lower() or 'socket' in prop.lower() or 'server' in prop.lower():
+                    if (
+                        "auto" in prop.lower()
+                        or "socket" in prop.lower()
+                        or "server" in prop.lower()
+                    ):
                         log.log_info(f"Found similar property: {prop}")
         else:
             log.log_error("Could not find GenerativeAISupportSettings class")
@@ -117,13 +130,17 @@ def initialize_socket_server():
                 if "GenerativeAISupport/Content/Python" in path:
                     plugin_python_path = path
                     break
-    
+
             if plugin_python_path:
-                server_path = os.path.join(plugin_python_path, "unreal_socket_server.py")
-    
+                server_path = os.path.join(
+                    plugin_python_path, "unreal_socket_server.py"
+                )
+
                 if os.path.exists(server_path):
                     # Import and execute the server module
-                    spec = importlib.util.spec_from_file_location("unreal_socket_server", server_path)
+                    spec = importlib.util.spec_from_file_location(
+                        "unreal_socket_server", server_path
+                    )
                     server_module = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(server_module)
                     log.log_info("Unreal Socket Server started successfully")
@@ -141,6 +158,7 @@ def initialize_socket_server():
             log.log_error(f"Error starting socket server: {e}")
     else:
         log.log_info("Unreal Socket Server auto-start is disabled")
+
 
 # Run initialization when this script is loaded
 initialize_socket_server()
