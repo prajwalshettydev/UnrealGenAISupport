@@ -5,8 +5,6 @@
 #include "CoreMinimal.h"
 #include "Data/XAI/GenXAIChatStructs.h"
 #include "Engine/CancellableAsyncAction.h"
-#include "Interfaces/IHttpRequest.h"
-#include "Kismet/BlueprintAsyncActionBase.h"
 #include "GenXAIChat.generated.h"
 
 // Regular C++ delegate for native code

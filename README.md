@@ -10,15 +10,8 @@ Claude spawning scene objects and controlling their transformations and material
 A project called become human, where NPCs are OpenAI agentic instances. Built using this plugin.
 ![Become Human](Docs/BHDemoGif.gif)
 
-> [!WARNING]  
-> This plugin is still under rapid development.
-> 1) Do not use it in production environments. ⚠️
-> 2) Do not use it without version control. ⚠️
-> 
-> A stable version will be released soon. 🚀🔥
 
 <p align="center"><img src="Docs/Repo Card - Updated.png" width="512"/></p>
-
 
 Every month, hundreds of new AI models are released by various organizations, making it hard to keep up with the latest advancements.
 
@@ -33,6 +26,16 @@ game development, evals and interactive experiences. All suggestions and contrib
 
 ## Current Progress:
 
+> [!WARNING]  
+> This plugin is still under rapid development.
+> 1) Do not use it in production environments. ⚠️
+> 2) Do not use it without version control. ⚠️
+
+
+**I will continue to keep this repo updated with the latest features and models as they become available. Contributions are welcome.**
+**If you want a production ready plugin, with more features and guaranteed stability, support please checkout the [Gen AI Pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) version of this plugin, as it costs a lot of API credits for me to test different models per feature and per engine version to make sure everything works well and compatible. Otherwise, I feel this plugin is good enough for many use cases (including the examples shown in the beginning) and you can use it for free, forever.**
+
+
 ### LLM/GenAI API Support:
 
 - OpenAI API Support:
@@ -41,31 +44,34 @@ game development, evals and interactive experiences. All suggestions and contrib
         - `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano` Model ✅
         - `gpt-4o`, `gpt-4o-mini`  Model ✅
         - `o4-mini` Model ✅
-        - `o3-mini`, `o1` Model ✅ 
-    - OpenAI DALL-E API 🛠️
-    - OpenAI Vision API 🛠️
-    - OpenAI Realtime API 🛠️
+        - `o3`, `o3-pro`, `o3-mini`, `o1` Model ✅ 
+    - OpenAI DALL-E API (Available in pro)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e] ☑️
+    - OpenAI Vision API (Available in pro)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e] ☑️
+    - OpenAI Realtime API 🛠️ 
         - `gpt-4o-realtime-preview` `gpt-4o-mini-realtime-preview` Model 🛠️ 
     - OpenAI Structured Outputs ✅
-    - OpenAI Whisper API 🚧
+    - OpenAI Whisper & TTS API (Available in pro)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e] ☑️
+    - Multimodal API Support (Available in pro)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e] ☑️
+    - Text Streaming (Available in pro)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e] ☑️
 - Anthropic Claude API Support:
     - Claude Chat API ✅
-        - `claude-3-7-sonnet-latest` Model ✅
-        - `claude-3-5-sonnet` Model ✅
-        - `claude-3-5-haiku-latest` Model ✅
-        - `claude-3-opus-latest` Model ✅ 
+        - `claude-4-latest`, `claude-3-7-sonnet-latest`, `claude-3-5-sonnet`, `claude-3-5-haiku-latest`, `claude-3-opus-latest` Model ✅
     - Claude Vision API 🚧
+    - Multimodal API Support (Available in pro)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e] ☑️
 - XAI (Grok 3) API Support:
     - XAI Chat Completions API ✅
         - `grok-3-latest`, `grok-3-mini-beta` Model ✅
-        -  Reasoning API 🛠️
+        - `grok-3`, `grok-3-mini`, `grok-3-fast`, `grok-3-mini-fast`, `grok-2-vision-1212`, `grok-2-1212`.
+        - `grok-4` Reasoning API (Available in pro)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e] ☑️
     - XAI Image API 🚧
+    - Text Streaming API (Available in pro)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e] ☑️
+    - Multimodal API Support (Available in pro)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e] ☑️
 - Google Gemini API Support:
-    - Gemini Chat API 🚧🤝
-        - `gemini-2.0-flash-lite`, `gemini-2.0-flash` `gemini-1.5-flash` Model 🚧🤝
-        - Gemini 2.5 Pro Model🚧🤝
-    - Gemini Imagen API: 🚧
-      - `imagen-3.0-generate-002` Model 🚧
+    - Gemini Chat API 
+        - `gemini-2.0-flash-lite`, `gemini-2.0-flash` `gemini-1.5-flash` (Available in pro)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e] ☑️
+        - Gemini 2.5 Pro Model (Available in pro)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e] ☑️
+    - Gemini Imagen API: (Available in pro)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e] ☑️
+      - `imagen-3.0-generate-002` (Available in pro)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e] ☑️
 - Meta AI API Support:
     - Llama 4 herd:
       - Llama 4 Behemoth, Llama 4 Maverick, Llama 4 Scout 🚧🤝
@@ -97,9 +103,9 @@ game development, evals and interactive experiences. All suggestions and contrib
     - Submodules per API Organization 🚧
     - Exclude MCP from build 🚧
 - Testing 
-    - Automated Testing 🚧
-    - Different Platforms 🚧🤝
-    - Different Engine Versions 🚧🤝
+    - Automated Testing (Available in pro)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e] ☑️
+    - Different Platforms (Available in pro)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e] ☑️
+    - Different Engine Versions (Available in pro)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e] ☑️
 
 ### Unreal MCP (Model Control Protocol):
 
@@ -133,6 +139,7 @@ game development, evals and interactive experiences. All suggestions and contrib
 
 Where,
 - ✅ - Completed
+- ☑️ - (Available in Pro Version)[https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e]
 - 🛠️ - In Progress
 - 🚧 - Planned
 - 🤝 - Need Contributors
