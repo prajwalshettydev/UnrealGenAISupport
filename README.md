@@ -45,33 +45,33 @@ game development, evals and interactive experiences. All suggestions and contrib
         - `gpt-4o`, `gpt-4o-mini`  Model ✅
         - `o4-mini` Model ✅
         - `o3`, `o3-pro`, `o3-mini`, `o1` Model ✅ 
-    - OpenAI DALL-E API [Available in pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-    - OpenAI Vision API [Available in pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+    - OpenAI DALL-E API  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+    - OpenAI Vision API  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
     - OpenAI Realtime API 🛠️ 
         - `gpt-4o-realtime-preview` `gpt-4o-mini-realtime-preview` Model 🛠️ 
     - OpenAI Structured Outputs ✅
-    - OpenAI Whisper & TTS API [Available in pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-    - Multimodal API Support [Available in pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-    - Text Streaming [Available in pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+    - OpenAI Whisper & TTS API  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+    - Multimodal API Support  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+    - Text Streaming  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
 - Anthropic Claude API Support:
     - Claude Chat API ✅
         - `claude-4-latest`, `claude-3-7-sonnet-latest`, `claude-3-5-sonnet`, `claude-3-5-haiku-latest`, `claude-3-opus-latest` Model ✅
     - Claude Vision API 🚧
-    - Multimodal API Support [Available in pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+    - Multimodal API Support  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
 - XAI (Grok 3) API Support:
     - XAI Chat Completions API ✅
         - `grok-3-latest`, `grok-3-mini-beta` Model ✅
         - `grok-3`, `grok-3-mini`, `grok-3-fast`, `grok-3-mini-fast`, `grok-2-vision-1212`, `grok-2-1212`.
-        - `grok-4` Reasoning API [Available in pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+        - `grok-4` Reasoning API  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
     - XAI Image API 🚧
-    - Text Streaming API [Available in pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-    - Multimodal API Support [Available in pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+    - Text Streaming API  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+    - Multimodal API Support  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
 - Google Gemini API Support:
     - Gemini Chat API 
-        - `gemini-2.0-flash-lite`, `gemini-2.0-flash` `gemini-1.5-flash` [Available in pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-        - Gemini 2.5 Pro Model [Available in pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-    - Gemini Imagen API: [Available in pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-      - `imagen-3.0-generate-002` [Available in pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+        - `gemini-2.0-flash-lite`, `gemini-2.0-flash` `gemini-1.5-flash`  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+        - Gemini 2.5 Pro Model  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+    - Gemini Imagen API:  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+      - `imagen-3.0-generate-002`  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
 - Meta AI API Support:
     - Llama 4 herd:
       - Llama 4 Behemoth, Llama 4 Maverick, Llama 4 Scout 🚧🤝
@@ -103,9 +103,9 @@ game development, evals and interactive experiences. All suggestions and contrib
     - Submodules per API Organization 🚧
     - Exclude MCP from build 🚧
 - Testing 
-    - Automated Testing [Available in pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-    - Different Platforms [Available in pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-    - Different Engine Versions [Available in pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+    - Automated Testing  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+    - Different Platforms  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+    - Different Engine Versions  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
 
 ### Unreal MCP (Model Control Protocol):
 
@@ -139,7 +139,7 @@ game development, evals and interactive experiences. All suggestions and contrib
 
 Where,
 - ✅ - Completed
-- ☑️ - [Available in Pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e)
+- ☑️ -  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e)
 - 🛠️ - In Progress
 - 🚧 - Planned
 - 🤝 - Need Contributors
