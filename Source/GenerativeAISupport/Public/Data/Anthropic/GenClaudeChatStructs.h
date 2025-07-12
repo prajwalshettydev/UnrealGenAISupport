@@ -12,8 +12,10 @@
 UENUM(BlueprintType)
 enum class EClaudeModels : uint8
 {
-	Claude_3_7_Sonnet UMETA(DisplayName = "claude-3-7-sonnet-latest"),
+	Claude_4_Opus UMETA(DisplayName = "claude-opus-4-20250514"),
+	Claude_4_Sonnet UMETA(DisplayName = "claude-sonnet-4-20250514"),
 	Claude_3_5_Sonnet UMETA(DisplayName = "claude-3-5-sonnet"),
+	Claude_3_7_Sonnet UMETA(DisplayName = "claude-3-7-sonnet-latest"),
 	Claude_3_5_Haiku UMETA(DisplayName = "claude-3-5-haiku-latest"),
 	Claude_3_Opus UMETA(DisplayName = "claude-3-opus-latest")
 };
@@ -24,7 +26,7 @@ struct FGenClaudeChatSettings
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Claude API")
-	EClaudeModels Model = EClaudeModels::Claude_3_7_Sonnet;
+	EClaudeModels Model = EClaudeModels::Claude_4_Sonnet; // Changed this line
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Claude API")
 	int32 MaxTokens = 1024;

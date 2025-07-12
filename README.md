@@ -20,7 +20,7 @@ The Unreal Engine Generative AI Support Plugin allows you to focus on game devel
 Currently integrating Model Control Protocol (MCP) with Unreal Engine 5.5.
 
 This project aims to build a long-term support (LTS) plugin for various cutting-edge LLM/GenAI models and foster a
-community around it. It currently includes OpenAI's GPT-4o, Deepseek R1, Claude Sonnet 3.7 and GPT-4o-mini for Unreal Engine 5.1 or higher, with plans to add
+community around it. It currently includes OpenAI's GPT-4o, Deepseek R1, Claude Sonnet 4, Claude Opus 4, and GPT-4o-mini for Unreal Engine 5.1 or higher, with plans to add
 , real-time APIs, Gemini, MCP, and Grok 3 APIs soon. The plugin will focus exclusively on APIs useful for
 game development, evals and interactive experiences. All suggestions and contributions are welcome. The plugin can also be used for setting up new evals and ways to compare models in game battlefields.
 
@@ -485,7 +485,7 @@ Points to note:
 
 ### Anthropic API:
 Currently the plugin supports Chat from Anthropic API. Both for C++ and Blueprints.
-Tested models are `claude-3-7-sonnet-latest`, `claude-3-5-sonnet`, `claude-3-5-haiku-latest`, `claude-3-opus-latest`.
+Tested models are `claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-7-sonnet-latest`, `claude-3-5-sonnet`, `claude-3-5-haiku-latest`, `claude-3-opus-latest`.
 
 #### 1. Chat:
 ##### C++ Example:
