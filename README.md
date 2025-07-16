@@ -1,5 +1,8 @@
 # Unreal Engine Generative AI Support Plugin
 
+[![Discord](https://img.shields.io/badge/discord-alfred-5865F2?logo=discord&logoColor=white)](https://discord.gg/KBWmkCKv5U)
+[![License](https://img.shields.io/badge/license-MIT-007EC7.svg)](LICENSE)
+
 ## Usage Examples:
 #### MCP Example:
 Claude spawning scene objects and controlling their transformations and materials, generating blueprints, functions, variables, adding components, running python scripts etc.
@@ -33,7 +36,9 @@ game development, evals and interactive experiences. All suggestions and contrib
 
 
 **I will continue to keep this repo updated with the latest features and models as they become available. Contributions are welcome.**
-**If you want a production ready plugin, with more features and guaranteed stability, support please checkout the [Gen AI Pro](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) version of this plugin, as it costs a lot of API credits for me to test different models per feature and per engine version to make sure everything works well and compatible. Otherwise, I feel this plugin is good enough for many use cases (including the examples shown in the beginning) and you can use it for free, forever.**
+**If you want a production ready plugin, with more features and guaranteed stability please checkout the [Gen AI Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) plugin, as it costs a lot of API credits for me to test different models per feature and per engine version to make sure everything works well and compatible. Otherwise, I feel this plugin is good enough for many use cases (including the examples shown in the beginning) and you can use it for free, forever.**
+
+**Currently working on fixing the issues with MCP (especially the node generation) and adding more features to it.**
 
 
 ### LLM/GenAI API Support:
@@ -45,36 +50,36 @@ game development, evals and interactive experiences. All suggestions and contrib
         - `gpt-4o`, `gpt-4o-mini`  Model ✅
         - `o4-mini` Model ✅
         - `o3`, `o3-pro`, `o3-mini`, `o1` Model ✅ 
-    - OpenAI DALL-E API  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-    - OpenAI Vision API  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-    - OpenAI Realtime API 🛠️ 
-        - `gpt-4o-realtime-preview` `gpt-4o-mini-realtime-preview` Model 🛠️ 
+    - OpenAI DALL-E API  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - OpenAI Vision API  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - OpenAI Realtime API  
+        - `gpt-4o-realtime-preview` `gpt-4o-mini-realtime-preview` Model  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - OpenAI Structured Outputs ✅
-    - OpenAI Whisper & TTS API  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-    - Multimodal API Support  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-    - Text Streaming  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+    - OpenAI Whisper & TTS API  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Multimodal API Support  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Text Streaming  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
 - Anthropic Claude API Support:
     - Claude Chat API ✅
         - `claude-4-latest`, `claude-3-7-sonnet-latest`, `claude-3-5-sonnet`, `claude-3-5-haiku-latest`, `claude-3-opus-latest` Model ✅
-    - Claude Vision API 🚧
-    - Multimodal API Support  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+    - Multimodal/Vision API Support  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
 - XAI (Grok 3) API Support:
     - XAI Chat Completions API ✅
         - `grok-3-latest`, `grok-3-mini-beta` Model ✅
         - `grok-3`, `grok-3-mini`, `grok-3-fast`, `grok-3-mini-fast`, `grok-2-vision-1212`, `grok-2-1212`.
-        - `grok-4` Reasoning API  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+        - `grok-4` Reasoning API  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - XAI Image API 🚧
-    - Text Streaming API  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-    - Multimodal API Support  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+    - Text Streaming API  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Multimodal API Support  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
 - Google Gemini API Support:
     - Gemini Chat API 
-        - `gemini-2.0-flash-lite`, `gemini-2.0-flash` `gemini-1.5-flash`  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-        - Gemini 2.5 Pro Model  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-    - Gemini Imagen API:  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-      - `imagen-3.0-generate-002`  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+        - `gemini-2.0-flash-lite`, `gemini-2.0-flash` `gemini-1.5-flash`  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+        - Gemini 2.5 Pro Model  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Gemini Imagen API:  
+      - `imagen-3.0-generate-002`  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Google TTS & Transcription API: [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
 - Meta AI API Support:
-    - Llama 4 herd:
-      - Llama 4 Behemoth, Llama 4 Maverick, Llama 4 Scout 🚧🤝
+    - Llama 4 herd: ❌
+      - Llama 4 Behemoth, Llama 4 Maverick, Llama 4 Scout ❌
       - llama3.3-70b, llama3.1-8b Model❌
     - Local Llama API 🚧🤝
 - Deepseek API Support:
@@ -83,16 +88,16 @@ game development, evals and interactive experiences. All suggestions and contrib
     - Deepseek Reasoning API, R1 ✅
         - `deepseek-reasoning-r1` Model ✅
         - `deepseek-reasoning-r1` CoT Streaming ❌
-    - Independently Hosted Deepseek Models 🚧
+    - Independently Hosted Deepseek Models ❌
 - Baidu API Support:
-    - Baidu Chat API 🚧
-        - `baidu-chat` Model 🚧
+    - Baidu Chat API ❌
+        - `baidu-chat` Model ❌
 - 3D generative model APIs:
     -  TripoSR by StabilityAI 🚧
 - Plugin Documentation 🛠️🤝
 - Plugin Example Project 🛠️ [here](https://github.com/prajwalshettydev/unreal-llm-api-test-project)
 - Version Control Support
-    - Perforce Support 🚧
+    - Perforce Support 🛠️
     - Git Submodule Support ✅ 
 - LTS Branching 🚧
     - Stable Branch with Bug Fixes 🚧
@@ -103,9 +108,9 @@ game development, evals and interactive experiences. All suggestions and contrib
     - Submodules per API Organization 🚧
     - Exclude MCP from build 🚧
 - Testing 
-    - Automated Testing  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-    - Different Platforms  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
-    - Different Engine Versions  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e) ☑️
+    - Automated Testing  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Different Platforms  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Different Engine Versions  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
 
 ### Unreal MCP (Model Control Protocol):
 
@@ -116,7 +121,7 @@ game development, evals and interactive experiences. All suggestions and contrib
 - Blueprints Auto Generation 🛠️
     - Creating new blueprint of types ✅
     - Adding new functions, function/blueprint variables ✅
-    - Adding nodes and connections 🛠️ (buggy)
+    - Adding nodes and connections 🛠️ (buggy, issues open)
     - Advanced Blueprints Generation 🛠️
 - Level/Scene Control for LLMs 🛠️
     - Spawning Objects and Shapes ✅
@@ -139,7 +144,7 @@ game development, evals and interactive experiences. All suggestions and contrib
 
 Where,
 - ✅ - Completed
-- ☑️ -  [(available in pro)](https://www.fab.com/listings/68e7f092-1fea-4e6d-8d31-c6b96b06a02e)
+- ☑️ -  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin)
 - 🛠️ - In Progress
 - 🚧 - Planned
 - 🤝 - Need Contributors
