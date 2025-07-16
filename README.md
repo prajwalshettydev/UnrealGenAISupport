@@ -1,6 +1,6 @@
 # Unreal Engine Generative AI Support Plugin
 
-[![Discord](https://img.shields.io/badge/discord-alfred-5865F2?logo=discord&logoColor=white)](https://discord.gg/KBWmkCKv5U)
+![Discord](https://discord.gg/KBWmkCKv5U)
 [![License](https://img.shields.io/badge/license-MIT-007EC7.svg)](LICENSE)
 
 ## Usage Examples:
