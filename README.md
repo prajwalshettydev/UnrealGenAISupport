@@ -1,8 +1,7 @@
 # Unreal Engine Generative AI Support Plugin
 
-[(Discord)](https://discord.gg/KBWmkCKv5U)
-[![License](https://img.shields.io/badge/license-MIT-007EC7.svg)](LICENSE)
-
+[![Discord](https://img.shields.io/badge/Discord-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/KBWmkCKv5U)
+[![License: MIT](https://img.shields.io/badge/License-MIT-007EC7?style=for-the-badge)](LICENSE)
 ## Usage Examples:
 #### MCP Example:
 Claude spawning scene objects and controlling their transformations and materials, generating blueprints, functions, variables, adding components, running python scripts etc.
