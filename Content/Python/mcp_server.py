@@ -4,7 +4,12 @@ import sys
 import os
 from mcp.server.fastmcp import FastMCP
 import re
+import mss
+import base64
+import tempfile # For creating a secure temporary file
+from io import BytesIO
 from pathlib import Path
+from mcp.server.fastmcp import FastMCP, Image
 
 
 # THIS FILE WILL RUN OUTSIDE THE UNREAL ENGINE SCOPE, 
@@ -370,6 +375,44 @@ def create_blueprint(blueprint_name: str, parent_class: str = "Actor", save_path
         return f"Successfully created Blueprint '{blueprint_name}' with path: {response.get('blueprint_path', save_path + '/' + blueprint_name)}"
     else:
         return f"Failed to create Blueprint: {response.get('error', 'Unknown error')}"
+
+@mcp.tool()
+def take_editor_screenshot() -> Image:
+    """
+    Takes a screenshot of the primary monitor using a vendored OS-level library.
+    This is a robust method that requires no installation and bypasses the Unreal API.
+    """
+    temp_path = "" # Ensure path is in scope for the finally block
+    try:
+        # 1. Create a secure, temporary file path with a .png extension.
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as fp:
+            temp_path = fp.name
+
+        # 2. Use the simplest 'shot' method from mss to save the screenshot to the temp file.
+        with mss.mss() as sct:
+            sct.shot(mon=1, output=temp_path)
+
+        # 3. Read the created temporary file in binary mode to get the raw bytes.
+        with open(temp_path, "rb") as image_file:
+            image_bytes = image_file.read()
+
+        # 4. Return the Image object directly with the raw bytes.
+        #    The FastMCP library handles the encoding internally.
+        return Image(
+            data=image_bytes,
+            format="png"
+        )
+
+    except Exception as e:
+        error_message = f"OS-level screenshot failed: {str(e)}"
+        print(error_message)
+        # Return the error as text if something goes wrong.
+        return error_message
+
+    finally:
+        # 5. Clean up by deleting the temporary file.
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
 
 
 @mcp.tool()

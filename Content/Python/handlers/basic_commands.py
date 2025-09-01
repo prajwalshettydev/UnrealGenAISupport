@@ -1,6 +1,12 @@
 import unreal
 from typing import Dict, Any, List, Tuple
 
+import base64
+import os
+import mss
+import time
+import tempfile # Used to find the OS's temporary folder
+
 from utils import unreal_conversions as uc
 from utils import logging as log
 
@@ -68,6 +74,66 @@ def handle_spawn(command: Dict[str, Any]) -> Dict[str, Any]:
         unreal.log_error(f"Error spawning actor: {str(e)}")
         return {"success": False, "error": str(e)}
 
+
+
+
+def handle_take_screenshot(command):
+    """
+    Takes a screenshot using the HighResShot console command with a deterministic filename.
+    This is the most reliable method for engine-based screenshots.
+    """
+    # 1. Create a unique, absolute file path in the OS's temp directory.
+    # This ensures we have a clean place to work with guaranteed write permissions.
+    temp_dir = tempfile.gettempdir()
+    unique_filename = f"unreal_mcp_screenshot_{int(time.time())}.png"
+    # Use forward slashes, as this is more reliable for Unreal console commands
+    screenshot_path = os.path.join(temp_dir, unique_filename).replace('\\', '/')
+
+    try:
+        # 2. Construct the console command with the full, absolute filename.
+        console_command = f'HighResShot 1 filename="{screenshot_path}"'
+        unreal.log(f"Executing screenshot command: {console_command}")
+
+        # Execute the command in the editor world context
+        unreal.SystemLibrary.execute_console_command(unreal.EditorLevelLibrary.get_editor_world(), console_command)
+
+        # 3. Poll for the file's existence instead of using a fixed sleep time.
+        # This is much more reliable than a fixed wait.
+        max_wait_seconds = 5
+        wait_interval = 0.2
+        time_waited = 0
+        file_created = False
+        while time_waited < max_wait_seconds:
+            if os.path.exists(screenshot_path):
+                file_created = True
+                break
+            time.sleep(wait_interval)
+            time_waited += wait_interval
+
+        if not file_created:
+            return {"success": False, "error": f"Command was executed, but the output file was not found at the specified path: {screenshot_path}"}
+
+        # 4. Read the file, encode it, and prepare the response
+        with open(screenshot_path, 'rb') as image_file:
+            image_data = image_file.read()
+        base64_encoded_data = base64.b64encode(image_data).decode('utf-8')
+
+        return {
+            "success": True,
+            "data": base64_encoded_data,
+            "mime_type": "image/png"
+        }
+
+    except Exception as e:
+        return {"success": False, "error": f"The screenshot process failed with an exception: {str(e)}"}
+
+    finally:
+        # 5. Clean up the temporary screenshot file from the temp directory
+        if os.path.exists(screenshot_path):
+            try:
+                os.remove(screenshot_path)
+            except Exception as e_cleanup:
+                unreal.log_error(f"Failed to delete temporary screenshot file '{screenshot_path}': {e_cleanup}")
 
 def handle_create_material(command: Dict[str, Any]) -> Dict[str, Any]:
     """
