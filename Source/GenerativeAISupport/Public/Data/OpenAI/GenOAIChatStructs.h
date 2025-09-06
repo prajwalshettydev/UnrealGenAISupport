@@ -6,6 +6,26 @@
 #include "Data/OpenAI/GenOAIModels.h"
 #include "GenOAIChatStructs.generated.h"
 
+UENUM(BlueprintType)
+enum class EGenAIOpenAIReasoningEffort : uint8
+{
+	Default UMETA(DisplayName = "Default"),
+	Minimal UMETA(DisplayName = "Minimal"),
+	Low UMETA(DisplayName = "Low"),
+	Medium UMETA(DisplayName = "Medium"),
+	High UMETA(DisplayName = "High")
+};
+
+UENUM(BlueprintType)
+enum class EGenAIOpenAIVerbosity : uint8
+{
+	Default UMETA(DisplayName = "Default"),
+	Low UMETA(DisplayName = "Low"),
+	Medium UMETA(DisplayName = "Medium"),
+	High UMETA(DisplayName = "High")
+};
+
+
 USTRUCT(BlueprintType)
 struct FMessage
 {
@@ -71,9 +91,24 @@ struct FGenChatSettings
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
     int32 MaxTokens = 10000;
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
+    float Temperature = 1.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
+    float TopP = 1.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
+    FString Stop;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
     TArray<FGenChatMessage> Messages;
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI|GPT-5")
+    EGenAIOpenAIReasoningEffort ReasoningEffort = EGenAIOpenAIReasoningEffort::Default;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI|GPT-5")
+    EGenAIOpenAIVerbosity Verbosity = EGenAIOpenAIVerbosity::Default;
 
     // Helper function to ensure the Model field is correctly set from enum or custom value
     void UpdateModel()

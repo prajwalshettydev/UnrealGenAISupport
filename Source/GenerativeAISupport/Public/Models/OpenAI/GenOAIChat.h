@@ -27,7 +27,7 @@ class GENERATIVEAISUPPORT_API UGenOAIChat : public UCancellableAsyncAction
 
 public:
     // Static function for native C++
-    static void SendChatRequest(const FGenChatSettings& ChatSettings, const FOnChatCompletionResponse& OnComplete);
+    static TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> SendChatRequest(const FGenChatSettings& ChatSettings, const FOnChatCompletionResponse& OnComplete);
 
     // Blueprint-callable function
     UPROPERTY(BlueprintAssignable)
@@ -36,12 +36,15 @@ public:
     // Blueprint latent function
     UFUNCTION(BlueprintCallable, meta = (BlueprintInternalUseOnly = "true", WorldContext = "WorldContextObject"), Category = "GenAI")
     static UGenOAIChat* RequestOpenAIChat(UObject* WorldContextObject, const FGenChatSettings& ChatSettings);
+    
+    virtual void Cancel() override;
 
 private:
     FGenChatSettings ChatSettings;
+    TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> HttpRequest;
 
     // Shared implementation
-    static void MakeRequest(const FGenChatSettings& ChatSettings, const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback);
+    static TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> MakeRequest(const FGenChatSettings& ChatSettings, const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback);
     static void ProcessResponse(const FString& ResponseStr, const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback);
 
 protected:

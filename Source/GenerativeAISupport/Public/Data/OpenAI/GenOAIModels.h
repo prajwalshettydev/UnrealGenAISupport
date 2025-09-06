@@ -19,6 +19,9 @@ enum class EGenOAIChatModel : uint8
     GPT_4_1_Nano UMETA(DisplayName = "GPT-4.1 Nano"),
     GPT_4O_Mini UMETA(DisplayName = "GPT-4o Mini"),
     GPT_4O UMETA(DisplayName = "GPT-4o"),
+    GPT_5 UMETA(DisplayName = "GPT-5"),
+    GPT_5_Mini UMETA(DisplayName = "GPT-5 Mini"),
+    GPT_5_Nano UMETA(DisplayName = "GPT-5 Nano"),
     O3 UMETA(DisplayName = "GPT-o3"),
     O3_Mini UMETA(DisplayName = "GPT-o3 Mini"),
     O4_Mini UMETA(DisplayName = "GPT-o4 Mini"),
@@ -68,6 +71,12 @@ public:
             return TEXT("gpt-4o-mini");
         case EGenOAIChatModel::GPT_4O:
             return TEXT("gpt-4o");
+        case EGenOAIChatModel::GPT_5:
+            return TEXT("gpt-5");
+        case EGenOAIChatModel::GPT_5_Mini:
+            return TEXT("gpt-5-mini");
+        case EGenOAIChatModel::GPT_5_Nano:
+            return TEXT("gpt-5-nano");
         case EGenOAIChatModel::O3:
             return TEXT("o3");
         case EGenOAIChatModel::O3_Mini:

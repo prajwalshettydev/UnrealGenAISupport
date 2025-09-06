@@ -14,15 +14,12 @@
 #include "Utilities/GenGlobalDefinitions.h"
 
 
-void UGenOAIChat::SendChatRequest(const FGenChatSettings& ChatSettings, const FOnChatCompletionResponse& OnComplete)
+TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> UGenOAIChat::SendChatRequest(const FGenChatSettings& ChatSettings, const FOnChatCompletionResponse& OnComplete)
 {
-	MakeRequest(ChatSettings, [OnComplete](const FString& Response, const FString& Error, bool Success)
+	check(OnComplete.IsBound());
+	return MakeRequest(ChatSettings, [OnComplete](const FString& Response, const FString& Error, bool Success)
 	{
-		// Explicitly state this is intended as an action
-		if (OnComplete.IsBound())
-		{
-			OnComplete.Execute(Response, Error, Success);
-		}
+		OnComplete.Execute(Response, Error, Success);
 	});
 }
 
@@ -30,26 +27,41 @@ UGenOAIChat* UGenOAIChat::RequestOpenAIChat(UObject* WorldContextObject, const F
 {
 	UGenOAIChat* AsyncAction = NewObject<UGenOAIChat>();
 	AsyncAction->ChatSettings = ChatSettings;
+	AsyncAction->RegisterWithGameInstance(WorldContextObject);
 	return AsyncAction;
 }
 
 void UGenOAIChat::Activate()
 {
-	MakeRequest(ChatSettings, [this](const FString& Response, const FString& Error, bool Success)
+	TWeakObjectPtr<UGenOAIChat> WeakThis(this);
+	HttpRequest = MakeRequest(ChatSettings, [WeakThis](const FString& Response, const FString& Error, bool Success)
 	{
-		OnComplete.Broadcast(Response, Error, Success);
-		Cancel();
+		if (WeakThis.IsValid())
+		{
+			UGenOAIChat* StrongThis = WeakThis.Get();
+			StrongThis->OnComplete.Broadcast(Response, Error, Success);
+			StrongThis->Cancel();
+		}
 	});
 }
 
-void UGenOAIChat::MakeRequest(const FGenChatSettings& ChatSettings,
+void UGenOAIChat::Cancel()
+{
+	if (HttpRequest.IsValid() && HttpRequest->GetStatus() == EHttpRequestStatus::Processing)
+	{
+		HttpRequest->CancelRequest();
+	}
+	Super::Cancel();
+}
+
+TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> UGenOAIChat::MakeRequest(const FGenChatSettings& ChatSettings,
                               const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
 {
 	const FString ApiKey = UGenSecureKey::GetGenerativeAIApiKey(EGenAIOrgs::OpenAI);
 	if (ApiKey.IsEmpty())
 	{
 		ResponseCallback(TEXT(""), TEXT("API key not set"), false);
-		return;
+		return nullptr;
 	}
 
 	// Make a mutable copy so we can update the model
@@ -59,6 +71,24 @@ void UGenOAIChat::MakeRequest(const FGenChatSettings& ChatSettings,
 	const TSharedPtr<FJsonObject> JsonPayload = MakeShareable(new FJsonObject());
 	JsonPayload->SetStringField(TEXT("model"), MutableSettings.Model);
 	JsonPayload->SetNumberField(TEXT("max_completion_tokens"), MutableSettings.MaxTokens);
+	JsonPayload->SetNumberField(TEXT("temperature"), MutableSettings.Temperature);
+	JsonPayload->SetNumberField(TEXT("top_p"), MutableSettings.TopP);
+	if (!MutableSettings.Stop.IsEmpty())
+	{
+		JsonPayload->SetStringField(TEXT("stop"), MutableSettings.Stop);
+	}
+	
+	if (MutableSettings.ReasoningEffort != EGenAIOpenAIReasoningEffort::Default)
+	{
+		const FString ReasoningEffortString = StaticEnum<EGenAIOpenAIReasoningEffort>()->GetNameStringByValue(static_cast<int64>(MutableSettings.ReasoningEffort));
+		JsonPayload->SetStringField(TEXT("reasoning_effort"), ReasoningEffortString.ToLower());
+	}
+
+	if (MutableSettings.Verbosity != EGenAIOpenAIVerbosity::Default)
+	{
+		const FString VerbosityString = StaticEnum<EGenAIOpenAIVerbosity>()->GetNameStringByValue(static_cast<int64>(MutableSettings.Verbosity));
+		JsonPayload->SetStringField(TEXT("verbosity"), VerbosityString.ToLower());
+	}
 
 	TArray<TSharedPtr<FJsonValue>> MessagesArray;
 	for (const auto& [Role, Content] : MutableSettings.Messages)
@@ -97,44 +127,46 @@ void UGenOAIChat::MakeRequest(const FGenChatSettings& ChatSettings,
 		});
 
 	HttpRequest->ProcessRequest();
+	return HttpRequest;
 }
 
 void UGenOAIChat::ProcessResponse(const FString& ResponseStr,
                                   const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
 {
 	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ResponseStr);
-
-	// Attempt to deserialize the JSON response
-	if (TSharedPtr<FJsonObject> JsonObject; FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
+	TSharedPtr<FJsonObject> JsonObject;
+	if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
 	{
-		if (JsonObject->HasField(TEXT("choices")))
+		const TArray<TSharedPtr<FJsonValue>>* ChoicesArray;
+		if (JsonObject->TryGetArrayField(TEXT("choices"), ChoicesArray) && ChoicesArray->Num() > 0)
 		{
-			if (TArray<TSharedPtr<FJsonValue>> ChoicesArray = JsonObject->GetArrayField(TEXT("choices")); ChoicesArray.
-				Num() > 0)
+			const TSharedPtr<FJsonObject>* FirstChoiceObject;
+			if ((*ChoicesArray)[0]->TryGetObject(FirstChoiceObject))
 			{
-				if (const TSharedPtr<FJsonObject> FirstChoice = ChoicesArray[0]->AsObject(); FirstChoice.IsValid() &&
-					FirstChoice->HasField(TEXT("message")))
+				const TSharedPtr<FJsonObject>* MessageObject;
+				if ((*FirstChoiceObject)->TryGetObjectField(TEXT("message"), MessageObject))
 				{
-					if (const TSharedPtr<FJsonObject> MessageObject = FirstChoice->GetObjectField(TEXT("message"));
-						MessageObject.IsValid() && MessageObject->HasField(TEXT("content")))
+					FString Content;
+					if ((*MessageObject)->TryGetStringField(TEXT("content"), Content))
 					{
-						const FString Content = MessageObject->GetStringField(TEXT("content"));
 						ResponseCallback(Content, TEXT(""), true);
-						//UE_LOG(LogGenAIVerbose, Log, TEXT("Chat response: %s"), *Content);
 						return;
 					}
 				}
 			}
 		}
 
-		// Log unexpected JSON structure
-		UE_LOG(LogGenAI, Error, TEXT("Unexpected JSON structure: %s"), *ResponseStr);
-		ResponseCallback(TEXT(""), TEXT("Unexpected JSON structure"), false);
+		FString ErrorMessage;
+		const TSharedPtr<FJsonObject>* ErrorObject;
+		if (JsonObject->TryGetObjectField(TEXT("error"), ErrorObject))
+		{
+			if ((*ErrorObject)->TryGetStringField(TEXT("message"), ErrorMessage))
+			{
+				ResponseCallback(TEXT(""), ErrorMessage, false);
+				return;
+			}
+		}
 	}
-	else
-	{
-		// Log JSON parsing failure
-		UE_LOG(LogGenAI, Error, TEXT("Failed to parse JSON: %s"), *ResponseStr);
-		ResponseCallback(TEXT(""), TEXT("Failed to parse JSON"), false);
-	}
+
+	ResponseCallback(TEXT(""), FString::Printf(TEXT("Failed to parse response: %s"), *ResponseStr), false);
 }
