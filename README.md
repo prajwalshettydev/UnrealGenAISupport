@@ -77,8 +77,9 @@ game development, evals and interactive experiences. All suggestions and contrib
         - Gemini 2.5 Pro Model  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - Gemini Imagen API:  
       - `imagen-3.0-generate-002`  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
-      - `nano-banana` 🚧
+      - `nano-banana` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - Google TTS & Transcription API: [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Multimodal API Support  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
 - Meta AI API Support:
     - Llama 4 herd: ❌
       - Llama 4 Behemoth, Llama 4 Maverick, Llama 4 Scout ❌
