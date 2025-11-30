@@ -30,13 +30,12 @@ game development, evals and interactive experiences. All suggestions and contrib
 ## Current Progress:
 
 **This plugin will continue to get updates with the latest features and models as they become available. Contributions are welcome.**
-**If you want a more production ready alternative, with more features and guaranteed stability please checkout the [Gen AI Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) and [Gen AI Pro China](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) plugins, as it costs a lot of API credits for me to test different models per feature and per engine version to make sure everything works well and compatible. Otherwise, I feel this plugin is good enough for many use cases (including the examples shown in the beginning) and you can use it for free, forever.**
+**If you want a more production ready alternative, with more features and guaranteed stability please checkout the [Gen AI Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) and [Gen AI Pro China](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) plugins, as it costs a lot of API credits for me to test different models per feature and per engine version to make sure everything works well and compatible. Together both these plugins support 150+ AI models, from all over the globe! Otherwise, I feel this free plugin is good enough for many use cases (including the examples shown in the beginning) and you can use it for free, forever.**
 
 ### LLM/GenAI API Support:
 
 - OpenAI API Support:
     - OpenAI Chat API ✅ 
-      [(models-ref)](https://platform.openai.com/docs/models)
         - `gpt-5.1` 🛠️
         - `gpt-5` ✅,
         - `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`,`o4-mini`, `o3`, `o3-pro`, `o3-mini` Models ✅ 
@@ -73,6 +72,9 @@ game development, evals and interactive experiences. All suggestions and contrib
       - `nano-banana pro` 🛠️
     - Google TTS & Transcription API: [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - Multimodal API Support  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+- ElevenLabs:
+    - Text To Speech (TTS) API Support:  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Sound Effects: `eleven_text_to_sound_v2` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
 - Meta AI API Support: ❌
 - Local AI With Ollama: Available here: [unreal-ollama (MIT)](https://github.com/MuddyTerrain/unreal-ollama)
     - Supports local LLMs like Openai's `gpt-oss`, Alibaba's `qwen3-vl` etc. [unreal-ollama (MIT)](https://github.com/MuddyTerrain/unreal-ollama)
