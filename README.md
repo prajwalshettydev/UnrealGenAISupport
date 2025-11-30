@@ -1,7 +1,6 @@
-# Unreal Engine Generative AI Support Plugin
-
 [![Discord](https://img.shields.io/badge/Discord-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/KBWmkCKv5U)
 [![License: MIT](https://img.shields.io/badge/License-MIT-007EC7?style=for-the-badge)](LICENSE)
+
 ## Usage Examples:
 #### MCP Example:
 Claude spawning scene objects and controlling their transformations and materials, generating blueprints, functions, variables, adding components, running python scripts etc.
@@ -12,14 +11,16 @@ Claude spawning scene objects and controlling their transformations and material
 A project called become human, where NPCs are OpenAI agentic instances. Built using this plugin.
 ![Become Human](Docs/BHDemoGif.gif)
 
+# Unreal Engine Generative AI Support Plugin:
 
-<p align="center"><img src="Docs/Repo Card - Updated.png" width="512"/></p>
 
 Every month, hundreds of new AI models are released by various organizations, making it hard to keep up with the latest advancements.
 
-The Unreal Engine Generative AI Support Plugin allows you to focus on game development without worrying about the LLM/GenAI integration layer.
+The "Unreal Engine Generative AI Support Plugin" allows you to focus on game development without worrying about the LLM/GenAI integration layer.
 
-Currently integrating Model Control Protocol (MCP) with Unreal Engine 5.5.
+<p align="center"><img src="Docs/Repo Card - Updated.png" width="512"/></p>
+
+Currently working on chinese LLMs support like Alibaba Qwen for both Chinese Mainland and International markets.
 
 This project aims to build a long-term support (LTS) plugin for various cutting-edge LLM/GenAI models and foster a
 community around it. It currently includes OpenAI's GPT-4o, Deepseek R1, Claude Sonnet 4, Claude Opus 4, and GPT-4o-mini for Unreal Engine 5.1 or higher, with plans to add
@@ -28,39 +29,29 @@ game development, evals and interactive experiences. All suggestions and contrib
 
 ## Current Progress:
 
-> [!WARNING]  
-> This plugin is still under rapid development.
-> 1) Do not use it in production environments. ⚠️
-> 2) Do not use it without version control. ⚠️
-
-
-**I will continue to keep this repo updated with the latest features and models as they become available. Contributions are welcome.**
-**If you want a production ready plugin, with more features and guaranteed stability please checkout the [Gen AI Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) plugin, as it costs a lot of API credits for me to test different models per feature and per engine version to make sure everything works well and compatible. Otherwise, I feel this plugin is good enough for many use cases (including the examples shown in the beginning) and you can use it for free, forever.**
-
-**Currently working on fixing the issues with MCP (especially the node generation) and adding more features to it.**
-
+**This plugin will continue to get updates with the latest features and models as they become available. Contributions are welcome.**
+**If you want a more production ready alternative, with more features and guaranteed stability please checkout the [Gen AI Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) and [Gen AI Pro China](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) plugins, as it costs a lot of API credits for me to test different models per feature and per engine version to make sure everything works well and compatible. Otherwise, I feel this plugin is good enough for many use cases (including the examples shown in the beginning) and you can use it for free, forever.**
 
 ### LLM/GenAI API Support:
 
 - OpenAI API Support:
     - OpenAI Chat API ✅ 
       [(models-ref)](https://platform.openai.com/docs/models)
+        - `gpt-5.1` 🛠️
         - `gpt-5` ✅,
-        - `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano` Model ✅
-        - `gpt-4o`, `gpt-4o-mini`  Model ✅
-        - `o4-mini` Model ✅
-        - `o3`, `o3-pro`, `o3-mini`, `o1` Model ✅ 
+        - `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`,`o4-mini`, `o3`, `o3-pro`, `o3-mini` Models ✅ 
     - OpenAI DALL-E API  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - Responses API 🛠️
     - OpenAI Vision API  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - OpenAI Realtime API  
-        - `gpt-4o-realtime-preview` `gpt-4o-mini-realtime-preview` Model  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+        - `gpt-realtime`, `gpt-realtime-mini` Models [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - OpenAI Structured Outputs ✅
     - OpenAI Whisper & TTS API  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - Multimodal API Support  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
-    - Text Streaming  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Text and Audio Streaming  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
 - Anthropic Claude API Support:
     - Claude Chat API ✅
+        - `claude-4.5-latest` 🛠️
         - `claude-4-latest`, `claude-3-7-sonnet-latest`, `claude-3-5-sonnet`, `claude-3-5-haiku-latest`, `claude-3-opus-latest` Model ✅
     - Multimodal/Vision API Support  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
 - XAI (Grok 3) API Support:
@@ -73,47 +64,49 @@ game development, evals and interactive experiences. All suggestions and contrib
     - Multimodal API Support  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
 - Google Gemini API Support:
     - Gemini Chat API 
+        - `gemini-3-pro-preview` 🛠️
         - `gemini-2.0-flash-lite`, `gemini-2.0-flash` `gemini-1.5-flash`  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
         - Gemini 2.5 Pro Model  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - Gemini Imagen API:  
       - `imagen-3.0-generate-002`  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
       - `nano-banana` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+      - `nano-banana pro` 🛠️
     - Google TTS & Transcription API: [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - Multimodal API Support  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
-- Meta AI API Support:
-    - Llama 4 herd: ❌
-      - Llama 4 Behemoth, Llama 4 Maverick, Llama 4 Scout ❌
-      - llama3.3-70b, llama3.1-8b Model❌
-    - Local Llama API 🚧🤝
+- Meta AI API Support: ❌
+- Local AI With Ollama: Available here: [unreal-ollama (MIT)](https://github.com/MuddyTerrain/unreal-ollama)
+    - Supports local LLMs like Openai's `gpt-oss`, Alibaba's `qwen3-vl` etc. [unreal-ollama (MIT)](https://github.com/MuddyTerrain/unreal-ollama)
 - Deepseek API Support:
     - Deepseek Chat API ✅
         - `deepseek-chat` (DeepSeek-V3.1) Model ✅
     - Deepseek Reasoning API, R1 ✅
         - `deepseek-reasoning-r1` Model ✅
-        - `deepseek-reasoning-r1` CoT Streaming ❌
-    - Independently Hosted Deepseek Models ❌
-- Baidu API Support:
-    - Baidu Chat API ❌
-        - `baidu-chat` Model ❌
+- Alibaba (Dashscope):
+    - `qwen3-max`, `qwen-plus`, `qwen-turbo-2025-04-28` etc [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Multimodal API Support like `qwen-omni-turbo` etc [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Image Generation API, like `qwen-image` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Text to Speech, like `qwen3-tts-flash`, `qwen-tts` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+- Moonshot AI:
+    - Moonshot Chat API, like `kimi-k2-0905-preview` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Multimodal Chat API, like `moonshot-v1-8k-vision-preview` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+- Bytedance:
+    - `skylark-pro-250415`, `deepseek-r1-250528` etc [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Multimodal API Support [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Image Generation API, like `seedream-4-0-250828` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
 - 3D generative model APIs:
     -  TripoSR by StabilityAI 🚧
-- Plugin Documentation 🛠️🤝
 - Plugin Example Project 🛠️ [here](https://github.com/prajwalshettydev/unreal-llm-api-test-project)
 - Version Control Support
     - Perforce Support 🛠️
     - Git Submodule Support ✅ 
-- LTS Branching 🚧
-    - Stable Branch with Bug Fixes 🚧
-    - Dedicated Contributor for LTS 🚧
 - Lightweight Plugin (In Builds) 
     - No External Dependencies ✅
     - Build Flags to enable/disable APIs 🚧
-    - Submodules per API Organization 🚧
-    - Exclude MCP from build 🚧
+    - Exclude MCP from build ✅
 - Testing 
-    - Automated Testing  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
-    - Different Platforms  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
-    - Different Engine Versions  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Automated Testing  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️ and [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Different Platforms  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️ and [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Different Engine Versions  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️ and [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
 
 ### Unreal MCP (Model Control Protocol):
 
@@ -147,7 +140,8 @@ game development, evals and interactive experiences. All suggestions and contrib
 
 Where,
 - ✅ - Completed
-- ☑️ -  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin)
+- ☑️ - [Available in GenAI-Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin)
+- ☑️ 🇨🇳 - [Available in "GenAI Pro China"](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a)
 - 🛠️ - In Progress
 - 🚧 - Planned
 - 🤝 - Need Contributors
