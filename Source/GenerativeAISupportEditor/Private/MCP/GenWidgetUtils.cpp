@@ -22,6 +22,9 @@
 #include "Components/Image.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "K2Node_ComponentBoundEvent.h"
+#include "EdGraph/EdGraph.h"
+#include "EdGraphSchema_K2.h"
 
 // Helper to find widget by name recursively (WidgetTree::FindWidget is often sufficient)
 UWidget* UGenWidgetUtils::FindWidgetByName(UWidgetTree* WidgetTree, const FName& Name)
@@ -152,7 +155,7 @@ FString UGenWidgetUtils::AddWidgetToUserWidget(const FString& UserWidgetPath, co
     }
 
     // 4. Find Widget Class to Add
-    UClass* FoundClass = FindObject<UClass>(ANY_PACKAGE, *WidgetClassName);
+    UClass* FoundClass = FindObject<UClass>(nullptr, *WidgetClassName);
     if (!FoundClass) FoundClass = LoadClass<UWidget>(nullptr, *FString::Printf(TEXT("/Script/UMG.%s"), *WidgetClassName));
     if (!FoundClass) FoundClass = LoadClass<UWidget>(nullptr, *FString::Printf(TEXT("/Script/CommonUI.%s"), *WidgetClassName));
     // Add more lookups if needed for custom widget libraries
@@ -432,13 +435,13 @@ FString UGenWidgetUtils::EditWidgetProperty(const FString& UserWidgetPath, const
 
 		// Get the address of the property within the TargetObject instance
 		void* PropertyValueAddress = TargetProperty->ContainerPtrToValuePtr<void>(TargetObject);
-		FStringOutputDevice ImportErrorOutput;
+		FString ImportErrorOutput;
 		const TCHAR* Result = TargetProperty->ImportText_Direct(
 			*ValueString, // Buffer (const TCHAR*)
 			PropertyValueAddress, // Data (void*)
 			TargetObject, // OwnerObject (UObject*)
 			PPF_None, // PortFlags (int32)
-			&ImportErrorOutput // ErrorText (FOutputDevice*)
+			nullptr // ErrorText (FOutputDevice*)
 		);
 
 		// Use ImportText to set the value. This handles various types including structs, enums, objects etc.
@@ -447,7 +450,7 @@ FString UGenWidgetUtils::EditWidgetProperty(const FString& UserWidgetPath, const
 		//       TargetProperty->ImportText(*ValueString, PropertyValueAddress, PPF_None, TargetObject, &ErrorMessage, &PropertyChain); // Pass error message ptr
 
 		// Check the result: nullptr indicates success, otherwise it points to the end of successfully parsed text
-		if (Result != nullptr && ImportErrorOutput.Len() > 0) // Check if parsing stopped *and* an error was reported
+		if (Result != nullptr && Result == nullptr) // Check if parsing stopped *and* an error was reported
 		{
 			// An error occurred during import
 			ErrorMessage = ImportErrorOutput; // Get the error message from the output device
@@ -530,4 +533,128 @@ FString UGenWidgetUtils::EditWidgetProperty(const FString& UserWidgetPath, const
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
 	FJsonSerializer::Serialize(ResultJson.ToSharedRef(), Writer);
 	return OutputString;
+}
+
+FString UGenWidgetUtils::BindWidgetEvent(const FString& UserWidgetPath, const FString& WidgetName, const FString& EventName)
+{
+	// Load the Widget Blueprint
+	UWidgetBlueprint* WidgetBP = Cast<UWidgetBlueprint>(
+		UEditorAssetLibrary::LoadAsset(UserWidgetPath));
+	if (!WidgetBP)
+	{
+		return FString::Printf(TEXT("{\"success\": false, \"error\": \"Widget Blueprint not found: %s\"}"), *UserWidgetPath);
+	}
+
+	// Get the WidgetTree
+	UWidgetTree* WidgetTree = WidgetBP->WidgetTree;
+	if (!WidgetTree)
+	{
+		return FString::Printf(TEXT("{\"success\": false, \"error\": \"WidgetTree not found in: %s\"}"), *UserWidgetPath);
+	}
+
+	// Find the widget by name
+	UWidget* TargetWidget = FindWidgetByName(WidgetTree, FName(*WidgetName));
+	if (!TargetWidget)
+	{
+		return FString::Printf(TEXT("{\"success\": false, \"error\": \"Widget '%s' not found in: %s\"}"), *WidgetName, *UserWidgetPath);
+	}
+
+	// Mark the widget as a variable so it can be accessed in the Event Graph
+	TargetWidget->bIsVariable = true;
+
+	// Get the widget's class and find the delegate property
+	UClass* WidgetClass = TargetWidget->GetClass();
+	FMulticastDelegateProperty* DelegateProperty = CastField<FMulticastDelegateProperty>(
+		WidgetClass->FindPropertyByName(FName(*EventName)));
+
+	if (!DelegateProperty)
+	{
+		// Try with common prefixes/suffixes
+		FString AlternativeNames[] = {
+			EventName,
+			FString::Printf(TEXT("On%s"), *EventName),
+			FString::Printf(TEXT("%sEvent"), *EventName)
+		};
+
+		for (const FString& AltName : AlternativeNames)
+		{
+			DelegateProperty = CastField<FMulticastDelegateProperty>(
+				WidgetClass->FindPropertyByName(FName(*AltName)));
+			if (DelegateProperty)
+			{
+				break;
+			}
+		}
+	}
+
+	if (!DelegateProperty)
+	{
+		// List available delegates for debugging
+		FString AvailableDelegates;
+		for (TFieldIterator<FMulticastDelegateProperty> It(WidgetClass); It; ++It)
+		{
+			AvailableDelegates += It->GetName() + TEXT(", ");
+		}
+		return FString::Printf(TEXT("{\"success\": false, \"error\": \"Delegate '%s' not found on widget class '%s'. Available: %s\"}"),
+			*EventName, *WidgetClass->GetName(), *AvailableDelegates);
+	}
+
+	// Get or create the Event Graph
+	UEdGraph* EventGraph = nullptr;
+	if (WidgetBP->UbergraphPages.Num() > 0)
+	{
+		EventGraph = WidgetBP->UbergraphPages[0];
+	}
+	else
+	{
+		EventGraph = FBlueprintEditorUtils::CreateNewGraph(WidgetBP, FName(TEXT("EventGraph")),
+			UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
+		WidgetBP->UbergraphPages.Add(EventGraph);
+	}
+
+	if (!EventGraph)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Failed to get or create EventGraph\"}");
+	}
+
+	// Create the ComponentBoundEvent node
+	UK2Node_ComponentBoundEvent* EventNode = NewObject<UK2Node_ComponentBoundEvent>(EventGraph);
+	if (!EventNode)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Failed to create K2Node_ComponentBoundEvent\"}");
+	}
+
+	// Configure the event node
+	EventNode->ComponentPropertyName = FName(*WidgetName);
+	EventNode->DelegatePropertyName = DelegateProperty->GetFName();
+	EventNode->DelegateOwnerClass = WidgetClass;
+
+	// Set position
+	EventNode->NodePosX = 0;
+	EventNode->NodePosY = EventGraph->Nodes.Num() * 200;
+
+	// Initialize and allocate pins
+	EventNode->AllocateDefaultPins();
+
+	// Generate GUID if needed
+	if (!EventNode->NodeGuid.IsValid())
+	{
+		EventNode->NodeGuid = FGuid::NewGuid();
+	}
+
+	// Add to graph
+	EventGraph->AddNode(EventNode, false, false);
+
+	UE_LOG(LogTemp, Log, TEXT("Created widget event node for %s.%s with GUID %s"),
+		*WidgetName, *EventName, *EventNode->NodeGuid.ToString());
+
+	// Mark as modified and compile
+	WidgetBP->Modify();
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBP);
+
+	// Save
+	SaveAndRecompileWidgetBlueprint(WidgetBP);
+
+	return FString::Printf(TEXT("{\"success\": true, \"node_id\": \"%s\", \"message\": \"Created event node for %s.%s\"}"),
+		*EventNode->NodeGuid.ToString(), *WidgetName, *EventName);
 }

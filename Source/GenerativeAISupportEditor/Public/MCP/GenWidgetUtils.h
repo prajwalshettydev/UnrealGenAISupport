@@ -41,6 +41,16 @@ public:
     UFUNCTION(BlueprintCallable, Category = "MCP | UI Generation")
     static FString EditWidgetProperty(const FString& UserWidgetPath, const FString& WidgetName, const FString& PropertyName, const FString& ValueString);
 
+    /**
+     * Binds a widget event (like Button OnClicked) to create an event node in the EventGraph.
+     * @param UserWidgetPath Path to the Widget Blueprint (e.g., "/Game/UI/WBP_LoginScreen").
+     * @param WidgetName Name of the widget (e.g., "LoginButton").
+     * @param EventName Name of the event to bind (e.g., "OnClicked", "OnPressed", "OnReleased").
+     * @return JSON string with success status and the event node GUID.
+     */
+    UFUNCTION(BlueprintCallable, Category = "MCP | UI Generation")
+    static FString BindWidgetEvent(const FString& UserWidgetPath, const FString& WidgetName, const FString& EventName);
+
 private:
     // Helper function to find a widget by name in the tree
     static UWidget* FindWidgetByName(UWidgetTree* WidgetTree, const FName& Name);

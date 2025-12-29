@@ -21,6 +21,7 @@
 #include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_InputAction.h"
+#include "K2Node_InputKey.h"
 #include "K2Node_Literal.h"
 #include "Components/ShapeComponent.h"
 #include "Engine/SCS_Node.h"
@@ -477,6 +478,55 @@ void UGenBlueprintNodeCreator::InitNodeTypeMap()
 	NodeTypeMap.Add(TEXT("input"), TEXT("K2Node_InputAction"));
 	NodeTypeMap.Add(TEXT("actionevent"), TEXT("K2Node_InputAction"));
 	NodeTypeMap.Add(TEXT("inputevent"), TEXT("K2Node_InputAction"));
+
+	// New mappings for InputKey (keyboard/mouse key events)
+	NodeTypeMap.Add(TEXT("inputkey"), TEXT("K2Node_InputKey"));
+	NodeTypeMap.Add(TEXT("keyevent"), TEXT("K2Node_InputKey"));
+	NodeTypeMap.Add(TEXT("keypressed"), TEXT("K2Node_InputKey"));
+	NodeTypeMap.Add(TEXT("keyreleased"), TEXT("K2Node_InputKey"));
+
+	// Control flow nodes
+	NodeTypeMap.Add(TEXT("branch"), TEXT("Branch"));
+	NodeTypeMap.Add(TEXT("if"), TEXT("Branch"));
+	NodeTypeMap.Add(TEXT("ifthenelse"), TEXT("Branch"));
+	NodeTypeMap.Add(TEXT("sequence"), TEXT("Sequence"));
+	NodeTypeMap.Add(TEXT("seq"), TEXT("Sequence"));
+	NodeTypeMap.Add(TEXT("switchint"), TEXT("SwitchInteger"));
+	NodeTypeMap.Add(TEXT("switchstring"), TEXT("SwitchString"));
+	NodeTypeMap.Add(TEXT("switchenum"), TEXT("SwitchEnum"));
+
+	// Loop nodes (handled by library lookup)
+	NodeTypeMap.Add(TEXT("forloop"), TEXT("ForLoop"));
+	NodeTypeMap.Add(TEXT("for"), TEXT("ForLoop"));
+	NodeTypeMap.Add(TEXT("whileloop"), TEXT("WhileLoop"));
+	NodeTypeMap.Add(TEXT("while"), TEXT("WhileLoop"));
+	NodeTypeMap.Add(TEXT("foreach"), TEXT("ForEachLoop"));
+
+	// Flow control nodes
+	NodeTypeMap.Add(TEXT("doonce"), TEXT("DoOnce"));
+	NodeTypeMap.Add(TEXT("gate"), TEXT("Gate"));
+	NodeTypeMap.Add(TEXT("flipflop"), TEXT("FlipFlop"));
+	NodeTypeMap.Add(TEXT("multigate"), TEXT("MultiGate"));
+	NodeTypeMap.Add(TEXT("delay"), TEXT("Delay"));
+
+	// Print/Debug nodes
+	NodeTypeMap.Add(TEXT("print"), TEXT("PrintString"));
+	NodeTypeMap.Add(TEXT("printstring"), TEXT("PrintString"));
+	NodeTypeMap.Add(TEXT("log"), TEXT("PrintString"));
+
+	// Spawn/Actor nodes
+	NodeTypeMap.Add(TEXT("spawnactor"), TEXT("SpawnActor"));
+	NodeTypeMap.Add(TEXT("destroy"), TEXT("DestroyActor"));
+	NodeTypeMap.Add(TEXT("destroyactor"), TEXT("DestroyActor"));
+
+	// Component nodes
+	NodeTypeMap.Add(TEXT("getcomponent"), TEXT("GetComponentByClass"));
+	NodeTypeMap.Add(TEXT("addcomponent"), TEXT("AddComponent"));
+
+	// Timer nodes
+	NodeTypeMap.Add(TEXT("settimer"), TEXT("SetTimer"));
+	NodeTypeMap.Add(TEXT("cleartimer"), TEXT("ClearTimer"));
+	NodeTypeMap.Add(TEXT("settimerbyfunctionname"), TEXT("SetTimerByFunctionName"));
 }
 
 
@@ -657,6 +707,41 @@ bool UGenBlueprintNodeCreator::TryCreateKnownNodeType(UEdGraph* Graph, const FSt
 		IsBlueprintDirty = true;
 		return true;
 	}
+	// NEW: Handling for InputKey node (keyboard/mouse key events)
+	else if (ActualNodeType.Equals(TEXT("K2Node_InputKey"), ESearchCase::IgnoreCase) ||
+	         ActualNodeType.Equals(TEXT("InputKey"), ESearchCase::IgnoreCase))
+	{
+		UK2Node_InputKey* InputKeyNode = NewObject<UK2Node_InputKey>(Graph);
+		if (!PropertiesJson.IsEmpty())
+		{
+			TSharedPtr<FJsonObject> JsonObject;
+			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(PropertiesJson);
+			if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid())
+			{
+				FString KeyName;
+				if (JsonObject->TryGetStringField(TEXT("key"), KeyName) && !KeyName.IsEmpty())
+				{
+					FKey Key(*KeyName);
+					if (Key.IsValid())
+					{
+						InputKeyNode->InputKey = Key;
+						UE_LOG(LogTemp, Log, TEXT("Created InputKey node for key '%s'"), *KeyName);
+					}
+					else
+					{
+						UE_LOG(LogTemp, Warning, TEXT("Invalid key name '%s', using default"), *KeyName);
+					}
+				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("InputKey node: no 'key' in PropertiesJson, using default"));
+				}
+			}
+		}
+		OutNode = InputKeyNode;
+		IsBlueprintDirty = true;
+		return true;
+	}
 	if (ActualNodeType.Equals(TEXT("Branch"), ESearchCase::IgnoreCase) || ActualNodeType.Equals(
 		TEXT("IfThenElse"), ESearchCase::IgnoreCase))
 	{
@@ -815,9 +900,9 @@ bool UGenBlueprintNodeCreator::TryCreateKnownNodeType(UEdGraph* Graph, const FSt
 		return CreateMathFunctionNode(Graph, TEXT("KismetMathLibrary"), TEXT("Conv_DoubleToFloat"), OutNode);
 	}
 
-	UClass* NodeClass = FindObject<UClass>(ANY_PACKAGE, *(TEXT("UK2Node_") + ActualNodeType));
+	UClass* NodeClass = FindObject<UClass>(nullptr, *(TEXT("UK2Node_") + ActualNodeType));
 	if (!NodeClass || !NodeClass->IsChildOf(UK2Node::StaticClass()))
-		NodeClass = FindObject<UClass>(ANY_PACKAGE, *ActualNodeType);
+		NodeClass = FindObject<UClass>(nullptr, *ActualNodeType);
 	if (NodeClass && NodeClass->IsChildOf(UK2Node::StaticClass()))
 	{
 		OutNode = NewObject<UK2Node>(Graph, NodeClass);
@@ -904,7 +989,15 @@ FString UGenBlueprintNodeCreator::TryCreateNodeFromLibraries(UEdGraph* Graph, co
 
 	for (const FString& LibraryName : CommonLibraries)
 	{
-		UClass* LibClass = FindObject<UClass>(ANY_PACKAGE, *LibraryName);
+		UClass* LibClass = FindObject<UClass>(nullptr, *LibraryName);
+		if (!LibClass)
+		{
+			LibClass = FindObject<UClass>(nullptr, *(TEXT("/Script/Engine.") + LibraryName));
+		}
+		if (!LibClass)
+		{
+			LibClass = FindFirstObject<UClass>(*LibraryName, EFindFirstObjectOptions::None);
+		}
 		if (!LibClass) continue;
 
 		for (TFieldIterator<UFunction> FuncIt(LibClass); FuncIt; ++FuncIt)
@@ -974,7 +1067,32 @@ bool UGenBlueprintNodeCreator::CreateMathFunctionNode(UEdGraph* Graph, const FSt
 	UK2Node_CallFunction* FunctionNode = NewObject<UK2Node_CallFunction>(Graph);
 	if (FunctionNode)
 	{
-		UClass* Class = FindObject<UClass>(ANY_PACKAGE, *ClassName);
+		// Try multiple ways to find the class
+		UClass* Class = FindObject<UClass>(nullptr, *ClassName);
+
+		// If not found, try with common package paths
+		if (!Class)
+		{
+			Class = FindObject<UClass>(nullptr, *(TEXT("/Script/Engine.") + ClassName));
+		}
+		if (!Class)
+		{
+			Class = FindObject<UClass>(nullptr, *(TEXT("/Script/CoreUObject.") + ClassName));
+		}
+
+		// Try using StaticLoadClass as fallback
+		if (!Class)
+		{
+			FString ClassPath = FString::Printf(TEXT("/Script/Engine.%s"), *ClassName);
+			Class = StaticLoadClass(UObject::StaticClass(), nullptr, *ClassPath, nullptr, LOAD_None, nullptr);
+		}
+
+		// Try finding by short name using FindFirstObject
+		if (!Class)
+		{
+			Class = FindFirstObject<UClass>(*ClassName, EFindFirstObjectOptions::None);
+		}
+
 		if (Class)
 		{
 			UFunction* Function = Class->FindFunctionByName(*FunctionName);
@@ -983,8 +1101,17 @@ bool UGenBlueprintNodeCreator::CreateMathFunctionNode(UEdGraph* Graph, const FSt
 				FunctionNode->FunctionReference.SetExternalMember(Function->GetFName(), Class);
 				OutNode = FunctionNode;
 				IsBlueprintDirty = true;
+				UE_LOG(LogTemp, Log, TEXT("Created function node %s.%s"), *ClassName, *FunctionName);
 				return true;
 			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("Function %s not found in class %s"), *FunctionName, *ClassName);
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Class %s not found"), *ClassName);
 		}
 	}
 	return false;
@@ -1035,7 +1162,15 @@ FString UGenBlueprintNodeCreator::GetNodeSuggestions(const FString& NodeType)
 
 	for (const FString& LibraryName : CommonLibraries)
 	{
-		UClass* LibClass = FindObject<UClass>(ANY_PACKAGE, *LibraryName);
+		UClass* LibClass = FindObject<UClass>(nullptr, *LibraryName);
+		if (!LibClass)
+		{
+			LibClass = FindObject<UClass>(nullptr, *(TEXT("/Script/Engine.") + LibraryName));
+		}
+		if (!LibClass)
+		{
+			LibClass = FindFirstObject<UClass>(*LibraryName, EFindFirstObjectOptions::None);
+		}
 		if (!LibClass) continue;
 
 		for (TFieldIterator<UFunction> FuncIt(LibClass); FuncIt; ++FuncIt)
