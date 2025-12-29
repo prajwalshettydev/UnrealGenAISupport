@@ -7,7 +7,7 @@ from typing import Dict, Any, Tuple, List, Optional
 
 # Import handlers
 from handlers import basic_commands, actor_commands, blueprint_commands, python_commands
-from handlers import ui_commands
+from handlers import ui_commands, ai_commands, editor_commands
 from utils import logging as log
 
 # Global queues and state
@@ -70,6 +70,57 @@ class CommandDispatcher:
             # --- NEW UI COMMANDS ---
             "add_widget_to_user_widget": ui_commands.handle_add_widget_to_user_widget,
             "edit_widget_property": ui_commands.handle_edit_widget_property,
+
+            # --- NPC AI COMMANDS ---
+            "npc_chat": ai_commands.handle_npc_chat,
+            "npc_reset": ai_commands.handle_npc_reset,
+
+            # --- EXTENDED EDITOR COMMANDS ---
+            # Level Management
+            "load_level": editor_commands.handle_load_level,
+            "save_current_level": editor_commands.handle_save_current_level,
+            "save_all_dirty_levels": editor_commands.handle_save_all_dirty_levels,
+            "start_pie": editor_commands.handle_start_pie,
+            "stop_pie": editor_commands.handle_stop_pie,
+            "pilot_actor": editor_commands.handle_pilot_actor,
+            "set_level_visibility": editor_commands.handle_set_level_visibility,
+
+            # Asset Management
+            "delete_asset": editor_commands.handle_delete_asset,
+            "duplicate_asset": editor_commands.handle_duplicate_asset,
+            "rename_asset": editor_commands.handle_rename_asset,
+            "save_asset": editor_commands.handle_save_asset,
+            "does_asset_exist": editor_commands.handle_does_asset_exist,
+            "sync_browser": editor_commands.handle_sync_browser,
+
+            # Actor Selection
+            "select_actors": editor_commands.handle_select_actors,
+            "get_selected_actors": editor_commands.handle_get_selected_actors,
+            "clear_selection": editor_commands.handle_clear_selection,
+
+            # Material Editing
+            "create_material_expression": editor_commands.handle_create_material_expression,
+            "connect_material_expressions": editor_commands.handle_connect_material_expressions,
+
+            # Static Mesh
+            "set_mesh_collision": editor_commands.handle_set_mesh_collision,
+            "generate_lods": editor_commands.handle_generate_lods,
+            "enable_nanite": editor_commands.handle_enable_nanite,
+
+            # Data Tables
+            "get_data_table_rows": editor_commands.handle_get_data_table_rows,
+            "data_table_row_exists": editor_commands.handle_data_table_row_exists,
+
+            # Viewport
+            "focus_viewport": editor_commands.handle_focus_viewport,
+            "set_game_view": editor_commands.handle_set_game_view,
+
+            # Blueprint
+            "reparent_blueprint": editor_commands.handle_reparent_blueprint,
+
+            # Source Control
+            "checkout_asset": editor_commands.handle_checkout_asset,
+            "mark_for_add": editor_commands.handle_mark_for_add,
         }
 
     def dispatch(self, command: Dict[str, Any]) -> Dict[str, Any]:
