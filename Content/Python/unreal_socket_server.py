@@ -8,6 +8,7 @@ from typing import Dict, Any, Tuple, List, Optional
 # Import handlers
 from handlers import basic_commands, actor_commands, blueprint_commands, python_commands
 from handlers import ui_commands, ai_commands, editor_commands, mapbuilding_commands
+from handlers import input_commands
 from utils import logging as log
 
 # Global queues and state
@@ -157,6 +158,12 @@ class CommandDispatcher:
             "spawn_actor_at": mapbuilding_commands.handle_spawn_actor_at,
             "delete_actor": mapbuilding_commands.handle_delete_actor,
             "duplicate_actor": mapbuilding_commands.handle_duplicate_actor,
+
+            # --- INPUT & BLUEPRINT INSPECTION COMMANDS ---
+            "get_input_action_key": input_commands.handle_get_input_action_key,
+            "get_blueprint_events": input_commands.handle_get_blueprint_events,
+            "has_input_action_binding": input_commands.handle_has_input_action_binding,
+            "list_all_input_actions": input_commands.handle_list_all_input_actions,
         }
 
     def dispatch(self, command: Dict[str, Any]) -> Dict[str, Any]:
