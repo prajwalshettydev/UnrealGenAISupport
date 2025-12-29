@@ -7,7 +7,7 @@ from typing import Dict, Any, Tuple, List, Optional
 
 # Import handlers
 from handlers import basic_commands, actor_commands, blueprint_commands, python_commands
-from handlers import ui_commands, ai_commands, editor_commands
+from handlers import ui_commands, ai_commands, editor_commands, mapbuilding_commands
 from utils import logging as log
 
 # Global queues and state
@@ -121,6 +121,42 @@ class CommandDispatcher:
             # Source Control
             "checkout_asset": editor_commands.handle_checkout_asset,
             "mark_for_add": editor_commands.handle_mark_for_add,
+
+            # --- MAPBUILDING COMMANDS ---
+            # Landscape
+            "create_landscape": mapbuilding_commands.handle_create_landscape,
+            "import_landscape_heightmap": mapbuilding_commands.handle_import_landscape_heightmap,
+            "export_landscape_heightmap": mapbuilding_commands.handle_export_landscape_heightmap,
+            "get_landscape_info": mapbuilding_commands.handle_get_landscape_info,
+
+            # Foliage
+            "spawn_foliage_type": mapbuilding_commands.handle_spawn_foliage_type,
+            "add_foliage_to_level": mapbuilding_commands.handle_add_foliage_to_level,
+            "spawn_procedural_foliage": mapbuilding_commands.handle_spawn_procedural_foliage,
+            "resimulate_foliage": mapbuilding_commands.handle_resimulate_foliage,
+
+            # Navigation
+            "rebuild_navigation": mapbuilding_commands.handle_rebuild_navigation,
+            "get_navmesh_info": mapbuilding_commands.handle_get_navmesh_info,
+            "add_nav_modifier_volume": mapbuilding_commands.handle_add_nav_modifier_volume,
+            "find_path": mapbuilding_commands.handle_find_path,
+
+            # Lighting
+            "build_lighting": mapbuilding_commands.handle_build_lighting,
+            "add_light": mapbuilding_commands.handle_add_light,
+
+            # NPC / AI
+            "spawn_ai_actor": mapbuilding_commands.handle_spawn_ai_actor,
+            "spawn_npc": mapbuilding_commands.handle_spawn_npc,
+            "set_ai_blackboard_value": mapbuilding_commands.handle_set_ai_blackboard_value,
+            "run_behavior_tree": mapbuilding_commands.handle_run_behavior_tree,
+            "move_ai_to": mapbuilding_commands.handle_move_ai_to,
+            "get_all_npcs": mapbuilding_commands.handle_get_all_npcs,
+
+            # Generic Actor Spawning
+            "spawn_actor_at": mapbuilding_commands.handle_spawn_actor_at,
+            "delete_actor": mapbuilding_commands.handle_delete_actor,
+            "duplicate_actor": mapbuilding_commands.handle_duplicate_actor,
         }
 
     def dispatch(self, command: Dict[str, Any]) -> Dict[str, Any]:
