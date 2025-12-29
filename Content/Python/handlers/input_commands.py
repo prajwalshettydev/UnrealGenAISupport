@@ -52,8 +52,8 @@ def handle_get_input_action_key(command: Dict[str, Any]) -> Dict[str, Any]:
             log.log_error(f"Asset is not an InputMappingContext: {imc_path}")
             return {"success": False, "error": f"Asset is not an InputMappingContext"}
 
-        # Get all mappings from the IMC
-        mappings = imc.get_mappings()
+        # Get all mappings from the IMC (use get_editor_property, not get_mappings)
+        mappings = imc.get_editor_property('mappings')
 
         found_mappings = []
         for mapping in mappings:
@@ -63,9 +63,12 @@ def handle_get_input_action_key(command: Dict[str, Any]) -> Dict[str, Any]:
                 ia_name = input_action.get_name()
                 # Check if this is the action we're looking for
                 if ia_name == action_name or action_name in ia_name:
-                    # Get the key
-                    key = mapping.get_editor_property("key")
-                    key_name = str(key.key_name) if key else "Unknown"
+                    # Get the key - it's a struct, get key_name property
+                    key_struct = mapping.get_editor_property("key")
+                    try:
+                        key_name = str(key_struct.get_editor_property("key_name")) if key_struct else "Unknown"
+                    except:
+                        key_name = str(key_struct) if key_struct else "Unknown"
 
                     # Get modifiers
                     modifiers = []
@@ -321,16 +324,19 @@ def handle_list_all_input_actions(command: Dict[str, Any]) -> Dict[str, Any]:
             log.log_error(f"Asset is not an InputMappingContext: {imc_path}")
             return {"success": False, "error": f"Asset is not an InputMappingContext"}
 
-        # Get all mappings
-        mappings = imc.get_mappings()
+        # Get all mappings (use get_editor_property, not get_mappings)
+        mappings = imc.get_editor_property('mappings')
 
         actions = {}
         for mapping in mappings:
             input_action = mapping.get_editor_property("action")
             if input_action:
                 ia_name = input_action.get_name()
-                key = mapping.get_editor_property("key")
-                key_name = str(key.key_name) if key else "Unknown"
+                key_struct = mapping.get_editor_property("key")
+                try:
+                    key_name = str(key_struct.get_editor_property("key_name")) if key_struct else "Unknown"
+                except:
+                    key_name = str(key_struct) if key_struct else "Unknown"
 
                 if ia_name not in actions:
                     actions[ia_name] = {
