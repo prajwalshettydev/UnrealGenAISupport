@@ -20,6 +20,7 @@
 #include "Sections/MovieSceneAudioSection.h"
 #include "Sections/MovieSceneCameraCutSection.h"
 #include "Sections/MovieSceneSubSection.h"
+#include "MovieSceneObjectBindingID.h"
 #include "CineCameraActor.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetToolsModule.h"
@@ -671,7 +672,7 @@ FString UGenSequencerUtils::AddAudioSection(const FString& SequencePath, const F
 		AudioTrack = MovieScene->AddTrack<UMovieSceneAudioTrack>();
 	}
 
-	UMovieSceneAudioSection* Section = AudioTrack->AddNewSoundOnRow(Sound, FFrameNumber(StartFrame), -1);
+	UMovieSceneAudioSection* Section = Cast<UMovieSceneAudioSection>(AudioTrack->AddNewSoundOnRow(Sound, FFrameNumber(StartFrame), -1));
 
 	if (!Section)
 	{
@@ -754,7 +755,9 @@ FString UGenSequencerUtils::AddCameraCut(const FString& SequencePath, const FStr
 	if (Section)
 	{
 		Section->SetRange(TRange<FFrameNumber>(FFrameNumber(FrameNumber), Range.GetUpperBoundValue()));
-		FMovieSceneObjectBindingID BindingID(CameraGuid, MovieSceneSequenceID::Root);
+		// Use FFixedObjectBindingID for UE5.5 compatibility
+		UE::MovieScene::FFixedObjectBindingID FixedBindingID(CameraGuid, MovieSceneSequenceID::Root);
+		FMovieSceneObjectBindingID BindingID(FixedBindingID);
 		Section->SetCameraBindingID(BindingID);
 		CameraCutTrack->AddSection(*Section);
 	}
