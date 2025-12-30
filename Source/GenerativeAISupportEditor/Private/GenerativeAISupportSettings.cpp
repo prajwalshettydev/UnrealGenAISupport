@@ -6,7 +6,7 @@
 #include "GenerativeAISupportSettings.h"
 
 UGenerativeAISupportSettings::UGenerativeAISupportSettings()
-    : bAutoStartSocketServer(false) // Default to false for safety
+    : bAutoStartSocketServer(true) // Default to TRUE - Socket Server startet automatisch
 {
     // Default constructor
 }
