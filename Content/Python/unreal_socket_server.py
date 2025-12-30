@@ -16,6 +16,7 @@ from handlers import sequencer_commands, datatable_commands, behavior_tree_comma
 from handlers import dialogue_utils_commands, quest_commands
 # NEW: Game Systems Handlers
 from handlers import weather_commands, combat_commands, building_commands
+from handlers import crafting_commands, party_commands, skilltree_commands, masterserver_commands
 from utils import logging as log
 
 # Global queues and state
@@ -419,6 +420,26 @@ class CommandDispatcher:
             # GAME SYSTEMS: BUILDING
             # ============================================
             **building_commands.BUILDING_COMMANDS,
+
+            # ============================================
+            # GAME SYSTEMS: CRAFTING
+            # ============================================
+            **crafting_commands.CRAFTING_COMMANDS,
+
+            # ============================================
+            # GAME SYSTEMS: PARTY
+            # ============================================
+            **party_commands.PARTY_COMMANDS,
+
+            # ============================================
+            # GAME SYSTEMS: SKILL TREE
+            # ============================================
+            **skilltree_commands.SKILLTREE_COMMANDS,
+
+            # ============================================
+            # GAME SYSTEMS: MASTER SERVER
+            # ============================================
+            **masterserver_commands.MASTERSERVER_COMMANDS,
         }
 
     def dispatch(self, command: Dict[str, Any]) -> Dict[str, Any]:
