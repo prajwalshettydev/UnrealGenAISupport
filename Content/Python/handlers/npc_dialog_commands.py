@@ -700,19 +700,32 @@ def handle_fix_all_floating_npcs(command: Dict[str, Any]) -> Dict[str, Any]:
             try:
                 old_loc = actor.get_actor_location()
                 old_z = old_loc.z
+                current_rot = actor.get_actor_rotation()
 
-                # Step 1: Fix rotation FIRST (make upright)
-                if fix_rotation:
-                    current_rot = actor.get_actor_rotation()
-                    upright_rot = unreal.Rotator(0.0, current_rot.yaw, 0.0)
-                    actor.set_actor_rotation(upright_rot, False)
-
-                # Step 2: Move actor HIGH UP (drop_height above current position)
+                # Step 1: Move actor HIGH UP first
                 high_loc = unreal.Vector(old_loc.x, old_loc.y, old_loc.z + drop_height)
                 actor.set_actor_location(high_loc, False, False)
 
-                # Step 3: Now drop to ground using line trace
+                # Step 2: Drop to ground using line trace
                 success = unreal.NPCChatLibrary.adjust_actor_to_ground(actor, True, False)
+
+                # Step 3: Fix rotation AFTER landing (so they don't roll!)
+                if fix_rotation and success:
+                    upright_rot = unreal.Rotator(0.0, current_rot.yaw, 0.0)
+                    actor.set_actor_rotation(upright_rot, False)
+
+                # Step 4: Disable physics so they STAY put (no more rolling pinguins!)
+                if success:
+                    # Try to disable physics on mesh components
+                    skel_meshes = actor.get_components_by_class(unreal.SkeletalMeshComponent)
+                    for mesh in skel_meshes:
+                        if mesh:
+                            mesh.set_simulate_physics(False)
+
+                    static_meshes = actor.get_components_by_class(unreal.StaticMeshComponent)
+                    for mesh in static_meshes:
+                        if mesh:
+                            mesh.set_simulate_physics(False)
 
                 if success:
                     new_z = actor.get_actor_location().z
