@@ -17,9 +17,10 @@ public class GenerativeAISupportEditor : ModuleRules
 				"Core",
 				"CoreUObject",
 				"Engine",
-				"GenerativeAISupport",  // Depend on the runtime module
-				"Json",                 // Add JSON support for serialization
-				"JsonUtilities"  
+				"InputCore",
+				"GenerativeAISupport",
+				"Json",
+				"JsonUtilities"
 			}
 		);
 
@@ -40,8 +41,18 @@ public class GenerativeAISupportEditor : ModuleRules
 				"UMGEditor",
 				"UMG",
 				"Settings",
-				"FunctionalTesting",     // For AutomationBlueprintFunctionLibrary 
-				"SourceControl"    // For Source Control integration
+				"FunctionalTesting",
+				"SourceControl",
+				"AIModule",
+				"NavigationSystem",
+				"Foliage",
+				"Landscape",
+				"LevelSequence",
+				"MovieScene",
+				"MovieSceneTracks",
+				"CinematicCamera",
+				"Sequencer",
+				"GameplayTasks"
 			}
 		);
 	}
