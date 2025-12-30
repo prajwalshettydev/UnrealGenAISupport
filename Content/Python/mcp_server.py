@@ -638,7 +638,9 @@ def get_all_nodes_in_graph(blueprint_path: str, function_id: str) -> str:
 
     response = send_to_unreal(command)
     if response.get("success"):
-        return response.get("nodes", "[]")
+        nodes = response.get("nodes", [])
+        # FIX: Convert list to JSON string if needed
+        return json.dumps(nodes) if isinstance(nodes, list) else nodes
     else:
         return f"Failed to get nodes: {response.get('error', 'Unknown error')}"
 
@@ -1088,7 +1090,7 @@ def edit_widget_property(user_widget_path: str, widget_name: str, property_name:
 def add_input_binding(action_name: str, key: str) -> str:
     """
     Add an input action binding to Project Settings.
-    
+
     Args:
         action_name: Name of the action (e.g., "Flap")
         key: Key to bind (e.g., "Space Bar")
@@ -1096,6 +1098,193 @@ def add_input_binding(action_name: str, key: str) -> str:
     command = {"type": "add_input_binding", "action_name": action_name, "key": key}
     response = send_to_unreal(command)
     return response.get("message", f"Failed: {response.get('error')}")
+
+
+# ============================================
+# GENUTILS: SEQUENCER
+# ============================================
+
+@mcp.tool()
+def list_sequences(directory_path: str = "/Game") -> str:
+    """
+    List all Level Sequences in a directory.
+
+    Args:
+        directory_path: Directory to search (default /Game)
+    """
+    command = {"type": "list_sequences", "directory_path": directory_path}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def create_sequence(sequence_path: str, frame_rate: float = 30.0) -> str:
+    """
+    Create a new Level Sequence asset.
+
+    Args:
+        sequence_path: Full path for the new sequence (e.g., /Game/Cinematics/MySequence)
+        frame_rate: Frames per second (default 30)
+    """
+    command = {"type": "create_sequence", "sequence_path": sequence_path, "frame_rate": frame_rate}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def add_actor_to_sequence(sequence_path: str, actor_name: str) -> str:
+    """
+    Add an actor binding to a sequence.
+
+    Args:
+        sequence_path: Path to the sequence
+        actor_name: Actor label in the level
+    """
+    command = {"type": "add_actor_to_sequence", "sequence_path": sequence_path, "actor_name": actor_name}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+# ============================================
+# GENUTILS: DATATABLE
+# ============================================
+
+@mcp.tool()
+def list_data_tables(directory_path: str = "/Game") -> str:
+    """
+    List all DataTables in a directory.
+
+    Args:
+        directory_path: Directory to search (default /Game)
+    """
+    command = {"type": "list_data_tables", "directory_path": directory_path}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def get_datatable_rows(datatable_path: str) -> str:
+    """
+    Get all rows from a DataTable as JSON.
+
+    Args:
+        datatable_path: Path to the DataTable asset
+    """
+    command = {"type": "get_all_rows", "datatable_path": datatable_path}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def search_datatable_rows(datatable_path: str, column_name: str, search_value: str) -> str:
+    """
+    Search rows in a DataTable by column value.
+
+    Args:
+        datatable_path: Path to the DataTable
+        column_name: Column to search
+        search_value: Value to match
+    """
+    command = {"type": "search_rows", "datatable_path": datatable_path,
+               "column_name": column_name, "search_value": search_value}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+# ============================================
+# GENUTILS: AI / BEHAVIOR TREE
+# ============================================
+
+@mcp.tool()
+def list_behavior_trees(directory_path: str = "/Game") -> str:
+    """
+    List all Behavior Tree assets.
+
+    Args:
+        directory_path: Directory to search (default /Game)
+    """
+    command = {"type": "list_behavior_trees", "directory_path": directory_path}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def list_ai_controllers() -> str:
+    """List all AI Controllers in the level."""
+    command = {"type": "list_ai_controllers"}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def is_location_navigable(x: float, y: float, z: float) -> str:
+    """
+    Check if a location is navigable.
+
+    Args:
+        x: X coordinate
+        y: Y coordinate
+        z: Z coordinate
+    """
+    command = {"type": "is_location_navigable", "location": [x, y, z]}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def find_navigation_path(start_x: float, start_y: float, start_z: float,
+                         end_x: float, end_y: float, end_z: float) -> str:
+    """
+    Find a navigation path between two points.
+
+    Args:
+        start_x, start_y, start_z: Start location
+        end_x, end_y, end_z: End location
+    """
+    command = {"type": "find_nav_path",
+               "start_location": [start_x, start_y, start_z],
+               "end_location": [end_x, end_y, end_z]}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+# ============================================
+# GENUTILS: DIALOGUE
+# ============================================
+
+@mcp.tool()
+def list_dialog_actors() -> str:
+    """Find all actors with NPCDialogComponent in the level."""
+    command = {"type": "gu_list_dialog_actors"}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def get_dialog_config(actor_name: str) -> str:
+    """
+    Get dialog component configuration for an actor.
+
+    Args:
+        actor_name: Actor label to search for
+    """
+    command = {"type": "gu_get_dialog_config", "actor_name": actor_name}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def set_npc_greeting(actor_name: str, greeting_text: str) -> str:
+    """
+    Set greeting message for an NPC.
+
+    Args:
+        actor_name: Actor label
+        greeting_text: The greeting message
+    """
+    command = {"type": "gu_set_greeting", "actor_name": actor_name, "greeting_text": greeting_text}
+    response = send_to_unreal(command)
+    return json.dumps(response)
 
 
 if __name__ == "__main__":
