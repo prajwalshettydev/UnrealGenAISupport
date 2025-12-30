@@ -360,7 +360,7 @@ TSharedRef<SWidget> SGenEditorWindow::CreateMCPStatusSection()
                             "- Set up Cursor configuration\n\n"
                             "After setup, you'll need to restart Claude or Cursor to activate the MCP Server.");
                             
-                        FMessageDialog::Open(EAppMsgType::Ok, Message, &Title);
+                        FMessageDialog::Open(EAppMsgType::Ok, Message, Title);
                         return FReply::Handled();
                     })
                     .ToolTipText(NSLOCTEXT("GenerativeAISupport", "SetupMCPTooltip", "Set up MCP Server configuration"))
