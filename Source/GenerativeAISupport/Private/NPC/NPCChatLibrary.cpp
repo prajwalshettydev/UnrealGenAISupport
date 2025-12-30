@@ -9,6 +9,8 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "CollisionQueryParams.h"
 
 bool UNPCChatLibrary::SendNPCChat(const FString& Message, const FString& NpcId, FString& OutResponse)
@@ -55,7 +57,7 @@ bool UNPCChatLibrary::SendNPCChat(const FString& Message, const FString& NpcId, 
 		}
 	}
 
-	OutResponse = TEXT("*Unverständliche Antwort vom NPC*");
+	OutResponse = TEXT("*Unverstaendliche Antwort vom NPC*");
 	return false;
 }
 
@@ -290,13 +292,33 @@ bool UNPCChatLibrary::AdjustActorToGround(AActor* Actor, bool bSnapToGround, boo
 
 		FVector ActorLocation = Actor->GetActorLocation();
 
-		// Trace from actor's current position DOWN to find ground below
-		FVector TraceStart = ActorLocation;
-		FVector TraceEnd = ActorLocation - FVector(0, 0, 10000.f);
+		// ============================================
+		// ROBUST GROUND PLACEMENT
+		// Works for any pivot point location!
+		// ============================================
+
+		// Get the actor bounds
+		FVector BoundsOrigin, BoundsExtent;
+		Actor->GetActorBounds(false, BoundsOrigin, BoundsExtent);
+
+		// Calculate the offset from pivot to bottom of mesh
+		// BoundsOrigin.Z is the center of the bounds
+		// BoundsExtent.Z is half the height
+		// So bottom of mesh is at: BoundsOrigin.Z - BoundsExtent.Z
+		// And pivot is at: ActorLocation.Z
+		// Offset = how far above the bottom the pivot is
+		float PivotToBottomOffset = ActorLocation.Z - (BoundsOrigin.Z - BoundsExtent.Z);
+
+		UE_LOG(LogTemp, Log, TEXT("AdjustActorToGround: %s - Pivot=%.1f, BoundsCenter=%.1f, BoundsHalfHeight=%.1f, PivotToBottom=%.1f"),
+			*Actor->GetName(), ActorLocation.Z, BoundsOrigin.Z, BoundsExtent.Z, PivotToBottomOffset);
+
+		// Trace from above the actor DOWN to find ground below
+		FVector TraceStart = FVector(ActorLocation.X, ActorLocation.Y, BoundsOrigin.Z + BoundsExtent.Z + 100.f);
+		FVector TraceEnd = FVector(ActorLocation.X, ActorLocation.Y, ActorLocation.Z - 10000.f);
 
 		FHitResult HitResult;
 		FCollisionQueryParams QueryParams;
-		QueryParams.AddIgnoredActor(Actor);  // Don't hit ourselves
+		QueryParams.AddIgnoredActor(Actor);  // Dont hit ourselves
 		QueryParams.bTraceComplex = false;
 
 		bool bHit = World->LineTraceSingleByChannel(
@@ -309,10 +331,10 @@ bool UNPCChatLibrary::AdjustActorToGround(AActor* Actor, bool bSnapToGround, boo
 
 		if (bHit)
 		{
-			// Simple approach: Put actor directly on ground
-			// Most character pivots are at feet, so this works
-			// Add tiny offset (2 units) to prevent clipping into ground
-			float NewZ = HitResult.ImpactPoint.Z + 2.f;
+			// Ground is at HitResult.ImpactPoint.Z
+			// We want the BOTTOM of the mesh to be at ground level
+			// New pivot Z = ground + offset from pivot to bottom + small clearance
+			float NewZ = HitResult.ImpactPoint.Z + PivotToBottomOffset + 2.f;
 
 			// Only adjust if difference is significant (more than 1 unit)
 			if (FMath::Abs(ActorLocation.Z - NewZ) > 1.f)
@@ -321,8 +343,8 @@ bool UNPCChatLibrary::AdjustActorToGround(AActor* Actor, bool bSnapToGround, boo
 				Actor->SetActorLocation(NewLocation);
 				bAdjusted = true;
 
-				UE_LOG(LogTemp, Log, TEXT("AdjustActorToGround: Moved %s from Z=%.1f to Z=%.1f"),
-					*Actor->GetName(), ActorLocation.Z, NewZ);
+				UE_LOG(LogTemp, Log, TEXT("AdjustActorToGround: Moved %s from Z=%.1f to Z=%.1f (Ground=%.1f, Offset=%.1f)"),
+					*Actor->GetName(), ActorLocation.Z, NewZ, HitResult.ImpactPoint.Z, PivotToBottomOffset);
 			}
 		}
 	}

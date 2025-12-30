@@ -17,6 +17,9 @@ from handlers import dialogue_utils_commands, quest_commands
 # NEW: Game Systems Handlers
 from handlers import weather_commands, combat_commands, building_commands
 from handlers import crafting_commands, party_commands, skilltree_commands, masterserver_commands
+# NEW: Additional Game Systems Handlers
+from handlers import achievement_commands, faction_commands, inventory_commands
+from handlers import loot_commands, savegame_commands, shop_commands
 from utils import logging as log
 
 # Global queues and state
@@ -440,6 +443,36 @@ class CommandDispatcher:
             # GAME SYSTEMS: MASTER SERVER
             # ============================================
             **masterserver_commands.MASTERSERVER_COMMANDS,
+
+            # ============================================
+            # GAME SYSTEMS: ACHIEVEMENT
+            # ============================================
+            **achievement_commands.ACHIEVEMENT_COMMANDS,
+
+            # ============================================
+            # GAME SYSTEMS: FACTION
+            # ============================================
+            **faction_commands.FACTION_COMMANDS,
+
+            # ============================================
+            # GAME SYSTEMS: INVENTORY
+            # ============================================
+            **inventory_commands.INVENTORY_COMMANDS,
+
+            # ============================================
+            # GAME SYSTEMS: LOOT
+            # ============================================
+            **loot_commands.LOOT_COMMANDS,
+
+            # ============================================
+            # GAME SYSTEMS: SAVEGAME
+            # ============================================
+            **savegame_commands.SAVEGAME_COMMANDS,
+
+            # ============================================
+            # GAME SYSTEMS: SHOP
+            # ============================================
+            **shop_commands.SHOP_COMMANDS,
         }
 
     def dispatch(self, command: Dict[str, Any]) -> Dict[str, Any]:
