@@ -293,7 +293,11 @@ bool UNPCChatLibrary::AdjustActorToGround(AActor* Actor, bool bSnapToGround, boo
 		// Get actor bounds to calculate proper ground offset
 		FVector Origin, BoxExtent;
 		Actor->GetActorBounds(false, Origin, BoxExtent);
-		float HalfHeight = BoxExtent.Z;
+
+		// Calculate how far the actor's pivot is above the bottom of its mesh
+		// This works correctly whether pivot is at feet, center, or anywhere else
+		float BottomZ = Origin.Z - BoxExtent.Z;  // Lowest point of bounding box
+		float PivotToBottomOffset = ActorLocation.Z - BottomZ;  // Distance from pivot to bottom
 
 		// Trace from actor's current position DOWN to find ground below
 		// (Not from above - that could hit bridges, trees, etc. above the actor!)
@@ -315,8 +319,8 @@ bool UNPCChatLibrary::AdjustActorToGround(AActor* Actor, bool bSnapToGround, boo
 
 		if (bHit)
 		{
-			// Calculate new Z position: ground + half height of actor
-			float NewZ = HitResult.ImpactPoint.Z + HalfHeight;
+			// Place actor so its mesh bottom touches the ground
+			float NewZ = HitResult.ImpactPoint.Z + PivotToBottomOffset;
 
 			// Only adjust if difference is significant (more than 1 unit)
 			if (FMath::Abs(ActorLocation.Z - NewZ) > 1.f)
