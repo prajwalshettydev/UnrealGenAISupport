@@ -10,6 +10,7 @@
 #include "BehaviorTree/Blackboard/BlackboardKeyAllTypes.h"
 #include "NavigationSystem.h"
 #include "NavigationPath.h"
+#include "Navigation/PathFollowingComponent.h"
 #include "Perception/AIPerceptionComponent.h"
 #include "Perception/AISenseConfig_Sight.h"
 #include "Perception/AISenseConfig_Hearing.h"
@@ -795,12 +796,13 @@ FString UGenAIUtils::GetPerceptionInfo(const FString& ActorName)
 
 	// List configured senses
 	TArray<TSharedPtr<FJsonValue>> SensesArray;
-	for (UAISenseConfig* Config : PerceptionComp->GetSensesConfigTemplates())
+	for (auto It = PerceptionComp->GetSensesConfigIterator(); It; ++It)
 	{
+		UAISenseConfig* Config = *It;
 		if (Config)
 		{
 			TSharedPtr<FJsonObject> SenseJson = MakeShareable(new FJsonObject);
-			SenseJson->SetStringField("type", Config->GetSenseImplementation()->GetName());
+			SenseJson->SetStringField("type", Config->GetClass()->GetName());
 
 			// Sight specific
 			if (UAISenseConfig_Sight* SightConfig = Cast<UAISenseConfig_Sight>(Config))

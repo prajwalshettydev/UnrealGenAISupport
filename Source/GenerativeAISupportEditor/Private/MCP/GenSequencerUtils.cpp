@@ -24,7 +24,8 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetToolsModule.h"
 #include "IAssetTools.h"
-#include "Factories/LevelSequenceFactoryNew.h"
+// LevelSequenceFactoryNew.h is private in UE5.5 - using alternative creation method
+#include "UObject/SavePackage.h"
 #include "EngineUtils.h"
 #include "Editor.h"
 #include "LevelEditor.h"
@@ -70,20 +71,28 @@ FString UGenSequencerUtils::CreateSequence(const FString& SequencePath, float Fr
 		return FString::Printf(TEXT("{\"success\": false, \"error\": \"Sequence already exists at '%s'\"}"), *SequencePath);
 	}
 
-	// Create the sequence
-	IAssetTools& AssetTools = FModuleManager::GetModuleChecked<FAssetToolsModule>("AssetTools").Get();
+	// Create the sequence without using the private LevelSequenceFactoryNew
 	FString PackagePath = FPackageName::GetLongPackagePath(SequencePath);
 	FString AssetName = FPackageName::GetShortName(SequencePath);
+	FString FullPackageName = PackagePath / AssetName;
 
-	ULevelSequenceFactoryNew* Factory = NewObject<ULevelSequenceFactoryNew>();
+	// Create package
+	UPackage* Package = CreatePackage(*FullPackageName);
+	if (!Package)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Failed to create package\"}");
+	}
 
-	UObject* NewAsset = AssetTools.CreateAsset(AssetName, PackagePath, ULevelSequence::StaticClass(), Factory);
-	ULevelSequence* Sequence = Cast<ULevelSequence>(NewAsset);
+	// Create the sequence object directly
+	ULevelSequence* Sequence = NewObject<ULevelSequence>(Package, *AssetName, RF_Public | RF_Standalone);
 
 	if (!Sequence)
 	{
 		return TEXT("{\"success\": false, \"error\": \"Failed to create sequence\"}");
 	}
+
+	// Initialize the MovieScene
+	Sequence->Initialize();
 
 	// Set frame rate
 	UMovieScene* MovieScene = Sequence->GetMovieScene();
@@ -93,8 +102,14 @@ FString UGenSequencerUtils::CreateSequence(const FString& SequencePath, float Fr
 		MovieScene->SetDisplayRate(DisplayRate);
 	}
 
+	// Mark package as dirty and save
+	Package->MarkPackageDirty();
+	FAssetRegistryModule::AssetCreated(Sequence);
+
 	// Save the asset
-	UEditorAssetLibrary::SaveAsset(SequencePath, false);
+	FSavePackageArgs SaveArgs;
+	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+	UPackage::SavePackage(Package, Sequence, *FPackageName::LongPackageNameToFilename(FullPackageName, FPackageName::GetAssetPackageExtension()), SaveArgs);
 
 	return FString::Printf(TEXT("{\"success\": true, \"message\": \"Sequence created at '%s'\", \"frame_rate\": %f}"),
 		*SequencePath, FrameRate);
