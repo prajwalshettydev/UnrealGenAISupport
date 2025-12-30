@@ -83,7 +83,7 @@ bool UNPCChatLibrary::IsNPCServerRunning()
 
 	TSharedRef<FInternetAddr> Addr = SocketSubsystem->CreateInternetAddr();
 	bool bIsValid;
-	Addr->SetIp(TEXT("127.0.0.1"), bIsValid);
+	Addr->SetIp(TEXT("192.168.178.73"), bIsValid);  // Claude Server
 	Addr->SetPort(NPC_SERVER_PORT);
 
 	FSocket* Socket = SocketSubsystem->CreateSocket(NAME_Stream, TEXT("NPCServerCheck"), false);
@@ -110,7 +110,7 @@ bool UNPCChatLibrary::SendToNPCServer(const FString& JsonPayload, FString& OutRe
 
 	TSharedRef<FInternetAddr> Addr = SocketSubsystem->CreateInternetAddr();
 	bool bIsValid;
-	Addr->SetIp(TEXT("127.0.0.1"), bIsValid);
+	Addr->SetIp(TEXT("192.168.178.73"), bIsValid);  // Claude Server
 	Addr->SetPort(NPC_SERVER_PORT);
 
 	FSocket* Socket = SocketSubsystem->CreateSocket(NAME_Stream, TEXT("NPCChatSocket"), false);
@@ -295,8 +295,9 @@ bool UNPCChatLibrary::AdjustActorToGround(AActor* Actor, bool bSnapToGround, boo
 		Actor->GetActorBounds(false, Origin, BoxExtent);
 		float HalfHeight = BoxExtent.Z;
 
-		// Trace from above actor down to ground
-		FVector TraceStart = ActorLocation + FVector(0, 0, 1000.f);
+		// Trace from actor's current position DOWN to find ground below
+		// (Not from above - that could hit bridges, trees, etc. above the actor!)
+		FVector TraceStart = ActorLocation;
 		FVector TraceEnd = ActorLocation - FVector(0, 0, 10000.f);
 
 		FHitResult HitResult;
