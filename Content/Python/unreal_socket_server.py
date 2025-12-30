@@ -14,6 +14,8 @@ from handlers import npc_dialog_commands
 # NEW: GenUtils Handlers
 from handlers import sequencer_commands, datatable_commands, behavior_tree_commands
 from handlers import dialogue_utils_commands, quest_commands
+# NEW: Game Systems Handlers
+from handlers import weather_commands, combat_commands, building_commands
 from utils import logging as log
 
 # Global queues and state
@@ -402,6 +404,21 @@ class CommandDispatcher:
             "quest_duplicate": quest_commands.handle_duplicate_quest,
             "quest_scale_rewards": quest_commands.handle_scale_rewards,
             "quest_scale_objective_counts": quest_commands.handle_scale_objective_counts,
+
+            # ============================================
+            # GAME SYSTEMS: WEATHER
+            # ============================================
+            **weather_commands.WEATHER_COMMANDS,
+
+            # ============================================
+            # GAME SYSTEMS: COMBAT
+            # ============================================
+            **combat_commands.COMBAT_COMMANDS,
+
+            # ============================================
+            # GAME SYSTEMS: BUILDING
+            # ============================================
+            **building_commands.BUILDING_COMMANDS,
         }
 
     def dispatch(self, command: Dict[str, Any]) -> Dict[str, Any]:
