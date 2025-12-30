@@ -244,6 +244,8 @@ class CommandDispatcher:
             "find_ground_position": npc_dialog_commands.handle_find_ground_position,
             "adjust_actor_to_ground": npc_dialog_commands.handle_adjust_actor_to_ground,
             "reset_npc_conversation": npc_dialog_commands.handle_reset_npc_conversation,
+            "fix_all_floating_npcs": npc_dialog_commands.handle_fix_all_floating_npcs,
+            "fix_actors_by_name": npc_dialog_commands.handle_fix_actors_by_name,
 
             # ============================================
             # GENUTILS: SEQUENCER COMMANDS

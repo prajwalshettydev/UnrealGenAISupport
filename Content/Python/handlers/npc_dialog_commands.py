@@ -624,6 +624,192 @@ def handle_reset_npc_conversation(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+def handle_fix_all_floating_npcs(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Fix ALL floating NPCs in the level - drop them from above onto ground
+
+    Method: Place high up, fix rotation (upright), then drop to ground via line trace
+
+    Args:
+        command: Dictionary with optional:
+            - fix_rotation: Also fix rotation (default: True)
+            - drop_height: How high to place before dropping (default: 500)
+            - actor_class_filter: Only fix actors of this class (default: all with mesh)
+    """
+    try:
+        fix_rotation = command.get("fix_rotation", True)
+        drop_height = command.get("drop_height", 500.0)
+        class_filter = command.get("actor_class_filter", "")
+
+        log.log_command("fix_all_floating_npcs", f"Dropping all NPCs from {drop_height} units above ground")
+
+        world = unreal.EditorLevelLibrary.get_editor_world()
+        if not world:
+            return {"success": False, "error": "No editor world"}
+
+        all_actors = unreal.EditorLevelLibrary.get_all_level_actors()
+
+        fixed_count = 0
+        skipped_count = 0
+        failed_count = 0
+        fixed_actors = []
+
+        for actor in all_actors:
+            actor_name = actor.get_actor_label()
+            actor_class = actor.get_class().get_name()
+
+            # Skip non-NPC actors (lights, cameras, volumes, etc.)
+            skip_classes = [
+                "Light", "Camera", "Volume", "Trigger", "NavMesh",
+                "PlayerStart", "SkyLight", "DirectionalLight", "PointLight",
+                "SpotLight", "ExponentialHeightFog", "AtmosphericFog",
+                "SkyAtmosphere", "VolumetricCloud", "PostProcessVolume",
+                "LevelSequenceActor", "Landscape", "StaticMeshActor"
+            ]
+
+            should_skip = False
+            for skip_class in skip_classes:
+                if skip_class.lower() in actor_class.lower():
+                    should_skip = True
+                    break
+
+            if should_skip:
+                skipped_count += 1
+                continue
+
+            # Apply class filter if specified
+            if class_filter and class_filter.lower() not in actor_class.lower():
+                skipped_count += 1
+                continue
+
+            # Check if actor has a mesh component (likely an NPC/character)
+            has_mesh = False
+            components = actor.get_components_by_class(unreal.SkeletalMeshComponent)
+            if components and len(components) > 0:
+                has_mesh = True
+            else:
+                components = actor.get_components_by_class(unreal.StaticMeshComponent)
+                if components and len(components) > 0:
+                    has_mesh = True
+
+            if not has_mesh:
+                skipped_count += 1
+                continue
+
+            # Try to fix this actor - DROP METHOD
+            try:
+                old_loc = actor.get_actor_location()
+                old_z = old_loc.z
+
+                # Step 1: Fix rotation FIRST (make upright)
+                if fix_rotation:
+                    current_rot = actor.get_actor_rotation()
+                    upright_rot = unreal.Rotator(0.0, current_rot.yaw, 0.0)
+                    actor.set_actor_rotation(upright_rot, False)
+
+                # Step 2: Move actor HIGH UP (drop_height above current position)
+                high_loc = unreal.Vector(old_loc.x, old_loc.y, old_loc.z + drop_height)
+                actor.set_actor_location(high_loc, False, False)
+
+                # Step 3: Now drop to ground using line trace
+                success = unreal.NPCChatLibrary.adjust_actor_to_ground(actor, True, False)
+
+                if success:
+                    new_z = actor.get_actor_location().z
+                    height_diff = old_z - new_z
+
+                    fixed_count += 1
+                    fixed_actors.append({
+                        "name": actor_name,
+                        "class": actor_class,
+                        "old_z": round(old_z, 2),
+                        "new_z": round(new_z, 2),
+                        "dropped_from": round(old_z + drop_height, 2),
+                        "adjusted_by": round(height_diff, 2)
+                    })
+
+                    log.log_info(f"Dropped '{actor_name}': Z {old_z:.1f} -> high {old_z + drop_height:.1f} -> ground {new_z:.1f}")
+                else:
+                    skipped_count += 1
+
+            except Exception as actor_error:
+                failed_count += 1
+                log.log_warning(f"Failed to drop '{actor_name}': {str(actor_error)}")
+
+        log.log_result("fix_all_floating_npcs", True,
+                      f"Dropped {fixed_count}, skipped {skipped_count}, failed {failed_count}")
+
+        return {
+            "success": True,
+            "fixed_count": fixed_count,
+            "skipped_count": skipped_count,
+            "failed_count": failed_count,
+            "fixed_actors": fixed_actors,
+            "message": f"Dropped {fixed_count} actors from {drop_height} units high onto ground"
+        }
+
+    except Exception as e:
+        log.log_error(f"Error dropping NPCs: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+def handle_fix_actors_by_name(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Fix specific actors by name pattern
+
+    Args:
+        command: Dictionary with:
+            - name_pattern: Pattern to match actor names (e.g., "NPC_", "Character")
+            - fix_rotation: Also fix rotation (default: True)
+    """
+    try:
+        name_pattern = command.get("name_pattern", "")
+        fix_rotation = command.get("fix_rotation", True)
+
+        if not name_pattern:
+            return {"success": False, "error": "name_pattern required"}
+
+        log.log_command("fix_actors_by_name", f"Fixing actors matching: {name_pattern}")
+
+        all_actors = unreal.EditorLevelLibrary.get_all_level_actors()
+
+        fixed_count = 0
+        fixed_actors = []
+
+        for actor in all_actors:
+            actor_name = actor.get_actor_label()
+
+            if name_pattern.lower() in actor_name.lower():
+                try:
+                    old_z = actor.get_actor_location().z
+
+                    success = unreal.NPCChatLibrary.adjust_actor_to_ground(actor, True, fix_rotation)
+
+                    if success:
+                        new_z = actor.get_actor_location().z
+                        fixed_count += 1
+                        fixed_actors.append({
+                            "name": actor_name,
+                            "old_z": round(old_z, 2),
+                            "new_z": round(new_z, 2)
+                        })
+
+                except Exception as e:
+                    log.log_warning(f"Failed to fix '{actor_name}': {str(e)}")
+
+        return {
+            "success": True,
+            "fixed_count": fixed_count,
+            "pattern": name_pattern,
+            "fixed_actors": fixed_actors,
+            "message": f"Fixed {fixed_count} actors matching '{name_pattern}'"
+        }
+
+    except Exception as e:
+        log.log_error(f"Error fixing actors: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
 # ============================================================================
 # COMMAND REGISTRY
 # ============================================================================
@@ -643,6 +829,9 @@ NPC_DIALOG_COMMANDS = {
     "find_ground_position": handle_find_ground_position,
     "adjust_actor_to_ground": handle_adjust_actor_to_ground,
     "reset_npc_conversation": handle_reset_npc_conversation,
+    # Batch ground fixing
+    "fix_all_floating_npcs": handle_fix_all_floating_npcs,
+    "fix_actors_by_name": handle_fix_actors_by_name,
 }
 
 
