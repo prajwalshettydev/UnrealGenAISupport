@@ -1287,6 +1287,176 @@ def set_npc_greeting(actor_name: str, greeting_text: str) -> str:
     return json.dumps(response)
 
 
+# ============================================
+# GENUTILS: QUEST SYSTEM
+# ============================================
+
+@mcp.tool()
+def create_quest(quest_id: str, title: str, description: str,
+                 quest_type: str = "side", quest_giver_id: str = "") -> str:
+    """
+    Create a new quest.
+
+    Args:
+        quest_id: Unique ID for the quest
+        title: Quest title
+        description: Quest description
+        quest_type: Type (main, side, daily, discovery, event)
+        quest_giver_id: NPC who gives this quest
+    """
+    command = {
+        "type": "quest_create",
+        "quest_id": quest_id,
+        "title": title,
+        "description": description,
+        "quest_type": quest_type,
+        "quest_giver_id": quest_giver_id
+    }
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def create_quest_from_json(json_data: str) -> str:
+    """
+    Create a quest from a JSON definition.
+
+    Args:
+        json_data: JSON string with quest definition including:
+            - id: Quest ID
+            - title: Quest title
+            - description: Quest description
+            - type: Quest type (main/side/daily/discovery/event)
+            - giver: Quest giver NPC ID
+            - objectives: Array of objectives
+            - rewards: Reward object (xp, gold, items)
+            - requirements: Requirements object (level, quests)
+    """
+    command = {"type": "quest_create_from_json", "json_data": json_data}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def create_quest_chain(chain_id: str, entries: list, quest_giver_id: str = "",
+                       quest_type: str = "main") -> str:
+    """
+    Create a quest chain (multiple linked quests with prerequisites).
+
+    Args:
+        chain_id: Base ID for the chain
+        entries: List of quest entries, each with title, description, objectives, rewards
+        quest_giver_id: NPC who gives all quests in the chain
+        quest_type: Type for all quests (default: main)
+    """
+    command = {
+        "type": "quest_create_chain",
+        "chain_id": chain_id,
+        "entries": entries,
+        "quest_giver_id": quest_giver_id,
+        "quest_type": quest_type
+    }
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def get_quest_templates() -> str:
+    """Get list of available quest templates (kill, fetch, explore, messenger, escort, main_story, daily)."""
+    command = {"type": "quest_get_templates"}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def create_quest_from_template(template_name: str, quest_id: str,
+                               title: str, description: str) -> str:
+    """
+    Create a quest from a predefined template.
+
+    Args:
+        template_name: Template name (kill, fetch, explore, messenger, escort, main_story, daily)
+        quest_id: ID for the new quest
+        title: Quest title
+        description: Quest description
+    """
+    command = {
+        "type": "quest_create_from_template",
+        "template_name": template_name,
+        "quest_id": quest_id,
+        "title": title,
+        "description": description
+    }
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def validate_quest(quest_data: str) -> str:
+    """
+    Validate a quest definition for common issues.
+
+    Args:
+        quest_data: JSON string with quest definition
+    """
+    command = {"type": "quest_validate", "quest_data": quest_data}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def validate_quest_chain(quests: list) -> str:
+    """
+    Validate a quest chain for issues (circular dependencies, missing prerequisites, etc.).
+
+    Args:
+        quests: List of quest definitions as dicts
+    """
+    command = {"type": "quest_validate_chain", "quests": quests}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def save_quests_to_file(file_path: str, quests: list) -> str:
+    """
+    Save quests to a JSON file.
+
+    Args:
+        file_path: Absolute path to save to
+        quests: List of quest data dictionaries
+    """
+    command = {"type": "quest_save_to_file", "file_path": file_path, "quests": quests}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def load_quests_from_file(file_path: str) -> str:
+    """
+    Load quests from a JSON file.
+
+    Args:
+        file_path: Path to JSON file
+    """
+    command = {"type": "quest_load_from_file", "file_path": file_path}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
+@mcp.tool()
+def generate_quest_id(prefix: str = "quest") -> str:
+    """
+    Generate a unique quest ID.
+
+    Args:
+        prefix: Prefix for the ID (default: quest)
+    """
+    command = {"type": "quest_generate_id", "prefix": prefix}
+    response = send_to_unreal(command)
+    return json.dumps(response)
+
+
 if __name__ == "__main__":
     import traceback
 

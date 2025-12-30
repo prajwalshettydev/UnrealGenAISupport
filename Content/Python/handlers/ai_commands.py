@@ -9,7 +9,7 @@ from typing import Dict, Any
 from utils import logging as log
 
 # AI Server Konfiguration - TCP Port (nicht WebSocket)
-AI_SERVER_HOST = "localhost"
+AI_SERVER_HOST = "192.168.178.73"
 AI_SERVER_PORT = 9879  # Separater TCP Port für Unreal
 
 

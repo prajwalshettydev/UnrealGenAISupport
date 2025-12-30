@@ -86,22 +86,29 @@ def get_recent_unreal_logs(start_line=None):
 def handle_execute_python(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to execute a Python script in Unreal Engine
-    
+
     Args:
         command: The command dictionary containing:
-            - script: The Python code to execute as a string
+            - script or code: The Python code to execute as a string
             - force: Optional boolean to bypass safety checks (default: False)
-            
+
     Returns:
         Response dictionary with success/failure status and output if successful
     """
+    # Initialize file paths before try block to avoid UnboundLocalError in finally
+    script_file = None
+    output_file = None
+    error_file = None
+    status_file = None
+
     try:
-        script = command.get("script")
+        # Support both 'script' and 'code' parameter names
+        script = command.get("script") or command.get("code")
         force = command.get("force", False)
 
         if not script:
-            log.log_error("Missing required parameter for execute_python: script")
-            return {"success": False, "error": "Missing required parameter: script"}
+            log.log_error("Missing required parameter for execute_python: script or code")
+            return {"success": False, "error": "Missing required parameter: script or code"}
 
         log.log_command("execute_python", f"Script: {script[:50]}...")
 
@@ -194,7 +201,7 @@ def handle_execute_python(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
     finally:
         for file in [script_file, output_file, error_file, status_file]:
-            if os.path.exists(file):
+            if file and os.path.exists(file):
                 try:
                     os.remove(file)
                 except:

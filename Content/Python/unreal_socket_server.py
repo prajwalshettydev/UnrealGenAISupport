@@ -13,7 +13,7 @@ from handlers import kismet_utilities_commands, material_commands, skeletal_mesh
 from handlers import npc_dialog_commands
 # NEW: GenUtils Handlers
 from handlers import sequencer_commands, datatable_commands, behavior_tree_commands
-from handlers import dialogue_utils_commands
+from handlers import dialogue_utils_commands, quest_commands
 from utils import logging as log
 
 # Global queues and state
@@ -360,6 +360,46 @@ class CommandDispatcher:
             "gu_export_all_dialog_configs": dialogue_utils_commands.handle_export_all_dialog_configs,
             "gu_list_moods": dialogue_utils_commands.handle_list_moods,
             "gu_list_choice_types": dialogue_utils_commands.handle_list_choice_types,
+
+            # ============================================
+            # GENUTILS: QUEST COMMANDS
+            # ============================================
+            # Creation
+            "quest_create": quest_commands.handle_create_quest,
+            "quest_create_from_json": quest_commands.handle_create_quest_from_json,
+            "quest_create_batch": quest_commands.handle_create_quests_from_json,
+            "quest_batch_create": quest_commands.handle_batch_create_quests,
+
+            # Objectives
+            "quest_add_objective": quest_commands.handle_add_objective,
+            "quest_make_kill_objective": quest_commands.handle_make_kill_objective,
+            "quest_make_collect_objective": quest_commands.handle_make_collect_objective,
+            "quest_make_talk_objective": quest_commands.handle_make_talk_objective,
+            "quest_make_explore_objective": quest_commands.handle_make_explore_objective,
+            "quest_make_deliver_objective": quest_commands.handle_make_deliver_objective,
+
+            # Chains
+            "quest_create_chain": quest_commands.handle_create_quest_chain,
+            "quest_link_as_chain": quest_commands.handle_link_quests_as_chain,
+
+            # Export/Import
+            "quest_export_to_json": quest_commands.handle_export_quest_to_json,
+            "quest_save_to_file": quest_commands.handle_save_quests_to_file,
+            "quest_load_from_file": quest_commands.handle_load_quests_from_file,
+
+            # Validation
+            "quest_validate": quest_commands.handle_validate_quest,
+            "quest_validate_chain": quest_commands.handle_validate_quest_chain,
+
+            # Templates
+            "quest_get_templates": quest_commands.handle_get_quest_templates,
+            "quest_create_from_template": quest_commands.handle_create_quest_from_template,
+
+            # Utilities
+            "quest_generate_id": quest_commands.handle_generate_quest_id,
+            "quest_duplicate": quest_commands.handle_duplicate_quest,
+            "quest_scale_rewards": quest_commands.handle_scale_rewards,
+            "quest_scale_objective_counts": quest_commands.handle_scale_objective_counts,
         }
 
     def dispatch(self, command: Dict[str, Any]) -> Dict[str, Any]:
