@@ -58,4 +58,71 @@ public:
 
 	// Utility function to find actors by name
 	static AActor* FindActorByName(const FString& ActorName);
+
+	/**
+	 * Get all properties of an actor as JSON.
+	 * @param ActorName - The name/label of the actor
+	 * @return JSON with actor properties
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Actor Utils")
+	static FString GetActorProperties(const FString& ActorName);
+
+	/**
+	 * List all actors in the current level with optional class filter.
+	 * @param ClassFilter - Optional class name to filter (empty = all actors)
+	 * @return JSON array of actors with name, class, location
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Actor Utils")
+	static FString ListAllActors(const FString& ClassFilter);
+
+	/**
+	 * Delete an actor from the level.
+	 * @param ActorName - The name/label of the actor to delete
+	 * @return JSON result with success status
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Actor Utils")
+	static FString DeleteActor(const FString& ActorName);
+
+	/**
+	 * Duplicate an actor in the level.
+	 * @param ActorName - The name/label of the actor to duplicate
+	 * @param NewLocation - Location for the new actor
+	 * @param NewLabel - Label for the new actor
+	 * @return JSON result with new actor info
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Actor Utils")
+	static FString DuplicateActor(const FString& ActorName, const FVector& NewLocation, const FString& NewLabel);
+
+	/**
+	 * Save the current level.
+	 * @return JSON result with success status
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Actor Utils")
+	static FString SaveCurrentLevel();
+
+	/**
+	 * Save all modified assets.
+	 * @return JSON result with number of saved assets
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Actor Utils")
+	static FString SaveAllDirtyAssets();
+
+	/**
+	 * Get a specific property value from an actor.
+	 * @param ActorName - The name/label of the actor
+	 * @param PropertyName - Name of the property
+	 * @return JSON with property value
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Actor Utils")
+	static FString GetActorProperty(const FString& ActorName, const FString& PropertyName);
+
+	/**
+	 * Set a property value on an actor.
+	 * @param ActorName - The name/label of the actor
+	 * @param PropertyName - Name of the property
+	 * @param ValueString - Value as string
+	 * @return JSON result with success status
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Actor Utils")
+	static FString SetActorProperty(const FString& ActorName, const FString& PropertyName, const FString& ValueString);
 };

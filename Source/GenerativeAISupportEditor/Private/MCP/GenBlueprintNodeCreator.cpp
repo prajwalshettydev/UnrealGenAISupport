@@ -947,7 +947,10 @@ FString UGenBlueprintNodeCreator::TryCreateNodeFromLibraries(UEdGraph* Graph, co
 	static const TArray<FString> CommonLibraries = {
 		TEXT("KismetMathLibrary"), TEXT("KismetSystemLibrary"), TEXT("KismetStringLibrary"),
 		TEXT("KismetArrayLibrary"), TEXT("KismetTextLibrary"), TEXT("GameplayStatics"),
-		TEXT("BlueprintFunctionLibrary"), TEXT("Actor"), TEXT("Pawn"), TEXT("Character")
+		TEXT("BlueprintFunctionLibrary"), TEXT("Actor"), TEXT("Pawn"), TEXT("Character"),
+		// Widget/UI Libraries - for UMG Blueprint support
+		TEXT("SlateBlueprintLibrary"), TEXT("WidgetBlueprintLibrary"), TEXT("WidgetLayoutLibrary"),
+		TEXT("UserWidget"), TEXT("Widget"), TEXT("Image"), TEXT("TextBlock"), TEXT("Button")
 	};
 
 	struct FFunctionMatch
@@ -1122,7 +1125,10 @@ FString UGenBlueprintNodeCreator::GetNodeSuggestions(const FString& NodeType)
 	static const TArray<FString> CommonLibraries = {
 		TEXT("KismetMathLibrary"), TEXT("KismetSystemLibrary"), TEXT("KismetStringLibrary"),
 		TEXT("KismetArrayLibrary"), TEXT("KismetTextLibrary"), TEXT("GameplayStatics"),
-		TEXT("BlueprintFunctionLibrary"), TEXT("Actor"), TEXT("Pawn"), TEXT("Character")
+		TEXT("BlueprintFunctionLibrary"), TEXT("Actor"), TEXT("Pawn"), TEXT("Character"),
+		// Widget/UI Libraries - for UMG Blueprint support
+		TEXT("SlateBlueprintLibrary"), TEXT("WidgetBlueprintLibrary"), TEXT("WidgetLayoutLibrary"),
+		TEXT("UserWidget"), TEXT("Widget"), TEXT("Image"), TEXT("TextBlock"), TEXT("Button")
 	};
 
 	struct FFunctionMatch

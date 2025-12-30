@@ -20,8 +20,12 @@ public class GenerativeAISupport : ModuleRules
 				"Engine",
 				"HTTP",
 				"Json",
+				"JsonUtilities",
+				"Sockets",
+				"Networking",
 				"DeveloperSettings",
-				"ImageDownload"
+				"ImageDownload",
+				"InputCore"
 			}
 		);
 

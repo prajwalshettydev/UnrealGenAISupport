@@ -23,6 +23,10 @@
 #include "GameFramework/GameModeBase.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "UObject/SavePackage.h"
+#include "Serialization/JsonSerializer.h"
+#include "Dom/JsonObject.h"
+#include "FileHelpers.h"
+#include "EditorAssetLibrary.h"
 
 AActor* UGenActorUtils::SpawnBasicShape(const FString& ShapeName, const FVector& Location, 
                                         const FRotator& Rotation, const FVector& Scale, 
@@ -137,7 +141,7 @@ AActor* UGenActorUtils::SpawnActorFromClass(const FString& ActorClassName, const
     {
         // Try to find class by name
         FString FullClassName = FString::Printf(TEXT("/Script/Engine.%s"), *ActorClassName);
-        ActorClass = FindObject<UClass>(ANY_PACKAGE, *ActorClassName);
+        ActorClass = FindObject<UClass>(nullptr, *ActorClassName);
         
         if (!ActorClass)
         {
@@ -411,7 +415,7 @@ FString UGenActorUtils::CreateGameModeWithPawn(const FString& GameModePath, cons
 
     // Load the base class (default to AGameModeBase if not specified)
     FString BaseClassToUse = BaseClassName.IsEmpty() ? TEXT("GameModeBase") : BaseClassName;
-    UClass* BaseClass = FindObject<UClass>(ANY_PACKAGE, *BaseClassToUse);
+    UClass* BaseClass = FindObject<UClass>(nullptr, *BaseClassToUse);
     if (!BaseClass || !BaseClass->IsChildOf(AGameModeBase::StaticClass()))
     {
         UE_LOG(LogTemp, Error, TEXT("Invalid base class %s for game mode"), *BaseClassToUse);
@@ -449,7 +453,7 @@ FString UGenActorUtils::CreateGameModeWithPawn(const FString& GameModePath, cons
         UE_LOG(LogTemp, Error, TEXT("Generated class not found for %s"), *GameModePath);
         return TEXT("{\"success\": false, \"error\": \"No generated class\"}");
     }
-    if (AGameModeBase* GameModeCDO = Cast<AGameModeBase>(GameModeClass->ClassDefaultObject))
+    if (AGameModeBase* GameModeCDO = Cast<AGameModeBase>(GameModeClass->GetDefaultObject()))
     {
         GameModeCDO->DefaultPawnClass = PawnBP->GeneratedClass;
     }
@@ -483,6 +487,259 @@ FString UGenActorUtils::CreateGameModeWithPawn(const FString& GameModePath, cons
     FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(GameModeBP);
 
     UE_LOG(LogTemp, Log, TEXT("Created game mode %s with pawn %s and set as scene default"), *GameModePath, *PawnBlueprintPath);
-    return FString::Printf(TEXT("{\"success\": true, \"message\": \"Created game mode %s with pawn %s and set as scene default\"}"), 
+    return FString::Printf(TEXT("{\"success\": true, \"message\": \"Created game mode %s with pawn %s and set as scene default\"}"),
                            *GameModePath, *PawnBlueprintPath);
+}
+
+FString UGenActorUtils::GetActorProperties(const FString& ActorName)
+{
+    AActor* Actor = FindActorByName(ActorName);
+    if (!Actor)
+    {
+        return TEXT("{\"success\": false, \"error\": \"Actor not found\"}");
+    }
+
+    TSharedPtr<FJsonObject> ResultJson = MakeShareable(new FJsonObject);
+    ResultJson->SetBoolField("success", true);
+    ResultJson->SetStringField("name", Actor->GetActorLabel());
+    ResultJson->SetStringField("class", Actor->GetClass()->GetName());
+
+    // Location
+    FVector Loc = Actor->GetActorLocation();
+    TSharedPtr<FJsonObject> LocJson = MakeShareable(new FJsonObject);
+    LocJson->SetNumberField("x", Loc.X);
+    LocJson->SetNumberField("y", Loc.Y);
+    LocJson->SetNumberField("z", Loc.Z);
+    ResultJson->SetObjectField("location", LocJson);
+
+    // Rotation
+    FRotator Rot = Actor->GetActorRotation();
+    TSharedPtr<FJsonObject> RotJson = MakeShareable(new FJsonObject);
+    RotJson->SetNumberField("pitch", Rot.Pitch);
+    RotJson->SetNumberField("yaw", Rot.Yaw);
+    RotJson->SetNumberField("roll", Rot.Roll);
+    ResultJson->SetObjectField("rotation", RotJson);
+
+    // Scale
+    FVector Scale = Actor->GetActorScale3D();
+    TSharedPtr<FJsonObject> ScaleJson = MakeShareable(new FJsonObject);
+    ScaleJson->SetNumberField("x", Scale.X);
+    ScaleJson->SetNumberField("y", Scale.Y);
+    ScaleJson->SetNumberField("z", Scale.Z);
+    ResultJson->SetObjectField("scale", ScaleJson);
+
+    FString OutputString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
+    FJsonSerializer::Serialize(ResultJson.ToSharedRef(), Writer);
+
+    return OutputString;
+}
+
+FString UGenActorUtils::ListAllActors(const FString& ClassFilter)
+{
+    UWorld* World = GEditor->GetEditorWorldContext().World();
+    if (!World)
+    {
+        return TEXT("{\"success\": false, \"error\": \"No world found\"}");
+    }
+
+    TArray<TSharedPtr<FJsonValue>> ActorsArray;
+
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        AActor* Actor = *It;
+        if (!Actor) continue;
+
+        // Apply class filter if specified
+        if (!ClassFilter.IsEmpty())
+        {
+            FString ClassName = Actor->GetClass()->GetName();
+            if (!ClassName.Contains(ClassFilter))
+            {
+                continue;
+            }
+        }
+
+        TSharedPtr<FJsonObject> ActorJson = MakeShareable(new FJsonObject);
+        ActorJson->SetStringField("name", Actor->GetActorLabel());
+        ActorJson->SetStringField("class", Actor->GetClass()->GetName());
+
+        FVector Loc = Actor->GetActorLocation();
+        ActorJson->SetStringField("location", FString::Printf(TEXT("(%f, %f, %f)"), Loc.X, Loc.Y, Loc.Z));
+
+        ActorsArray.Add(MakeShareable(new FJsonValueObject(ActorJson)));
+    }
+
+    TSharedPtr<FJsonObject> ResultJson = MakeShareable(new FJsonObject);
+    ResultJson->SetBoolField("success", true);
+    ResultJson->SetNumberField("count", ActorsArray.Num());
+    ResultJson->SetArrayField("actors", ActorsArray);
+
+    FString OutputString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
+    FJsonSerializer::Serialize(ResultJson.ToSharedRef(), Writer);
+
+    return OutputString;
+}
+
+FString UGenActorUtils::DeleteActor(const FString& ActorName)
+{
+    AActor* Actor = FindActorByName(ActorName);
+    if (!Actor)
+    {
+        return TEXT("{\"success\": false, \"error\": \"Actor not found\"}");
+    }
+
+    FString ActorLabel = Actor->GetActorLabel();
+    bool bDestroyed = Actor->Destroy();
+
+    if (bDestroyed)
+    {
+        return FString::Printf(TEXT("{\"success\": true, \"message\": \"Actor '%s' deleted\"}"), *ActorLabel);
+    }
+
+    return TEXT("{\"success\": false, \"error\": \"Failed to destroy actor\"}");
+}
+
+FString UGenActorUtils::DuplicateActor(const FString& ActorName, const FVector& NewLocation, const FString& NewLabel)
+{
+    AActor* SourceActor = FindActorByName(ActorName);
+    if (!SourceActor)
+    {
+        return TEXT("{\"success\": false, \"error\": \"Source actor not found\"}");
+    }
+
+    UWorld* World = GEditor->GetEditorWorldContext().World();
+    if (!World)
+    {
+        return TEXT("{\"success\": false, \"error\": \"No world found\"}");
+    }
+
+    // Duplicate using spawn with same class
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.Template = SourceActor;
+
+    AActor* NewActor = World->SpawnActor<AActor>(SourceActor->GetClass(), NewLocation, SourceActor->GetActorRotation(), SpawnParams);
+
+    if (!NewActor)
+    {
+        return TEXT("{\"success\": false, \"error\": \"Failed to duplicate actor\"}");
+    }
+
+    if (!NewLabel.IsEmpty())
+    {
+        NewActor->SetActorLabel(*NewLabel);
+    }
+
+    return FString::Printf(TEXT("{\"success\": true, \"message\": \"Actor duplicated as '%s'\", \"new_actor\": \"%s\"}"),
+        *NewActor->GetActorLabel(), *NewActor->GetActorLabel());
+}
+
+FString UGenActorUtils::SaveCurrentLevel()
+{
+    if (!GEditor)
+    {
+        return TEXT("{\"success\": false, \"error\": \"GEditor not available\"}");
+    }
+
+    UWorld* World = GEditor->GetEditorWorldContext().World();
+    if (!World)
+    {
+        return TEXT("{\"success\": false, \"error\": \"No world found\"}");
+    }
+
+    bool bSaved = FEditorFileUtils::SaveCurrentLevel();
+
+    if (bSaved)
+    {
+        return TEXT("{\"success\": true, \"message\": \"Level saved successfully\"}");
+    }
+
+    return TEXT("{\"success\": false, \"error\": \"Failed to save level\"}");
+}
+
+FString UGenActorUtils::SaveAllDirtyAssets()
+{
+    bool bPromptUserToSave = false;
+    bool bSaveMapPackages = true;
+    bool bSaveContentPackages = true;
+    bool bFastSave = false;
+    bool bNotifyNoPackagesSaved = false;
+    bool bCanBeDeclined = false;
+
+    bool bSaved = FEditorFileUtils::SaveDirtyPackages(
+        bPromptUserToSave,
+        bSaveMapPackages,
+        bSaveContentPackages,
+        bFastSave,
+        bNotifyNoPackagesSaved,
+        bCanBeDeclined
+    );
+
+    if (bSaved)
+    {
+        return TEXT("{\"success\": true, \"message\": \"All dirty assets saved\"}");
+    }
+
+    return TEXT("{\"success\": false, \"error\": \"Failed to save some assets\"}");
+}
+
+FString UGenActorUtils::GetActorProperty(const FString& ActorName, const FString& PropertyName)
+{
+    AActor* Actor = FindActorByName(ActorName);
+    if (!Actor)
+    {
+        return TEXT("{\"success\": false, \"error\": \"Actor not found\"}");
+    }
+
+    FProperty* Property = Actor->GetClass()->FindPropertyByName(FName(*PropertyName));
+    if (!Property)
+    {
+        return FString::Printf(TEXT("{\"success\": false, \"error\": \"Property '%s' not found\"}"), *PropertyName);
+    }
+
+    FString ValueString;
+    const void* ValuePtr = Property->ContainerPtrToValuePtr<void>(Actor);
+    Property->ExportTextItem_Direct(ValueString, ValuePtr, nullptr, nullptr, PPF_None);
+
+    TSharedPtr<FJsonObject> ResultJson = MakeShareable(new FJsonObject);
+    ResultJson->SetBoolField("success", true);
+    ResultJson->SetStringField("actor", ActorName);
+    ResultJson->SetStringField("property", PropertyName);
+    ResultJson->SetStringField("value", ValueString);
+    ResultJson->SetStringField("type", Property->GetCPPType());
+
+    FString OutputString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
+    FJsonSerializer::Serialize(ResultJson.ToSharedRef(), Writer);
+
+    return OutputString;
+}
+
+FString UGenActorUtils::SetActorProperty(const FString& ActorName, const FString& PropertyName, const FString& ValueString)
+{
+    AActor* Actor = FindActorByName(ActorName);
+    if (!Actor)
+    {
+        return TEXT("{\"success\": false, \"error\": \"Actor not found\"}");
+    }
+
+    FProperty* Property = Actor->GetClass()->FindPropertyByName(FName(*PropertyName));
+    if (!Property)
+    {
+        return FString::Printf(TEXT("{\"success\": false, \"error\": \"Property '%s' not found\"}"), *PropertyName);
+    }
+
+    void* ValuePtr = Property->ContainerPtrToValuePtr<void>(Actor);
+
+    // Try to import the value from string
+    const TCHAR* ImportResult = Property->ImportText_Direct(*ValueString, ValuePtr, Actor, PPF_None);
+
+    if (ImportResult)
+    {
+        Actor->Modify();
+        return FString::Printf(TEXT("{\"success\": true, \"message\": \"Property '%s' set to '%s'\"}"), *PropertyName, *ValueString);
+    }
+
+    return FString::Printf(TEXT("{\"success\": false, \"error\": \"Failed to set property '%s'\"}"), *PropertyName);
 }

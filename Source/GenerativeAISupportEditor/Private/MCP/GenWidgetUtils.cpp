@@ -7,6 +7,9 @@
 #include "Components/CanvasPanel.h"
 #include "Components/PanelWidget.h"
 #include "EditorAssetLibrary.h"
+#include "Subsystems/AssetEditorSubsystem.h"
+#include "Toolkits/AssetEditorToolkit.h"
+#include "TimerManager.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "UObject/SavePackage.h"
@@ -449,40 +452,40 @@ FString UGenWidgetUtils::EditWidgetProperty(const FString& UserWidgetPath, const
 		// PropertyChain.AddHead(TargetProperty);
 		//       TargetProperty->ImportText(*ValueString, PropertyValueAddress, PPF_None, TargetObject, &ErrorMessage, &PropertyChain); // Pass error message ptr
 
-		// Check the result: nullptr indicates success, otherwise it points to the end of successfully parsed text
-		if (Result != nullptr && Result == nullptr) // Check if parsing stopped *and* an error was reported
+		// ImportText_Direct returns:
+		// - nullptr if parsing failed completely (no characters consumed)
+		// - pointer to character AFTER the last successfully parsed character
+		// For successful parse of "200", Result points to '\0' (null terminator)
+
+		if (Result == nullptr)
 		{
-			// An error occurred during import
-			ErrorMessage = ImportErrorOutput; // Get the error message from the output device
-			UE_LOG(LogTemp, Error, TEXT("Failed to set property '%s' on '%s'. ImportText error: %s"), *PropertyName,
-			       *TargetObject->GetName(), *ErrorMessage);
-			bSuccess = false;
-		}
-		// Handle case where Result is not null but no error string was generated (partial parse?) - Treat as error for simplicity
-		else if (Result != nullptr && ValueString.Len() > 0)
-		// Only treat as error if there was input and it wasn't fully parsed
-		{
-			ErrorMessage = FString::Printf(
-				TEXT("Failed to fully parse value '%s' for property '%s'"), *ValueString, *PropertyName);
-			UE_LOG(LogTemp, Warning, TEXT("%s on object '%s'"), *ErrorMessage, *TargetObject->GetName());
+			// Complete failure - no characters were parsed
+			ErrorMessage = FString::Printf(TEXT("Failed to parse value '%s' for property '%s'"), *ValueString, *PropertyName);
+			UE_LOG(LogTemp, Error, TEXT("%s on object '%s'"), *ErrorMessage, *TargetObject->GetName());
 			bSuccess = false;
 		}
 		else
 		{
-			// Success
+			// Parsing succeeded - Result points to remaining unparsed text (or '\0' if fully parsed)
+			FString Remaining(Result);
+			Remaining.TrimStartAndEndInline();
+
+			if (Remaining.Len() > 0)
+			{
+				// There's unparsed content - log warning but still consider success
+				UE_LOG(LogTemp, Warning, TEXT("Partial parse for '%s': remaining='%s'"), *PropertyName, *Remaining);
+			}
+
+			// Success - the value was imported
 			bSuccess = true;
 			UE_LOG(LogTemp, Log, TEXT("Set property '%s' on '%s' to '%s'"), *PropertyName, *TargetObject->GetName(),
 			       *ValueString);
 
-			// Notify about the change, especially important for structs and objects
+			// Notify about the property change
 			FPropertyChangedEvent ChangeEvent(TargetProperty, EPropertyChangeType::ValueSet);
-			// Use ValueSet for direct changes
 			TargetObject->PostEditChangeProperty(ChangeEvent);
 
-			// Also notify the WidgetBlueprint itself potentially? Might not be necessary.
-			// WidgetBP->PostEditChange(); // Usually handled by Modify + Save/Compile cycle
-
-			// Ensure the owning widget is marked dirty as well if the property was on the slot
+			// Mark slot's widget as dirty if property was on the slot
 			if (TargetObject == TargetWidget->Slot)
 			{
 				TargetWidget->Modify();
@@ -657,4 +660,256 @@ FString UGenWidgetUtils::BindWidgetEvent(const FString& UserWidgetPath, const FS
 
 	return FString::Printf(TEXT("{\"success\": true, \"node_id\": \"%s\", \"message\": \"Created event node for %s.%s\"}"),
 		*EventNode->NodeGuid.ToString(), *WidgetName, *EventName);
+}
+
+FString UGenWidgetUtils::SafeOpenWidgetEditor(const FString& WidgetPath)
+{
+	// Load the Widget Blueprint
+	UWidgetBlueprint* WidgetBP = Cast<UWidgetBlueprint>(
+		UEditorAssetLibrary::LoadAsset(WidgetPath));
+
+	if (!WidgetBP)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Widget Blueprint not found or invalid path\"}");
+	}
+
+	if (!GEditor)
+	{
+		return TEXT("{\"success\": false, \"error\": \"GEditor not available\"}");
+	}
+
+	UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
+	if (!AssetEditorSubsystem)
+	{
+		return TEXT("{\"success\": false, \"error\": \"AssetEditorSubsystem not available\"}");
+	}
+
+	// Check if editor is already open
+	IAssetEditorInstance* ExistingEditor = AssetEditorSubsystem->FindEditorForAsset(WidgetBP, false);
+	if (ExistingEditor)
+	{
+		// Editor already open, just focus it
+		ExistingEditor->FocusWindow();
+		return TEXT("{\"success\": true, \"message\": \"Widget editor already open, focused window\"}");
+	}
+
+	// Use deferred execution to avoid crash in UE5.5
+	// Schedule the open operation for next tick
+	FString WidgetPathCopy = WidgetPath;
+	GEditor->GetTimerManager()->SetTimerForNextTick([WidgetPathCopy]()
+	{
+		if (!GEditor) return;
+
+		UWidgetBlueprint* WBP = Cast<UWidgetBlueprint>(
+			UEditorAssetLibrary::LoadAsset(WidgetPathCopy));
+		if (!WBP) return;
+
+		UAssetEditorSubsystem* AES = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
+		if (!AES) return;
+
+		// Open with Standalone mode which is more stable for Widget Blueprints
+		AES->OpenEditorForAsset(WBP, EToolkitMode::Standalone);
+
+		UE_LOG(LogTemp, Log, TEXT("SafeOpenWidgetEditor: Opened %s in next tick"), *WidgetPathCopy);
+	});
+
+	return TEXT("{\"success\": true, \"message\": \"Widget editor opening scheduled (deferred execution)\"}");
+}
+
+FString UGenWidgetUtils::ListWidgets(const FString& UserWidgetPath)
+{
+	UWidgetBlueprint* WidgetBP = Cast<UWidgetBlueprint>(
+		UEditorAssetLibrary::LoadAsset(UserWidgetPath));
+
+	if (!WidgetBP)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Widget Blueprint not found\"}");
+	}
+
+	UWidgetTree* WidgetTree = WidgetBP->WidgetTree;
+	if (!WidgetTree)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Widget tree not found\"}");
+	}
+
+	TArray<TSharedPtr<FJsonValue>> WidgetsArray;
+
+	// Helper lambda to recursively collect widgets
+	TFunction<void(UWidget*, const FString&)> CollectWidgets = [&](UWidget* Widget, const FString& ParentName)
+	{
+		if (!Widget) return;
+
+		TSharedPtr<FJsonObject> WidgetJson = MakeShareable(new FJsonObject);
+		WidgetJson->SetStringField("name", Widget->GetName());
+		WidgetJson->SetStringField("type", Widget->GetClass()->GetName());
+		WidgetJson->SetStringField("parent", ParentName);
+		WidgetJson->SetBoolField("is_variable", Widget->bIsVariable);
+
+		WidgetsArray.Add(MakeShareable(new FJsonValueObject(WidgetJson)));
+
+		// If it's a panel widget, collect children
+		if (UPanelWidget* Panel = Cast<UPanelWidget>(Widget))
+		{
+			for (int32 i = 0; i < Panel->GetChildrenCount(); i++)
+			{
+				CollectWidgets(Panel->GetChildAt(i), Widget->GetName());
+			}
+		}
+	};
+
+	// Start from root
+	if (WidgetTree->RootWidget)
+	{
+		CollectWidgets(WidgetTree->RootWidget, TEXT(""));
+	}
+
+	// Build result JSON
+	TSharedPtr<FJsonObject> ResultJson = MakeShareable(new FJsonObject);
+	ResultJson->SetBoolField("success", true);
+	ResultJson->SetNumberField("count", WidgetsArray.Num());
+	ResultJson->SetArrayField("widgets", WidgetsArray);
+
+	FString OutputString;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
+	FJsonSerializer::Serialize(ResultJson.ToSharedRef(), Writer);
+
+	return OutputString;
+}
+
+FString UGenWidgetUtils::GetWidgetProperty(const FString& UserWidgetPath, const FString& WidgetName, const FString& PropertyName)
+{
+	UWidgetBlueprint* WidgetBP = Cast<UWidgetBlueprint>(
+		UEditorAssetLibrary::LoadAsset(UserWidgetPath));
+
+	if (!WidgetBP || !WidgetBP->WidgetTree)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Widget Blueprint not found\"}");
+	}
+
+	UWidget* TargetWidget = FindWidgetByName(WidgetBP->WidgetTree, FName(*WidgetName));
+	if (!TargetWidget)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Widget not found\"}");
+	}
+
+	UObject* TargetObject = nullptr;
+	FProperty* Property = nullptr;
+
+	if (!FindPropertyAndObject(TargetWidget, PropertyName, TargetObject, Property))
+	{
+		return FString::Printf(TEXT("{\"success\": false, \"error\": \"Property '%s' not found\"}"), *PropertyName);
+	}
+
+	// Get the property value as string
+	FString ValueString;
+	const void* ValuePtr = Property->ContainerPtrToValuePtr<void>(TargetObject);
+	Property->ExportTextItem_Direct(ValueString, ValuePtr, nullptr, nullptr, PPF_None);
+
+	TSharedPtr<FJsonObject> ResultJson = MakeShareable(new FJsonObject);
+	ResultJson->SetBoolField("success", true);
+	ResultJson->SetStringField("widget", WidgetName);
+	ResultJson->SetStringField("property", PropertyName);
+	ResultJson->SetStringField("value", ValueString);
+	ResultJson->SetStringField("type", Property->GetCPPType());
+
+	FString OutputString;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
+	FJsonSerializer::Serialize(ResultJson.ToSharedRef(), Writer);
+
+	return OutputString;
+}
+
+FString UGenWidgetUtils::DeleteWidget(const FString& UserWidgetPath, const FString& WidgetName)
+{
+	UWidgetBlueprint* WidgetBP = Cast<UWidgetBlueprint>(
+		UEditorAssetLibrary::LoadAsset(UserWidgetPath));
+
+	if (!WidgetBP || !WidgetBP->WidgetTree)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Widget Blueprint not found\"}");
+	}
+
+	UWidget* TargetWidget = FindWidgetByName(WidgetBP->WidgetTree, FName(*WidgetName));
+	if (!TargetWidget)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Widget not found\"}");
+	}
+
+	// Cannot delete root widget
+	if (TargetWidget == WidgetBP->WidgetTree->RootWidget)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Cannot delete root widget\"}");
+	}
+
+	// Remove from parent if it has one
+	if (UPanelWidget* ParentPanel = TargetWidget->GetParent())
+	{
+		ParentPanel->RemoveChild(TargetWidget);
+	}
+
+	// Remove from widget tree
+	WidgetBP->WidgetTree->RemoveWidget(TargetWidget);
+
+	// Mark as modified
+	WidgetBP->Modify();
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBP);
+
+	if (SaveAndRecompileWidgetBlueprint(WidgetBP))
+	{
+		return FString::Printf(TEXT("{\"success\": true, \"message\": \"Widget '%s' deleted\"}"), *WidgetName);
+	}
+
+	return TEXT("{\"success\": false, \"error\": \"Failed to save after deletion\"}");
+}
+
+FString UGenWidgetUtils::DuplicateWidget(const FString& UserWidgetPath, const FString& WidgetName, const FString& NewWidgetName)
+{
+	UWidgetBlueprint* WidgetBP = Cast<UWidgetBlueprint>(
+		UEditorAssetLibrary::LoadAsset(UserWidgetPath));
+
+	if (!WidgetBP || !WidgetBP->WidgetTree)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Widget Blueprint not found\"}");
+	}
+
+	UWidget* SourceWidget = FindWidgetByName(WidgetBP->WidgetTree, FName(*WidgetName));
+	if (!SourceWidget)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Source widget not found\"}");
+	}
+
+	UPanelWidget* ParentPanel = SourceWidget->GetParent();
+	if (!ParentPanel)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Cannot duplicate root widget or widget without parent\"}");
+	}
+
+	// Duplicate the widget
+	UWidget* NewWidget = DuplicateObject<UWidget>(SourceWidget, WidgetBP->WidgetTree, FName(*NewWidgetName));
+	if (!NewWidget)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Failed to duplicate widget\"}");
+	}
+
+	// Rename it
+	NewWidget->Rename(*NewWidgetName, WidgetBP->WidgetTree);
+
+	// Add to parent
+	UPanelSlot* NewSlot = ParentPanel->AddChild(NewWidget);
+	if (!NewSlot)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Failed to add duplicated widget to parent\"}");
+	}
+
+	// Mark as modified
+	WidgetBP->Modify();
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBP);
+
+	if (SaveAndRecompileWidgetBlueprint(WidgetBP))
+	{
+		return FString::Printf(TEXT("{\"success\": true, \"message\": \"Widget duplicated as '%s'\", \"new_widget\": \"%s\"}"),
+			*NewWidgetName, *NewWidget->GetName());
+	}
+
+	return TEXT("{\"success\": false, \"error\": \"Failed to save after duplication\"}");
 }
