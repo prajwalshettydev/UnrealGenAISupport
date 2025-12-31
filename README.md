@@ -586,8 +586,55 @@ python <your_project_directoy>/Plugins/GenerativeAISupport/Content/Python/mcp_se
 #### 4. Now you should be able to prompt the Claude Desktop App to use Unreal Engine.
 
 ## Known Issues:
+
+## Fork Extensions (by tilleulenspiegel)
+
+This fork adds several new utility classes for enhanced MCP control:
+
+### GenDialogueUtils - NPC Dialog System
+```python
+import unreal
+gdu = unreal.GenDialogueUtils()
+gdu.list_dialog_actors()
+gdu.set_dialog_config("MyNPC", "npc_001", "Elder Bob", "Village Elder")
+gdu.set_greeting("MyNPC", "Welcome, traveler!")
+gdu.add_quick_option("MyNPC", "Trade", "open_trade", 1)
+```
+
+### GenSequencerUtils - Level Sequences
+```python
+import unreal
+gsu = unreal.GenSequencerUtils()
+gsu.create_sequence("/Game/Cinematics/Intro", 30.0)
+gsu.add_actor_to_sequence("/Game/Cinematics/Intro", "MainCharacter")
+gsu.add_transform_key("/Game/Cinematics/Intro", "MainCharacter", 0, loc, rot, scale)
+```
+
+### GenDataTableUtils - DataTable Management
+```python
+import unreal
+gdtu = unreal.GenDataTableUtils()
+gdtu.list_data_tables("/Game/Data")
+gdtu.get_row("/Game/Data/Items", "Sword_01")
+gdtu.add_row("/Game/Data/Items", "NewSword", '{"Name": "Magic Sword", "Damage": 50}')
+```
+
+### GenAIUtils - AI/Behavior Tree Control
+```python
+import unreal
+gaiu = unreal.GenAIUtils()
+gaiu.list_behavior_trees("/Game/AI")
+gaiu.run_behavior_tree("MyNPC", "/Game/AI/BT_Patrol")
+gaiu.move_to_location("MyNPC", unreal.Vector(1000,0,0), 50)
+```
+
+### Additional Features in this Fork:
+- ✅ Undo/Redo support for MCP operations (Ctrl+Z works!)
+- ✅ German README (README_DE.md)
+- ✅ Extended Python socket server for remote MCP
+
 - Nodes fail to connect properly with MCP
-- No undo redo support for MCP
+- ~~No undo redo support for MCP~~ ✅ FIXED in this fork
 - No streaming support for Deepseek reasoning model
 - No complex material generation support for the create material tool
 - Issues with running some llm generated valid python scripts
