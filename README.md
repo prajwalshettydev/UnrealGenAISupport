@@ -137,6 +137,14 @@ game development, evals and interactive experiences. All suggestions and contrib
 - Project Files:
     - Create/Edit project files/folders ️✅
     - Delete existing project files ❌
+- AI/NPC Control:
+    - Behavior Trees ✅ (GenAIUtils)
+    - NPC Dialogue System ✅ (GenDialogueUtils)
+    - Quest System ✅ (GenQuestUtils)
+- Data Management:
+    - DataTable CRUD ✅ (GenDataTableUtils)
+- Cinematics:
+    - Level Sequences ✅ (GenSequencerUtils)
 - Others:
     - Project Cleanup 🛠️ 
 
