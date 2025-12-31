@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See LICENSE file in the root directory of this
 // source tree or http://opensource.org/licenses/MIT.
 #include "MCP/GenBlueprintUtils.h"
+#include "ScopedTransaction.h"
 
 #include "BlueprintEditor.h"
 #include "K2Node_ComponentBoundEvent.h"
@@ -55,6 +56,8 @@ UBlueprint* UGenBlueprintUtils::CreateBlueprint(const FString& BlueprintName, co
 	}
 
 	// Create blueprint factory
+    // Undo/Redo support
+    FScopedTransaction Transaction(FText::FromString(TEXT("MCP: Create Blueprint")));
 	UBlueprintFactory* Factory = NewObject<UBlueprintFactory>();
 	Factory->ParentClass = ParentClass;
 
@@ -142,7 +145,9 @@ bool UGenBlueprintUtils::AddComponent(const FString& BlueprintPath, const FStrin
 	Blueprint->Modify();
 
 	// Compile the blueprint
-	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+	FScopedTransaction Transaction(FText::FromString(TEXT("MCP: Modify Blueprint")));
+    Blueprint->Modify();
+    FKismetEditorUtilities::CompileBlueprint(Blueprint);
 
 	// Open the Blueprint editor
 	if (GEditor)

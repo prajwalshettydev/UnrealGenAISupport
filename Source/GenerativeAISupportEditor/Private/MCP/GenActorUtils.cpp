@@ -5,6 +5,7 @@
 
 #include "MCP/GenActorUtils.h"
 
+#include "ScopedTransaction.h"
 #include "Engine/StaticMeshActor.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "EditorLevelLibrary.h"
@@ -41,6 +42,8 @@ AActor* UGenActorUtils::SpawnBasicShape(const FString& ShapeName, const FVector&
     }
 
     // Spawn a static mesh actor
+    // Undo/Redo support
+    FScopedTransaction Transaction(FText::FromString(TEXT("MCP: Spawn Basic Shape")));
     AStaticMeshActor* Actor = World->SpawnActor<AStaticMeshActor>(Location, Rotation);
     if (!Actor)
     {
@@ -93,6 +96,8 @@ AActor* UGenActorUtils::SpawnStaticMeshActor(const FString& MeshPath, const FVec
         return nullptr;
     }
 
+    // Undo/Redo support
+    FScopedTransaction Transaction(FText::FromString(TEXT("MCP: Spawn Static Mesh Actor")));
     // Spawn a StaticMeshActor
     AStaticMeshActor* Actor = World->SpawnActor<AStaticMeshActor>(AStaticMeshActor::StaticClass(), Location, Rotation);
     if (!Actor)
@@ -361,6 +366,8 @@ bool UGenActorUtils::SetActorPosition(const FString& ActorName, const FVector& P
         return false; // Error logged in FindActorByName
     }
     
+    FScopedTransaction Transaction(FText::FromString(TEXT("MCP: Set Actor Position")));
+    Actor->Modify();
     Actor->SetActorLocation(Position);
     UE_LOG(LogTemp, Log, TEXT("Set position of actor '%s' to (%f, %f, %f)"), 
            *ActorName, Position.X, Position.Y, Position.Z);
@@ -376,6 +383,8 @@ bool UGenActorUtils::SetActorRotation(const FString& ActorName, const FRotator& 
         return false; // Error logged in FindActorByName
     }
     
+    FScopedTransaction Transaction(FText::FromString(TEXT("MCP: Set Actor Rotation")));
+    Actor->Modify();
     Actor->SetActorRotation(Rotation);
     UE_LOG(LogTemp, Log, TEXT("Set rotation of actor '%s' to (%f, %f, %f)"), 
            *ActorName, Rotation.Pitch, Rotation.Yaw, Rotation.Roll);
@@ -391,6 +400,8 @@ bool UGenActorUtils::SetActorScale(const FString& ActorName, const FVector& Scal
         return false; // Error logged in FindActorByName
     }
     
+    FScopedTransaction Transaction(FText::FromString(TEXT("MCP: Set Actor Scale")));
+    Actor->Modify();
     Actor->SetActorScale3D(Scale);
     UE_LOG(LogTemp, Log, TEXT("Set scale of actor '%s' to (%f, %f, %f)"), 
            *ActorName, Scale.X, Scale.Y, Scale.Z);
@@ -590,6 +601,8 @@ FString UGenActorUtils::DeleteActor(const FString& ActorName)
         return TEXT("{\"success\": false, \"error\": \"Actor not found\"}");
     }
 
+    FScopedTransaction Transaction(FText::FromString(TEXT("MCP: Delete Actor")));
+    Actor->Modify();
     FString ActorLabel = Actor->GetActorLabel();
     bool bDestroyed = Actor->Destroy();
 
@@ -616,6 +629,7 @@ FString UGenActorUtils::DuplicateActor(const FString& ActorName, const FVector& 
     }
 
     // Duplicate using spawn with same class
+    FScopedTransaction Transaction(FText::FromString(TEXT("MCP: Duplicate Actor")));
     FActorSpawnParameters SpawnParams;
     SpawnParams.Template = SourceActor;
 
@@ -700,6 +714,7 @@ FString UGenActorUtils::GetActorProperty(const FString& ActorName, const FString
 
     FString ValueString;
     const void* ValuePtr = Property->ContainerPtrToValuePtr<void>(Actor);
+    FScopedTransaction Transaction(FText::FromString(TEXT("MCP: Set Actor Property")));
     Property->ExportTextItem_Direct(ValueString, ValuePtr, nullptr, nullptr, PPF_None);
 
     TSharedPtr<FJsonObject> ResultJson = MakeShareable(new FJsonObject);
@@ -731,6 +746,7 @@ FString UGenActorUtils::SetActorProperty(const FString& ActorName, const FString
     }
 
     void* ValuePtr = Property->ContainerPtrToValuePtr<void>(Actor);
+    FScopedTransaction Transaction(FText::FromString(TEXT("MCP: Set Actor Property")));
 
     // Try to import the value from string
     const TCHAR* ImportResult = Property->ImportText_Direct(*ValueString, ValuePtr, Actor, PPF_None);

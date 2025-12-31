@@ -3,6 +3,7 @@
 // source tree or http://opensource.org/licenses/MIT.
 
 #include "MCP/GenWidgetUtils.h"
+#include "ScopedTransaction.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
 #include "Components/PanelWidget.h"
@@ -143,6 +144,8 @@ FString UGenWidgetUtils::AddWidgetToUserWidget(const FString& UserWidgetPath, co
     if (!WidgetTree)
     {
         UE_LOG(LogTemp, Log, TEXT("WidgetTree not found for %s. Attempting creation."), *UserWidgetPath);
+    // Undo/Redo support
+    FScopedTransaction Transaction(FText::FromString(TEXT("MCP: Add Widget")));
         WidgetTree = NewObject<UWidgetTree>(WidgetBP, TEXT("WidgetTree"), RF_Transactional);
         if(WidgetTree)
         {
