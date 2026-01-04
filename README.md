@@ -78,6 +78,8 @@ game development, evals and interactive experiences. All suggestions and contrib
 - Meta AI API Support: ❌
 - Local AI With Ollama: Available here: [unreal-ollama (MIT)](https://github.com/MuddyTerrain/unreal-ollama)
     - Supports local LLMs like Openai's `gpt-oss`, Alibaba's `qwen3-vl` etc. [unreal-ollama (MIT)](https://github.com/MuddyTerrain/unreal-ollama)
+- Inference Aggregators:
+  - OpenRouter, Groq, Ollama etc   [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
 - Deepseek API Support:
     - Deepseek Chat API ✅
         - `deepseek-chat` (DeepSeek-V3.1) Model ✅
