@@ -13,6 +13,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "Engine/UserDefinedStruct.h" // Required for struct properties
 #include "JsonObjectConverter.h"      // For JSON responses
+#include "Misc/StringOutputDevice.h"  // For FStringOutputDevice
 
 // Include specific widget headers if needed for property access, though reflection should handle most cases
 #include "WidgetBlueprint.h"
@@ -152,7 +153,7 @@ FString UGenWidgetUtils::AddWidgetToUserWidget(const FString& UserWidgetPath, co
     }
 
     // 4. Find Widget Class to Add
-    UClass* FoundClass = FindObject<UClass>(ANY_PACKAGE, *WidgetClassName);
+    UClass* FoundClass = FindFirstObjectSafe<UClass>(*WidgetClassName);
     if (!FoundClass) FoundClass = LoadClass<UWidget>(nullptr, *FString::Printf(TEXT("/Script/UMG.%s"), *WidgetClassName));
     if (!FoundClass) FoundClass = LoadClass<UWidget>(nullptr, *FString::Printf(TEXT("/Script/CommonUI.%s"), *WidgetClassName));
     // Add more lookups if needed for custom widget libraries

@@ -137,7 +137,7 @@ AActor* UGenActorUtils::SpawnActorFromClass(const FString& ActorClassName, const
     {
         // Try to find class by name
         FString FullClassName = FString::Printf(TEXT("/Script/Engine.%s"), *ActorClassName);
-        ActorClass = FindObject<UClass>(ANY_PACKAGE, *ActorClassName);
+        ActorClass = FindFirstObjectSafe<UClass>(*ActorClassName);
         
         if (!ActorClass)
         {
@@ -411,7 +411,7 @@ FString UGenActorUtils::CreateGameModeWithPawn(const FString& GameModePath, cons
 
     // Load the base class (default to AGameModeBase if not specified)
     FString BaseClassToUse = BaseClassName.IsEmpty() ? TEXT("GameModeBase") : BaseClassName;
-    UClass* BaseClass = FindObject<UClass>(ANY_PACKAGE, *BaseClassToUse);
+    UClass* BaseClass = FindFirstObjectSafe<UClass>(*BaseClassToUse);
     if (!BaseClass || !BaseClass->IsChildOf(AGameModeBase::StaticClass()))
     {
         UE_LOG(LogTemp, Error, TEXT("Invalid base class %s for game mode"), *BaseClassToUse);
