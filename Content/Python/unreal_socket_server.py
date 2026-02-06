@@ -40,6 +40,8 @@ class CommandDispatcher:
             "compile_blueprint": blueprint_commands.handle_compile_blueprint,
             "spawn_blueprint": blueprint_commands.handle_spawn_blueprint,
             "delete_node": blueprint_commands.handle_delete_node,
+            "get_blueprint_summary": blueprint_commands.handle_get_blueprint_summary,
+            "apply_blueprint_patch": blueprint_commands.handle_apply_blueprint_patch,
             
             # Getters
             "get_node_guid": blueprint_commands.handle_get_node_guid,

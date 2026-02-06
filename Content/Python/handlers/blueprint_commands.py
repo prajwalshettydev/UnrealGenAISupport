@@ -625,3 +625,190 @@ def handle_get_node_guid(command: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         log.log_error(f"Error getting node GUID: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}
+
+
+def handle_get_blueprint_summary(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a command to get a high-level Blueprint summary for LLM context.
+    """
+    try:
+        blueprint_path = command.get("blueprint_path")
+        include_graphs = command.get("include_graphs", True)
+        include_variables = command.get("include_variables", True)
+        include_components = command.get("include_components", False)
+
+        if not blueprint_path:
+            log.log_error("Missing blueprint_path for get_blueprint_summary")
+            return {"success": False, "error": "Missing blueprint_path"}
+
+        log.log_command("get_blueprint_summary", f"Blueprint: {blueprint_path}")
+
+        asset = unreal.EditorAssetLibrary.load_asset(blueprint_path)
+        if not asset:
+            log.log_error(f"Failed to load Blueprint asset: {blueprint_path}")
+            return {"success": False, "error": f"Failed to load Blueprint asset: {blueprint_path}"}
+
+        summary = {
+            "blueprint_path": blueprint_path,
+            "asset_name": asset.get_name() if hasattr(asset, "get_name") else blueprint_path.split("/")[-1],
+            "generated_class": "",
+            "graphs": [],
+            "variables": [],
+            "components": [],
+            "warnings": []
+        }
+
+        try:
+            if hasattr(asset, "generated_class") and asset.generated_class:
+                summary["generated_class"] = asset.generated_class.get_name()
+        except Exception as e:
+            summary["warnings"].append(f"Failed to read generated_class: {str(e)}")
+
+        if include_graphs:
+            graphs = []
+            try:
+                if hasattr(unreal, "KismetEditorUtilities") and hasattr(unreal.KismetEditorUtilities, "get_all_graphs"):
+                    graphs = unreal.KismetEditorUtilities.get_all_graphs(asset)
+                elif hasattr(unreal, "BlueprintEditorLibrary") and hasattr(unreal.BlueprintEditorLibrary, "get_all_graphs"):
+                    graphs = unreal.BlueprintEditorLibrary.get_all_graphs(asset)
+                else:
+                    summary["warnings"].append("No graph enumeration API available in this UE build")
+            except Exception as e:
+                summary["warnings"].append(f"Failed to enumerate graphs: {str(e)}")
+
+            for graph in graphs or []:
+                try:
+                    graph_guid = ""
+                    if hasattr(graph, "graph_guid"):
+                        graph_guid = str(graph.graph_guid)
+                    summary["graphs"].append({
+                        "name": graph.get_name() if hasattr(graph, "get_name") else "",
+                        "class": graph.get_class().get_name() if hasattr(graph, "get_class") else "",
+                        "guid": graph_guid
+                    })
+                except Exception as e:
+                    summary["warnings"].append(f"Failed to summarize a graph: {str(e)}")
+
+        if include_variables:
+            try:
+                if hasattr(unreal, "BlueprintEditorLibrary") and hasattr(unreal.BlueprintEditorLibrary, "get_blueprint_variables"):
+                    variables = unreal.BlueprintEditorLibrary.get_blueprint_variables(asset)
+                    for var in variables or []:
+                        summary["variables"].append(str(var))
+                else:
+                    summary["warnings"].append("No variable enumeration API available in this UE build")
+            except Exception as e:
+                summary["warnings"].append(f"Failed to enumerate variables: {str(e)}")
+
+        if include_components:
+            try:
+                if hasattr(asset, "simple_construction_script") and asset.simple_construction_script:
+                    scs = asset.simple_construction_script
+                    nodes = scs.get_all_nodes()
+                    for node in nodes or []:
+                        comp_name = node.get_variable_name() if hasattr(node, "get_variable_name") else ""
+                        comp_class = ""
+                        if hasattr(node, "component_class") and node.component_class:
+                            comp_class = node.component_class.get_name()
+                        summary["components"].append({"name": str(comp_name), "class": comp_class})
+                else:
+                    summary["warnings"].append("No construction script available for component summary")
+            except Exception as e:
+                summary["warnings"].append(f"Failed to enumerate components: {str(e)}")
+
+        log.log_result("get_blueprint_summary", True, f"Graphs: {len(summary['graphs'])}, Vars: {len(summary['variables'])}")
+        return {"success": True, "summary": summary}
+
+    except Exception as e:
+        log.log_error(f"Error getting blueprint summary: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+def handle_apply_blueprint_patch(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a command to apply a batch of Blueprint operations.
+    """
+    try:
+        blueprint_path = command.get("blueprint_path")
+        operations = command.get("operations", [])
+        options = command.get("options", {})
+        stop_on_error = options.get("stop_on_error", True)
+        compile_after = options.get("compile_after", False)
+
+        if not blueprint_path:
+            log.log_error("Missing blueprint_path for apply_blueprint_patch")
+            return {"success": False, "error": "Missing blueprint_path"}
+
+        if not operations:
+            return {"success": False, "error": "No operations provided"}
+
+        log.log_command("apply_blueprint_patch", f"Blueprint: {blueprint_path}, Ops: {len(operations)}")
+
+        results = []
+        success_count = 0
+
+        for index, op in enumerate(operations):
+            op_type = (op or {}).get("op", "")
+            op_command = dict(op or {})
+            op_command["blueprint_path"] = op_command.get("blueprint_path", blueprint_path)
+
+            handler_result = {"success": False, "error": "Unknown operation"}
+
+            if op_type == "add_component":
+                handler_result = handle_add_component(op_command)
+            elif op_type == "add_variable":
+                handler_result = handle_add_variable(op_command)
+            elif op_type == "add_function":
+                handler_result = handle_add_function(op_command)
+            elif op_type == "add_node":
+                handler_result = handle_add_node(op_command)
+            elif op_type == "add_nodes_bulk":
+                handler_result = handle_add_nodes_bulk(op_command)
+            elif op_type == "connect_nodes":
+                handler_result = handle_connect_nodes(op_command)
+            elif op_type == "connect_nodes_bulk":
+                handler_result = handle_connect_nodes_bulk(op_command)
+            elif op_type == "delete_node":
+                handler_result = handle_delete_node(op_command)
+            elif op_type == "compile_blueprint":
+                handler_result = handle_compile_blueprint(op_command)
+            elif op_type == "get_node_guid":
+                handler_result = handle_get_node_guid(op_command)
+            else:
+                handler_result = {"success": False, "error": f"Unsupported op: {op_type}"}
+
+            if handler_result.get("success"):
+                success_count += 1
+
+            results.append({
+                "index": index,
+                "op": op_type,
+                "success": bool(handler_result.get("success")),
+                "result": handler_result
+            })
+
+            if stop_on_error and not handler_result.get("success"):
+                break
+
+        if compile_after and all(r["success"] for r in results):
+            compile_result = handle_compile_blueprint({"blueprint_path": blueprint_path})
+            results.append({
+                "index": len(results),
+                "op": "compile_blueprint",
+                "success": bool(compile_result.get("success")),
+                "result": compile_result
+            })
+            if compile_result.get("success"):
+                success_count += 1
+
+        overall_success = all(r["success"] for r in results)
+        return {
+            "success": overall_success,
+            "successful": success_count,
+            "total": len(results),
+            "results": results
+        }
+
+    except Exception as e:
+        log.log_error(f"Error applying blueprint patch: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
