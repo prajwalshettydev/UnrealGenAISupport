@@ -693,7 +693,10 @@ def get_all_nodes_in_graph(blueprint_path: str, function_id: str) -> str:
 
     response = send_to_unreal(command)
     if response.get("success"):
-        return response.get("nodes", "[]")
+        nodes = response.get("nodes", [])
+        if isinstance(nodes, str):
+            return nodes
+        return json.dumps(nodes, indent=2)
     else:
         return f"Failed to get nodes: {response.get('error', 'Unknown error')}"
 

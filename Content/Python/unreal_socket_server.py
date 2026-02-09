@@ -92,8 +92,14 @@ class CommandDispatcher:
         message = command.get("message", "")
         log.log_info(f"Handshake received: {message}")
         
-        # Get Unreal Engine version
-        engine_version = unreal.SystemLibrary.get_engine_version()
+        # Note: unreal.SystemLibrary calls must run on the main thread.
+        # When called from the main thread queue, this works fine.
+        # When called directly from socket thread, skip the UE API call.
+        engine_version = "Unknown"
+        try:
+            engine_version = unreal.SystemLibrary.get_engine_version()
+        except Exception:
+            engine_version = "UE5 (version query requires main thread)"
         
         # Add connection and session information
         connection_info = {
@@ -201,12 +207,12 @@ def socket_server_thread():
                     command = json.loads(data_str)
                     log.log_info(f"Received command: {command}")
 
-                    # For handshake, we can respond directly from the thread
-                    if command.get("type") == "handshake":
-                        response = dispatcher.dispatch(command)
-                        conn.sendall(json.dumps(response).encode())
+                    # All commands (including handshake) go through the main thread queue
+                    # because UE API calls must run on the main game thread.
+                    if False:
+                        pass  # placeholder for removed direct-thread handshake path
                     else:
-                        # For other commands, queue them for main thread execution
+                        # Queue command for main thread execution
                         command_id = command_counter
                         command_counter += 1
                         command_queue.append((command_id, command))

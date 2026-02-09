@@ -6,7 +6,7 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Styling/SlateStyleRegistry.h"
-#include "EditorStyleSet.h"
+#include "Styling/AppStyle.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h"
 #include "LevelEditor.h"
@@ -48,7 +48,7 @@ void FGenEditorWindowManager::RegisterTabSpawner(const TSharedPtr<FTabManager>& 
     TabManager->RegisterTabSpawner(TabId, FOnSpawnTab::CreateRaw(this, &FGenEditorWindowManager::SpawnEditorWindowTab))
         .SetDisplayName(NSLOCTEXT("GenerativeAISupport", "TabTitle", "Gen AI Support"))
         .SetTooltipText(NSLOCTEXT("GenerativeAISupport", "TabTooltip", "Open the Generative AI Support window"))
-        .SetIcon(FSlateIcon(FEditorStyle::GetStyleSetName(), "LevelEditor.Tabs.Details"));
+        .SetIcon(FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.Tabs.Details"));
 }
 
 void FGenEditorWindowManager::UnregisterTabSpawner(const TSharedPtr<FTabManager>& TabManager)
@@ -167,7 +167,7 @@ void SGenEditorWindow::Construct(const FArguments& InArgs)
 TSharedRef<SWidget> SGenEditorWindow::CreateMCPStatusSection()
 {
     return SNew(SBorder)
-    .BorderImage(FEditorStyle::GetBrush("ToolPanel.GroupBorder"))
+    .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
     .Padding(8)
     [
         SNew(SVerticalBox)
@@ -235,7 +235,7 @@ TSharedRef<SWidget> SGenEditorWindow::CreateMCPStatusSection()
             .HeightOverride(1.0f)
             [
                 SNew(SBorder)
-                .BorderImage(FEditorStyle::GetBrush("Menu.Separator"))
+                .BorderImage(FAppStyle::GetBrush("Menu.Separator"))
                 .Padding(FMargin(0.0f))
             ]
         ]
@@ -360,7 +360,7 @@ TSharedRef<SWidget> SGenEditorWindow::CreateMCPStatusSection()
                             "- Set up Cursor configuration\n\n"
                             "After setup, you'll need to restart Claude or Cursor to activate the MCP Server.");
                             
-                        FMessageDialog::Open(EAppMsgType::Ok, Message, &Title);
+                        FMessageDialog::Open(EAppMsgType::Ok, Message, Title);
                         return FReply::Handled();
                     })
                     .ToolTipText(NSLOCTEXT("GenerativeAISupport", "SetupMCPTooltip", "Set up MCP Server configuration"))
@@ -477,7 +477,7 @@ TSharedRef<SWidget> SGenEditorWindow::CreateMCPStatusSection()
 TSharedRef<SWidget> SGenEditorWindow::CreateAPIStatusSection()
 {
     return SNew(SBorder)
-    .BorderImage(FEditorStyle::GetBrush("ToolPanel.GroupBorder"))
+    .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
     .Padding(8)
     [
         SNew(SVerticalBox)
@@ -534,7 +534,7 @@ TSharedRef<SWidget> SGenEditorWindow::CreateAPIStatusSection()
             .HeightOverride(1.0f)
             [
                 SNew(SBorder)
-                .BorderImage(FEditorStyle::GetBrush("Menu.Separator"))
+                .BorderImage(FAppStyle::GetBrush("Menu.Separator"))
                 .Padding(FMargin(0.0f))
             ]
         ]
@@ -550,7 +550,7 @@ TSharedRef<SWidget> SGenEditorWindow::CreateAPIStatusSection()
 TSharedRef<SWidget> SGenEditorWindow::CreateActionButtonsSection()
 {
     return SNew(SBorder)
-    .BorderImage(FEditorStyle::GetBrush("ToolPanel.GroupBorder"))
+    .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
     .Padding(8)
     [
         SNew(SVerticalBox)
