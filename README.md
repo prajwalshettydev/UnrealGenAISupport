@@ -23,14 +23,16 @@ The "Unreal Engine Generative AI Support Plugin" allows you to focus on game dev
 Currently working on chinese LLMs support like Alibaba Qwen for both Chinese Mainland and International markets.
 
 This project aims to build a long-term support (LTS) plugin for various cutting-edge LLM/GenAI models and foster a
-community around it. It currently includes OpenAI's GPT, Deepseek R1, Claude Sonnet 4, Claude Opus 4, and GPT-4o-mini for Unreal Engine 5.1 or higher, with plans to add
+community around it. It currently includes OpenAI's GPT, Deepseek R1, Claude Sonnet 4, Claude Opus 4, and GPT-4o-mini for Unreal Engine, with plans to add
 , real-time APIs, Gemini, MCP, and Grok 3 APIs soon. The plugin will focus exclusively on APIs useful for
 game development, evals and interactive experiences. All suggestions and contributions are welcome. The plugin can also be used for setting up new evals and ways to compare models in game battlefields.
+
+Built and tested in Unreal Engine 5.4.4 
 
 ## Current Progress:
 
 **This plugin will continue to get updates with the latest features and models as they become available. Contributions are welcome.**
-**If you want a more production ready alternative, with more features and guaranteed stability please checkout the [Gen AI Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) and [Gen AI Pro China](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) plugins, as it costs a lot of API credits for me to test different models per feature and per engine version to make sure everything works well and compatible. Together both these plugins support 200+ AI models, from all over the globe! Otherwise, I feel this free plugin is good enough for many use cases (including the examples shown in the beginning) and you can use it for free, forever.**
+**If you want a more production ready alternative, with more features and guaranteed stability please checkout the [Gen AI Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) and [Gen AI Pro China](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) plugins (Supports Unreal Engine 5.1 to 5.7) , as it costs a lot of API credits for me to test different models per feature and per engine version to make sure everything works well and compatible. Together both these plugins support 200+ AI models, from all over the globe! Otherwise, I feel this free plugin is good enough for many use cases (including the examples shown in the beginning) and you can use it for free, forever.**
 
 ### LLM/GenAI API Support:
 
