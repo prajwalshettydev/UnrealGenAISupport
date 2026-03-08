@@ -30,7 +30,7 @@ game development, evals and interactive experiences. All suggestions and contrib
 ## Current Progress:
 
 **This plugin will continue to get updates with the latest features and models as they become available. Contributions are welcome.**
-**If you want a more production ready alternative, with more features and guaranteed stability please checkout the [Gen AI Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) and [Gen AI Pro China](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) plugins, as it costs a lot of API credits for me to test different models per feature and per engine version to make sure everything works well and compatible. Together both these plugins support 200+ AI models, from all over the globe! Otherwise, I feel this free plugin is good enough for many use cases (including the examples shown in the beginning) and you can use it for free, forever.**
+**If you want a more production ready alternative, with more features and guaranteed stability please checkout the [Gen AI Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) and [Gen AI Pro China](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) plugins, as it costs a lot of API credits for me to test different models per feature and per engine version to make sure everything works well and compatible. Together both these plugins support 200+ AI models, from all over the globe! Otherwise, I feel this free plugin is good enough for many use cases (including the examples shown in the beginning) and you can use it for free, forever.**
 
 ### LLM/GenAI API Support:
 
@@ -89,17 +89,17 @@ game development, evals and interactive experiences. All suggestions and contrib
     - Deepseek Reasoning API, R1 ✅
         - `deepseek-reasoning-r1` Model ✅
 - Alibaba (Dashscope):
-    - `qwen3.5-plus`, `qwen3.5-flash`, `qwen3-max`, `qwen-plus`, `qwen-flash`, `qwen-coder`, `qwen3-coder-plus` etc [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
-    - Multimodal API Support: `qwen-omni-turbo`, `qwen3-vl-plus`, `qwen3-vl-flash`, `qvq-max` etc [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
-    - Image Generation API: `qwen-image`, `qwen-image-edit`, `wan2.2-t2i-plus` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
-    - Text to Speech: `qwen3-tts-flash`, `qwen-tts` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - `qwen3.5-plus`, `qwen3.5-flash`, `qwen3-max`, `qwen-plus`, `qwen-flash`, `qwen-coder`, `qwen3-coder-plus` etc [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
+    - Multimodal API Support: `qwen-omni-turbo`, `qwen3-vl-plus`, `qwen3-vl-flash`, `qvq-max` etc [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
+    - Image Generation API: `qwen-image`, `qwen-image-edit`, `wan2.2-t2i-plus` [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
+    - Text to Speech: `qwen3-tts-flash`, `qwen-tts` [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
 - Moonshot AI:
-    - Moonshot Chat API: `kimi-k2.5`, `kimi-k2-thinking`, `kimi-k2-0905-preview` etc [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
-    - Multimodal Chat API: `kimi-latest`, `kimi-thinking-preview`, `moonshot-v1-8k-vision-preview` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Moonshot Chat API: `kimi-k2.5`, `kimi-k2-thinking`, `kimi-k2-0905-preview` etc [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
+    - Multimodal Chat API: `kimi-latest`, `kimi-thinking-preview`, `moonshot-v1-8k-vision-preview` [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
 - Bytedance:
-    - `seed-2-0-mini`, `seed-1-8`, `seed-1-6`, `deepseek-v3-2`, `skylark-pro-250415` etc [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
-    - Multimodal API Support: `seed-1-6`, `skylark-vision` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
-    - Image Generation API: `seedream-4-0-250828`, `seedream-3-0-t2i`, `seededit-3-0-i2i` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - `seed-2-0-mini`, `seed-1-8`, `seed-1-6`, `deepseek-v3-2`, `skylark-pro-250415` etc [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
+    - Multimodal API Support: `seed-1-6`, `skylark-vision` [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
+    - Image Generation API: `seedream-4-0-250828`, `seedream-3-0-t2i`, `seededit-3-0-i2i` [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
 - 3D generative model APIs:
     -  TripoSR by StabilityAI 🚧
 - Plugin Example Project 🛠️ [here](https://github.com/prajwalshettydev/unreal-llm-api-test-project)
@@ -111,9 +111,9 @@ game development, evals and interactive experiences. All suggestions and contrib
     - Build Flags to enable/disable APIs 🚧
     - Exclude MCP from build ✅
 - Testing 
-    - Automated Testing  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️ and [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
-    - Different Platforms  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️ and [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
-    - Different Engine Versions  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️ and [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Automated Testing  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️ and [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
+    - Different Platforms  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️ and [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
+    - Different Engine Versions  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️ and [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
 
 ### Unreal MCP (Model Control Protocol):
 
@@ -148,7 +148,7 @@ game development, evals and interactive experiences. All suggestions and contrib
 Where,
 - ✅ - Completed
 - ☑️ - [Available in GenAI-Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin)
-- ☑️ 🇨🇳 - [Available in "GenAI Pro China"](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a)
+- ☑️ 🇨🇳 - [Available in "GenAI Pro China"](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin)
 - 🛠️ - In Progress
 - 🚧 - Planned
 - 🤝 - Need Contributors
