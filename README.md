@@ -23,80 +23,83 @@ The "Unreal Engine Generative AI Support Plugin" allows you to focus on game dev
 Currently working on chinese LLMs support like Alibaba Qwen for both Chinese Mainland and International markets.
 
 This project aims to build a long-term support (LTS) plugin for various cutting-edge LLM/GenAI models and foster a
-community around it. It currently includes OpenAI's GPT-4o, Deepseek R1, Claude Sonnet 4, Claude Opus 4, and GPT-4o-mini for Unreal Engine 5.1 or higher, with plans to add
+community around it. It currently includes OpenAI's GPT, Deepseek R1, Claude Sonnet 4, Claude Opus 4, and GPT-4o-mini for Unreal Engine 5.1 or higher, with plans to add
 , real-time APIs, Gemini, MCP, and Grok 3 APIs soon. The plugin will focus exclusively on APIs useful for
 game development, evals and interactive experiences. All suggestions and contributions are welcome. The plugin can also be used for setting up new evals and ways to compare models in game battlefields.
 
 ## Current Progress:
 
 **This plugin will continue to get updates with the latest features and models as they become available. Contributions are welcome.**
-**If you want a more production ready alternative, with more features and guaranteed stability please checkout the [Gen AI Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) and [Gen AI Pro China](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) plugins, as it costs a lot of API credits for me to test different models per feature and per engine version to make sure everything works well and compatible. Together both these plugins support 150+ AI models, from all over the globe! Otherwise, I feel this free plugin is good enough for many use cases (including the examples shown in the beginning) and you can use it for free, forever.**
+**If you want a more production ready alternative, with more features and guaranteed stability please checkout the [Gen AI Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) and [Gen AI Pro China](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) plugins, as it costs a lot of API credits for me to test different models per feature and per engine version to make sure everything works well and compatible. Together both these plugins support 200+ AI models, from all over the globe! Otherwise, I feel this free plugin is good enough for many use cases (including the examples shown in the beginning) and you can use it for free, forever.**
 
 ### LLM/GenAI API Support:
 
 - OpenAI API Support:
     - OpenAI Chat API ✅ 
-        - `gpt-5.1` 🛠️
-        - `gpt-5` ✅,
+        - `gpt-5.2`, `gpt-5.1`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
         - `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`,`o4-mini`, `o3`, `o3-pro`, `o3-mini` Models ✅ 
-    - OpenAI DALL-E API  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
-    - Responses API 🛠️
+    - Responses API: `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.3-codex`, `gpt-5.2-codex`, `gpt-5.1-codex-max`, `gpt-5-codex-mini` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Image Generation API: `gpt-image-1.5`, `gpt-image-1`, `dall-e-3`, `dall-e-2` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - OpenAI Vision API  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - OpenAI Realtime API  
         - `gpt-realtime`, `gpt-realtime-mini` Models [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - OpenAI Structured Outputs ✅
-    - OpenAI Whisper & TTS API  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Function Calling (Tool Use) [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - OpenAI Whisper & TTS API: `gpt-4o-mini-tts`, `tts-1`, `tts-1-hd`, `gpt-4o-transcribe`, `whisper-1` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - Multimodal API Support  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - Text and Audio Streaming  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
 - Anthropic Claude API Support:
     - Claude Chat API ✅
-        - `claude-4.5-latest` 🛠️
+        - `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-4.5-opus`, `claude-4.5-sonnet`, `claude-4.5-haiku` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
         - `claude-4-latest`, `claude-3-7-sonnet-latest`, `claude-3-5-sonnet`, `claude-3-5-haiku-latest`, `claude-3-opus-latest` Model ✅
+    - Function Calling (Tool Use) [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Extended Thinking (Claude 4.5+) [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - Multimodal/Vision API Support  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
-- XAI (Grok 3) API Support:
+- XAI (Grok) API Support:
     - XAI Chat Completions API ✅
         - `grok-3-latest`, `grok-3-mini-beta` Model ✅
         - `grok-3`, `grok-3-mini`, `grok-3-fast`, `grok-3-mini-fast`, `grok-2-vision-1212`, `grok-2-1212`.
-        - `grok-4` Reasoning API  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+        - `grok-4.1`, `grok-4`, `grok-4-eu`, `grok-code-fast-1` Reasoning API [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - XAI Image API 🚧
     - Text Streaming API  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - Multimodal API Support  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
 - Google Gemini API Support:
     - Gemini Chat API 
-        - `gemini-3-pro-preview` 🛠️
-        - `gemini-2.0-flash-lite`, `gemini-2.0-flash` `gemini-1.5-flash`  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
-        - Gemini 2.5 Pro Model  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+        - `gemini-3.1-pro-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3-pro-preview`, `gemini-3-flash-preview` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+        - `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - Gemini Imagen API:  
-      - `imagen-3.0-generate-002`  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
-      - `nano-banana` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
-      - `nano-banana pro` 🛠️
-    - Google TTS & Transcription API: [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+      - `imagen-4.0-generate`, `imagen-4.0-ultra`, `imagen-4.0-fast` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+      - `nano-banana`, `nano-banana pro`, `nano-banana 2` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Gemini Realtime API: `gemini-2.5-flash-native-audio`, `gemini-live-2.5-flash` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Google TTS & Transcription API: `gemini-2.5-flash-preview-tts`, `gemini-2.5-pro-preview-tts` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - Multimodal API Support  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
 - ElevenLabs:
-    - Text To Speech (TTS) API Support:  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Text To Speech (TTS): `eleven_v3`, `eleven_turbo_v2_5`, `eleven_flash_v2_5`, `eleven_multilingual_v2` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+    - Transcription: `scribe_v2`, `scribe_v2_realtime`, `scribe_v1` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
     - Sound Effects: `eleven_text_to_sound_v2` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+- Inworld AI:
+    - Text-to-Speech: `inworld-tts-1.5-max`, `inworld-tts-1.5-mini`, `inworld-tts-1` [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
 - Meta AI API Support: ❌
 - Local AI With Ollama: Available here: [unreal-ollama (MIT)](https://github.com/MuddyTerrain/unreal-ollama)
     - Supports local LLMs like Openai's `gpt-oss`, Alibaba's `qwen3-vl` etc. [unreal-ollama (MIT)](https://github.com/MuddyTerrain/unreal-ollama)
-- Inference Aggregators:
-  - OpenRouter, Groq, Ollama etc   [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
+- OpenAI Compatible Mode: Alibaba Qwen, Mistral, Groq, OpenRouter, Meta Llama, BigModel GLM-4, Ollama [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️
 - Deepseek API Support:
     - Deepseek Chat API ✅
         - `deepseek-chat` (DeepSeek-V3.1) Model ✅
     - Deepseek Reasoning API, R1 ✅
         - `deepseek-reasoning-r1` Model ✅
 - Alibaba (Dashscope):
-    - `qwen3-max`, `qwen-plus`, `qwen-turbo-2025-04-28` etc [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
-    - Multimodal API Support like `qwen-omni-turbo` etc [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
-    - Image Generation API, like `qwen-image` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
-    - Text to Speech, like `qwen3-tts-flash`, `qwen-tts` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - `qwen3.5-plus`, `qwen3.5-flash`, `qwen3-max`, `qwen-plus`, `qwen-flash`, `qwen-coder`, `qwen3-coder-plus` etc [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Multimodal API Support: `qwen-omni-turbo`, `qwen3-vl-plus`, `qwen3-vl-flash`, `qvq-max` etc [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Image Generation API: `qwen-image`, `qwen-image-edit`, `wan2.2-t2i-plus` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Text to Speech: `qwen3-tts-flash`, `qwen-tts` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
 - Moonshot AI:
-    - Moonshot Chat API, like `kimi-k2-0905-preview` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
-    - Multimodal Chat API, like `moonshot-v1-8k-vision-preview` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Moonshot Chat API: `kimi-k2.5`, `kimi-k2-thinking`, `kimi-k2-0905-preview` etc [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Multimodal Chat API: `kimi-latest`, `kimi-thinking-preview`, `moonshot-v1-8k-vision-preview` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
 - Bytedance:
-    - `skylark-pro-250415`, `deepseek-r1-250528` etc [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
-    - Multimodal API Support [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
-    - Image Generation API, like `seedream-4-0-250828` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - `seed-2-0-mini`, `seed-1-8`, `seed-1-6`, `deepseek-v3-2`, `skylark-pro-250415` etc [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Multimodal API Support: `seed-1-6`, `skylark-vision` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
+    - Image Generation API: `seedream-4-0-250828`, `seedream-3-0-t2i`, `seededit-3-0-i2i` [(available in "gen-ai pro china")](https://www.fab.com/listings/73b2e976-db06-46a5-a144-defecdc3004a) ☑️ 🇨🇳
 - 3D generative model APIs:
     -  TripoSR by StabilityAI 🚧
 - Plugin Example Project 🛠️ [here](https://github.com/prajwalshettydev/unreal-llm-api-test-project)
