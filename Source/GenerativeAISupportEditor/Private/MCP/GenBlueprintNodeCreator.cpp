@@ -815,9 +815,9 @@ bool UGenBlueprintNodeCreator::TryCreateKnownNodeType(UEdGraph* Graph, const FSt
 		return CreateMathFunctionNode(Graph, TEXT("KismetMathLibrary"), TEXT("Conv_DoubleToFloat"), OutNode);
 	}
 
-	UClass* NodeClass = FindObject<UClass>(ANY_PACKAGE, *(TEXT("UK2Node_") + ActualNodeType));
+	UClass* NodeClass = FindFirstObject<UClass>(*(TEXT("UK2Node_") + ActualNodeType), EFindFirstObjectOptions::NativeFirst);
 	if (!NodeClass || !NodeClass->IsChildOf(UK2Node::StaticClass()))
-		NodeClass = FindObject<UClass>(ANY_PACKAGE, *ActualNodeType);
+		NodeClass = FindFirstObject<UClass>(*ActualNodeType, EFindFirstObjectOptions::NativeFirst);
 	if (NodeClass && NodeClass->IsChildOf(UK2Node::StaticClass()))
 	{
 		OutNode = NewObject<UK2Node>(Graph, NodeClass);
@@ -904,7 +904,7 @@ FString UGenBlueprintNodeCreator::TryCreateNodeFromLibraries(UEdGraph* Graph, co
 
 	for (const FString& LibraryName : CommonLibraries)
 	{
-		UClass* LibClass = FindObject<UClass>(ANY_PACKAGE, *LibraryName);
+		UClass* LibClass = FindFirstObject<UClass>(*LibraryName, EFindFirstObjectOptions::NativeFirst);
 		if (!LibClass) continue;
 
 		for (TFieldIterator<UFunction> FuncIt(LibClass); FuncIt; ++FuncIt)
@@ -974,7 +974,7 @@ bool UGenBlueprintNodeCreator::CreateMathFunctionNode(UEdGraph* Graph, const FSt
 	UK2Node_CallFunction* FunctionNode = NewObject<UK2Node_CallFunction>(Graph);
 	if (FunctionNode)
 	{
-		UClass* Class = FindObject<UClass>(ANY_PACKAGE, *ClassName);
+		UClass* Class = FindFirstObject<UClass>(*ClassName, EFindFirstObjectOptions::NativeFirst);
 		if (Class)
 		{
 			UFunction* Function = Class->FindFunctionByName(*FunctionName);
@@ -1035,7 +1035,7 @@ FString UGenBlueprintNodeCreator::GetNodeSuggestions(const FString& NodeType)
 
 	for (const FString& LibraryName : CommonLibraries)
 	{
-		UClass* LibClass = FindObject<UClass>(ANY_PACKAGE, *LibraryName);
+		UClass* LibClass = FindFirstObject<UClass>(*LibraryName, EFindFirstObjectOptions::NativeFirst);
 		if (!LibClass) continue;
 
 		for (TFieldIterator<UFunction> FuncIt(LibClass); FuncIt; ++FuncIt)

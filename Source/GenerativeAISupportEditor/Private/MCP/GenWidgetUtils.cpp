@@ -6,7 +6,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
 #include "Components/PanelWidget.h"
-#include "EditorAssetLibrary.h"
+// EditorAssetLibrary.h removed (deprecated in UE 5.4+)
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "UObject/SavePackage.h"
@@ -22,6 +22,7 @@
 #include "Components/Image.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "Misc/OutputDeviceNull.h"
 
 // Helper to find widget by name recursively (WidgetTree::FindWidget is often sufficient)
 UWidget* UGenWidgetUtils::FindWidgetByName(UWidgetTree* WidgetTree, const FName& Name)
@@ -152,7 +153,7 @@ FString UGenWidgetUtils::AddWidgetToUserWidget(const FString& UserWidgetPath, co
     }
 
     // 4. Find Widget Class to Add
-    UClass* FoundClass = FindObject<UClass>(ANY_PACKAGE, *WidgetClassName);
+    UClass* FoundClass = FindFirstObject<UClass>(*WidgetClassName, EFindFirstObjectOptions::NativeFirst);
     if (!FoundClass) FoundClass = LoadClass<UWidget>(nullptr, *FString::Printf(TEXT("/Script/UMG.%s"), *WidgetClassName));
     if (!FoundClass) FoundClass = LoadClass<UWidget>(nullptr, *FString::Printf(TEXT("/Script/CommonUI.%s"), *WidgetClassName));
     // Add more lookups if needed for custom widget libraries
@@ -432,7 +433,7 @@ FString UGenWidgetUtils::EditWidgetProperty(const FString& UserWidgetPath, const
 
 		// Get the address of the property within the TargetObject instance
 		void* PropertyValueAddress = TargetProperty->ContainerPtrToValuePtr<void>(TargetObject);
-		FStringOutputDevice ImportErrorOutput;
+		FOutputDeviceNull ImportErrorOutput;
 		const TCHAR* Result = TargetProperty->ImportText_Direct(
 			*ValueString, // Buffer (const TCHAR*)
 			PropertyValueAddress, // Data (void*)
@@ -447,10 +448,10 @@ FString UGenWidgetUtils::EditWidgetProperty(const FString& UserWidgetPath, const
 		//       TargetProperty->ImportText(*ValueString, PropertyValueAddress, PPF_None, TargetObject, &ErrorMessage, &PropertyChain); // Pass error message ptr
 
 		// Check the result: nullptr indicates success, otherwise it points to the end of successfully parsed text
-		if (Result != nullptr && ImportErrorOutput.Len() > 0) // Check if parsing stopped *and* an error was reported
+		if (Result == nullptr) // Check if parsing failed
 		{
 			// An error occurred during import
-			ErrorMessage = ImportErrorOutput; // Get the error message from the output device
+			ErrorMessage = TEXT("ImportText_Direct failed");
 			UE_LOG(LogTemp, Error, TEXT("Failed to set property '%s' on '%s'. ImportText error: %s"), *PropertyName,
 			       *TargetObject->GetName(), *ErrorMessage);
 			bSuccess = false;

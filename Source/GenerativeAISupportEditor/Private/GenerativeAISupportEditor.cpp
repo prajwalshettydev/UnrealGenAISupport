@@ -6,7 +6,7 @@
 
 #include "GenerativeAISupportEditor.h"
 #include "ISettingsModule.h"
-#include "EditorStyleSet.h"
+#include "Styling/AppStyle.h"
 #include "GenerativeAISupportSettings.h"
 #include "ISettingsSection.h"
 #include "LevelEditor.h"
@@ -44,7 +44,7 @@ void FGenerativeAISupportEditorModule::StartupModule()
                                                    &FGenEditorWindowManager::SpawnEditorWindowTab))
                             .SetDisplayName(LOCTEXT("GenEditorWindowTitle", "Gen AI Support"))
                             .SetTooltipText(LOCTEXT("GenEditorWindowTooltip", "Open the Generative AI Support window"))
-                            .SetIcon(FSlateIcon(FEditorStyle::GetStyleSetName(), "LevelEditor.Tabs.Details"))
+                            .SetIcon(FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.Tabs.Details"))
                             .SetGroup(WorkspaceMenu::GetMenuStructure().GetToolsCategory());
 }
 

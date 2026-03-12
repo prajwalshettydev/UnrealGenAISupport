@@ -525,7 +525,6 @@ def handle_get_all_nodes(command: Dict[str, Any]) -> Dict[str, Any]:
         nodes_json = node_creator.get_all_nodes_in_graph(blueprint_path, function_id)
 
         if nodes_json:
-            # Parse the JSON response
             try:
                 nodes = json.loads(nodes_json)
                 log.log_result("get_all_nodes", True, f"Retrieved {len(nodes)} nodes from {blueprint_path}")
@@ -624,4 +623,409 @@ def handle_get_node_guid(command: Dict[str, Any]) -> Dict[str, Any]:
 
     except Exception as e:
         log.log_error(f"Error getting node GUID: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+def _extract_var_desc(var_desc) -> Dict[str, Any]:
+    """Extract variable info from a FBPVariableDescription or similar struct."""
+    var_info = {}
+    # Try all known property names
+    for name_prop in ["var_name", "name", "variable_name"]:
+        try:
+            var_info["name"] = str(var_desc.get_editor_property(name_prop))
+            break
+        except Exception:
+            continue
+    if "name" not in var_info:
+        var_info["name"] = str(var_desc) if var_desc else "unknown"
+    for guid_prop in ["var_guid", "guid", "variable_guid"]:
+        try:
+            var_info["guid"] = str(var_desc.get_editor_property(guid_prop))
+            break
+        except Exception:
+            continue
+    for type_prop in ["var_type", "type", "variable_type"]:
+        try:
+            pin_type = var_desc.get_editor_property(type_prop)
+            if pin_type:
+                try:
+                    var_info["type"] = str(pin_type.get_editor_property("pin_category"))
+                except Exception:
+                    var_info["type"] = str(pin_type)
+            break
+        except Exception:
+            continue
+    for cat_prop in ["category"]:
+        try:
+            var_info["category"] = str(var_desc.get_editor_property(cat_prop))
+            break
+        except Exception:
+            continue
+    for def_prop in ["default_value"]:
+        try:
+            var_info["default_value"] = str(var_desc.get_editor_property(def_prop))
+            break
+        except Exception:
+            continue
+    return var_info
+
+
+def handle_get_blueprint_summary(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a command to get a high-level Blueprint summary for LLM context.
+    Uses direct Blueprint object properties and existing C++ utilities.
+    """
+    try:
+        blueprint_path = command.get("blueprint_path")
+        include_graphs = command.get("include_graphs", True)
+        include_variables = command.get("include_variables", True)
+        include_components = command.get("include_components", False)
+
+        if not blueprint_path:
+            log.log_error("Missing blueprint_path for get_blueprint_summary")
+            return {"success": False, "error": "Missing blueprint_path"}
+
+        log.log_command("get_blueprint_summary", f"Blueprint: {blueprint_path}")
+
+        # Load the Blueprint asset - use load_asset which works across UE versions
+        asset = unreal.load_asset(blueprint_path)
+        if not asset:
+            log.log_error(f"Failed to load Blueprint asset: {blueprint_path}")
+            return {"success": False, "error": f"Failed to load Blueprint asset: {blueprint_path}"}
+
+        summary = {
+            "blueprint_path": blueprint_path,
+            "asset_name": asset.get_name() if hasattr(asset, "get_name") else blueprint_path.split("/")[-1],
+            "parent_class": "",
+            "generated_class": "",
+            "graphs": [],
+            "variables": [],
+            "components": [],
+            "warnings": []
+        }
+
+        # --- Parent class ---
+        try:
+            parent = asset.get_editor_property("parent_class") if hasattr(asset, "get_editor_property") else None
+            if parent:
+                summary["parent_class"] = parent.get_name()
+        except Exception as e:
+            summary["warnings"].append(f"Failed to read parent_class: {str(e)}")
+
+        # --- Generated class ---
+        gen_class = None
+        try:
+            gen_class = asset.generated_class() if callable(getattr(asset, "generated_class", None)) else getattr(asset, "generated_class", None)
+            if gen_class:
+                summary["generated_class"] = gen_class.get_name()
+        except Exception as e:
+            summary["warnings"].append(f"Failed to read generated_class: {str(e)}")
+
+        # --- Graphs ---
+        if include_graphs:
+            gen_bp_utils = unreal.GenBlueprintUtils
+            node_creator = unreal.GenBlueprintNodeCreator
+
+            # Use BlueprintEditorLibrary.find_event_graph (confirmed working in UE 5.7)
+            try:
+                eg = unreal.BlueprintEditorLibrary.find_event_graph(asset)
+                if eg:
+                    eg_guid = ""
+                    try:
+                        eg_guid = gen_bp_utils.get_node_guid(blueprint_path, "EventGraph", "ReceiveBeginPlay", "")
+                    except Exception:
+                        pass
+                    # Get node count via C++ utility
+                    node_count = 0
+                    try:
+                        eg_nodes_json = node_creator.get_all_nodes_in_graph(blueprint_path, "EventGraph")
+                        if eg_nodes_json:
+                            node_count = len(json.loads(eg_nodes_json))
+                    except Exception:
+                        pass
+                    summary["graphs"].append({
+                        "name": "EventGraph",
+                        "type": "UbergraphPage",
+                        "function_id": "EventGraph",
+                        "entry_node_guid": eg_guid,
+                        "node_count": node_count
+                    })
+            except Exception as e:
+                summary["warnings"].append(f"Failed to query EventGraph: {str(e)}")
+
+            # Enumerate user-defined function graphs via BlueprintEditorLibrary.find_graph
+            if gen_class:
+                try:
+                    # Get CDO to find user-defined functions
+                    class_name = gen_class.get_name()
+                    cdo_path = f"{blueprint_path}.Default__{class_name}"
+                    cdo = unreal.find_object(None, cdo_path)
+                    if cdo:
+                        # Build parent property set
+                        parent_funcs = set()
+                        for base_path in [
+                            "/Script/Engine.Default__Character",
+                            "/Script/Engine.Default__Pawn",
+                            "/Script/Engine.Default__Actor"
+                        ]:
+                            try:
+                                base_cdo = unreal.find_object(None, base_path)
+                                if base_cdo:
+                                    parent_funcs = parent_funcs.union(
+                                        set(p for p in dir(base_cdo) if not p.startswith('_'))
+                                    )
+                            except Exception:
+                                continue
+
+                        user_attrs = sorted(set(p for p in dir(cdo) if not p.startswith('_')) - parent_funcs)
+                        for attr_name in user_attrs:
+                            # Try to find this as a function graph
+                            try:
+                                graph = unreal.BlueprintEditorLibrary.find_graph(asset, attr_name)
+                                if graph:
+                                    func_guid = ""
+                                    try:
+                                        func_guid = gen_bp_utils.get_node_guid(blueprint_path, "FunctionGraph", "", attr_name)
+                                    except Exception:
+                                        pass
+                                    node_count = 0
+                                    try:
+                                        fn_json = node_creator.get_all_nodes_in_graph(blueprint_path, func_guid or attr_name)
+                                        if fn_json:
+                                            node_count = len(json.loads(fn_json))
+                                    except Exception:
+                                        pass
+                                    summary["graphs"].append({
+                                        "name": attr_name,
+                                        "type": "FunctionGraph",
+                                        "function_id": func_guid or attr_name,
+                                        "node_count": node_count
+                                    })
+                            except Exception:
+                                continue
+                except Exception as e:
+                    summary["warnings"].append(f"Failed to enumerate function graphs: {str(e)}")
+
+        # --- Variables ---
+        if include_variables:
+            found_vars = False
+
+            # (debug logging removed)
+
+            # Method 1: Try various property names for blueprint variables
+            var_property_names = ["new_variables", "variables", "blueprint_variables"]
+            for prop_name in var_property_names:
+                try:
+                    new_vars = asset.get_editor_property(prop_name)
+                    if new_vars is not None and len(new_vars) > 0:
+                        for var_desc in new_vars:
+                            var_info = _extract_var_desc(var_desc)
+                            summary["variables"].append(var_info)
+                        found_vars = True
+                        break
+                except Exception:
+                    continue
+
+            # Method 2: Load CDO via find_object, also try EditorAssetLibrary.load_blueprint_class
+            if not found_vars and gen_class:
+                cdo = None
+
+                # Approach A: find CDO by constructed path
+                try:
+                    class_name = gen_class.get_name()
+                    cdo_obj_path = f"{blueprint_path}.Default__{class_name}"
+                    cdo = unreal.find_object(None, cdo_obj_path)
+                except Exception:
+                    pass
+
+                # Approach B: load_blueprint_class → get_default_object
+                if not cdo:
+                    try:
+                        bp_class = unreal.EditorAssetLibrary.load_blueprint_class(blueprint_path)
+                        if bp_class:
+                            cdo = bp_class.get_default_object()
+                    except Exception:
+                        pass
+
+                if cdo:
+                    cdo_props = set(p for p in dir(cdo) if not p.startswith('_'))
+
+                    # Build parent property set to filter inherited props
+                    parent_props = set()
+
+                    # Try to get parent class from gen_class
+                    parent_class = None
+                    for prop_try in ["super_struct", "parent_class", "super_class"]:
+                        try:
+                            parent_class = gen_class.get_editor_property(prop_try)
+                            if parent_class:
+                                break
+                        except Exception:
+                            continue
+
+                    if parent_class:
+                        try:
+                            parent_class_name = parent_class.get_name()
+                            parent_cdo_path = parent_class.get_path_name().rsplit(".", 1)[0] + f".Default__{parent_class_name}"
+                            parent_cdo = unreal.find_object(None, parent_cdo_path)
+                            if parent_cdo:
+                                parent_props = set(p for p in dir(parent_cdo) if not p.startswith('_'))
+                        except Exception:
+                            pass
+
+                    # Fallback: use known engine base class CDOs
+                    if not parent_props:
+                        for base_path in [
+                            "/Script/Engine.Default__Character",
+                            "/Script/Engine.Default__Pawn",
+                            "/Script/Engine.Default__Actor"
+                        ]:
+                            try:
+                                base_cdo = unreal.find_object(None, base_path)
+                                if base_cdo:
+                                    parent_props = parent_props.union(
+                                        set(p for p in dir(base_cdo) if not p.startswith('_'))
+                                    )
+                            except Exception:
+                                continue
+
+                    # Filter to user-defined properties, exclude callables (functions)
+                    user_props = sorted(cdo_props - parent_props)
+                    for prop_name in user_props:
+                        try:
+                            val = cdo.get_editor_property(prop_name)
+                            type_name = type(val).__name__ if val is not None else "unknown"
+                            summary["variables"].append({
+                                "name": prop_name,
+                                "type": type_name,
+                                "default_value": str(val) if val is not None else ""
+                            })
+                            found_vars = True
+                        except Exception:
+                            continue
+
+            if not summary["variables"]:
+                summary["warnings"].append("No variables found via any method")
+
+        # --- Components ---
+        if include_components:
+            try:
+                scs = asset.get_editor_property("simple_construction_script") if hasattr(asset, "get_editor_property") else None
+                if scs:
+                    nodes = scs.get_all_nodes()
+                    for node in nodes or []:
+                        comp_name = ""
+                        comp_class = ""
+                        try:
+                            comp_name = str(node.get_variable_name()) if hasattr(node, "get_variable_name") else ""
+                        except Exception:
+                            pass
+                        try:
+                            cc = node.get_editor_property("component_class") if hasattr(node, "get_editor_property") else None
+                            if cc:
+                                comp_class = cc.get_name()
+                        except Exception:
+                            pass
+                        summary["components"].append({"name": comp_name, "class": comp_class})
+                else:
+                    summary["warnings"].append("No construction script available for component summary")
+            except Exception as e:
+                summary["warnings"].append(f"Failed to enumerate components: {str(e)}")
+
+        log.log_result("get_blueprint_summary", True,
+                        f"Graphs: {len(summary['graphs'])}, Vars: {len(summary['variables'])}, Components: {len(summary['components'])}")
+        return {"success": True, "summary": summary}
+
+    except Exception as e:
+        log.log_error(f"Error getting blueprint summary: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+def handle_apply_blueprint_patch(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a command to apply a batch of Blueprint operations.
+    """
+    try:
+        blueprint_path = command.get("blueprint_path")
+        operations = command.get("operations", [])
+        options = command.get("options", {})
+        stop_on_error = options.get("stop_on_error", True)
+        compile_after = options.get("compile_after", False)
+
+        if not blueprint_path:
+            log.log_error("Missing blueprint_path for apply_blueprint_patch")
+            return {"success": False, "error": "Missing blueprint_path"}
+
+        if not operations:
+            return {"success": False, "error": "No operations provided"}
+
+        log.log_command("apply_blueprint_patch", f"Blueprint: {blueprint_path}, Ops: {len(operations)}")
+
+        results = []
+        success_count = 0
+
+        for index, op in enumerate(operations):
+            op_type = (op or {}).get("op", "")
+            op_command = dict(op or {})
+            op_command["blueprint_path"] = op_command.get("blueprint_path", blueprint_path)
+
+            handler_result = {"success": False, "error": "Unknown operation"}
+
+            if op_type == "add_component":
+                handler_result = handle_add_component(op_command)
+            elif op_type == "add_variable":
+                handler_result = handle_add_variable(op_command)
+            elif op_type == "add_function":
+                handler_result = handle_add_function(op_command)
+            elif op_type == "add_node":
+                handler_result = handle_add_node(op_command)
+            elif op_type == "add_nodes_bulk":
+                handler_result = handle_add_nodes_bulk(op_command)
+            elif op_type == "connect_nodes":
+                handler_result = handle_connect_nodes(op_command)
+            elif op_type == "connect_nodes_bulk":
+                handler_result = handle_connect_nodes_bulk(op_command)
+            elif op_type == "delete_node":
+                handler_result = handle_delete_node(op_command)
+            elif op_type == "compile_blueprint":
+                handler_result = handle_compile_blueprint(op_command)
+            elif op_type == "get_node_guid":
+                handler_result = handle_get_node_guid(op_command)
+            else:
+                handler_result = {"success": False, "error": f"Unsupported op: {op_type}"}
+
+            if handler_result.get("success"):
+                success_count += 1
+
+            results.append({
+                "index": index,
+                "op": op_type,
+                "success": bool(handler_result.get("success")),
+                "result": handler_result
+            })
+
+            if stop_on_error and not handler_result.get("success"):
+                break
+
+        if compile_after and all(r["success"] for r in results):
+            compile_result = handle_compile_blueprint({"blueprint_path": blueprint_path})
+            results.append({
+                "index": len(results),
+                "op": "compile_blueprint",
+                "success": bool(compile_result.get("success")),
+                "result": compile_result
+            })
+            if compile_result.get("success"):
+                success_count += 1
+
+        overall_success = all(r["success"] for r in results)
+        return {
+            "success": overall_success,
+            "successful": success_count,
+            "total": len(results),
+            "results": results
+        }
+
+    except Exception as e:
+        log.log_error(f"Error applying blueprint patch: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}

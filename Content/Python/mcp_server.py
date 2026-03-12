@@ -377,6 +377,61 @@ def create_blueprint(blueprint_name: str, parent_class: str = "Actor", save_path
         return f"Failed to create Blueprint: {response.get('error', 'Unknown error')}"
 
 @mcp.tool()
+def get_blueprint_summary(blueprint_path: str, include_graphs: bool = True,
+                          include_variables: bool = True, include_components: bool = False) -> str:
+    """
+    Get a high-level Blueprint summary for LLM context.
+    
+    Args:
+        blueprint_path: Path to the Blueprint asset (e.g., "/Game/Blueprints/BP_Player")
+        include_graphs: Include graph list (default True)
+        include_variables: Include variable list (default True)
+        include_components: Include construction script components (default False)
+        
+    Returns:
+        JSON string with summary data
+    """
+    command = {
+        "type": "get_blueprint_summary",
+        "blueprint_path": blueprint_path,
+        "include_graphs": include_graphs,
+        "include_variables": include_variables,
+        "include_components": include_components
+    }
+
+    response = send_to_unreal(command)
+    return json.dumps(response, indent=2)
+
+
+@mcp.tool()
+def apply_blueprint_patch(blueprint_path: str, operations: list,
+                          stop_on_error: bool = True, compile_after: bool = False) -> str:
+    """
+    Apply a batch of Blueprint operations in order.
+    
+    Args:
+        blueprint_path: Path to the Blueprint asset
+        operations: List of operations with "op" and parameters
+        stop_on_error: Stop on first failure (default True)
+        compile_after: Compile if all operations succeed (default False)
+        
+    Returns:
+        JSON string with per-operation results
+    """
+    command = {
+        "type": "apply_blueprint_patch",
+        "blueprint_path": blueprint_path,
+        "operations": operations,
+        "options": {
+            "stop_on_error": stop_on_error,
+            "compile_after": compile_after
+        }
+    }
+
+    response = send_to_unreal(command)
+    return json.dumps(response, indent=2)
+
+@mcp.tool()
 def take_editor_screenshot() -> Image:
     """
     Takes a screenshot of the primary monitor using a vendored OS-level library.
@@ -638,7 +693,10 @@ def get_all_nodes_in_graph(blueprint_path: str, function_id: str) -> str:
 
     response = send_to_unreal(command)
     if response.get("success"):
-        return response.get("nodes", "[]")
+        nodes = response.get("nodes", [])
+        if isinstance(nodes, str):
+            return nodes
+        return json.dumps(nodes, indent=2)
     else:
         return f"Failed to get nodes: {response.get('error', 'Unknown error')}"
 
