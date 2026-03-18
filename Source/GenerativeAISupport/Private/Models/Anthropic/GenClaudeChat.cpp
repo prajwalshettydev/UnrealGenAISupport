@@ -53,9 +53,10 @@ void UGenClaudeChat::MakeRequest(const FGenClaudeChatSettings& ChatSettings, con
 
     // Construct JSON payload
     TSharedPtr<FJsonObject> JsonPayload = MakeShareable(new FJsonObject());
-    JsonPayload->SetStringField(
-        TEXT("model"),
-        UGenUtils::GetEnumDisplayName(StaticEnum<EClaudeModels>(), static_cast<int32>(ChatSettings.Model)));
+    FString ModelName = ChatSettings.Model == EClaudeModels::Custom
+        ? ChatSettings.CustomModel
+        : UGenUtils::GetEnumDisplayName(StaticEnum<EClaudeModels>(), static_cast<int32>(ChatSettings.Model));
+    JsonPayload->SetStringField(TEXT("model"), ModelName);
     JsonPayload->SetNumberField(TEXT("max_tokens"), ChatSettings.MaxTokens);
     JsonPayload->SetNumberField(TEXT("temperature"), ChatSettings.Temperature);
     JsonPayload->SetBoolField(TEXT("stream"), ChatSettings.bStreamResponse);

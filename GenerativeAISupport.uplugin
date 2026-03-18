@@ -3,7 +3,7 @@
 	"Version": 1,
 	"VersionName": "1.0",
 	"FriendlyName": "GenerativeAISupport",
-	"Description": "Adds support for gpt4, claude sonnet 3.5, dalle, grok 2 etc apis in unreal",
+	"Description": "Adds support for OpenAI GPT, Anthropic Claude, DeepSeek, XAI Grok and more LLM/GenAI APIs in Unreal Engine",
 	"Category": "Other",
 	"CreatedBy": "Prajwal Shetty",
 	"CreatedByURL": "https://prajwalshetty.com/",

@@ -79,7 +79,7 @@ struct FGenChatSettings
 
     // Model selection using enum
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
-    EGenOAIChatModel ModelEnum = EGenOAIChatModel::GPT_35_Turbo;
+    EGenOAIChatModel ModelEnum = EGenOAIChatModel::GPT_4O_Mini;
     
     // Custom model name if ModelEnum is set to Custom
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI", meta = (EditCondition = "ModelEnum == EGenOAIChatModel::Custom", EditConditionHides))
@@ -87,7 +87,7 @@ struct FGenChatSettings
 
     // Legacy field for C++ compatibility - will be populated automatically from ModelEnum or CustomModel
     UPROPERTY(BlueprintReadOnly, Category = "GenAI|OpenAI")
-    FString Model = TEXT("gpt-3.5-turbo");
+    FString Model = TEXT("gpt-4o-mini");
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|OpenAI")
     int32 MaxTokens = 10000;

@@ -2,14 +2,13 @@ import socket
 import json
 import sys
 import os
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP, Image
 import re
 import mss
 import base64
 import tempfile # For creating a secure temporary file
 from io import BytesIO
 from pathlib import Path
-from mcp.server.fastmcp import FastMCP, Image
 
 
 # THIS FILE WILL RUN OUTSIDE THE UNREAL ENGINE SCOPE, 
