@@ -107,8 +107,12 @@ Built and tested in Unreal Engine 5.4.4
     - Multimodal API Support: `glm-4.6v`, `glm-4.6v-flash`, `glm-4.5v` [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
 - Baidu:
     - `ernie-5.0-8k`, `ernie-4.5-8k`, `ernie-4.5-turbo-128k`, `ernie-x1-32k`, `ernie-x1-turbo-32k` etc [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
-- 3D generative model APIs:
-    -  TripoSR by StabilityAI 🚧
+- 3D Model & Texture Generation (coming soon to Fab as "GenAI Model Generator"):
+    - Meshy AI: `meshy-6` - Text-to-3D, Image-to-3D, Retexture 🛠️
+    - Tripo AI: `v2.5-20250123` - Text-to-3D, Image-to-3D 🛠️
+    - Hyper3D Rodin: Image-to-3D, Text-to-3D with PBR materials 🛠️
+    - fal.ai: `hunyuan3d-v2.1`, `hunyuan3d-v3.1-pro`, `triposr`, `trellis-2`, `rodin` 🛠️
+    - Google Gemini Texture Generation: `nano-banana-2` - Full PBR texture generation 🛠️
 - Plugin Example Project 🛠️ [here](https://github.com/prajwalshettydev/unreal-llm-api-test-project)
 - Version Control Support
     - Perforce Support 🛠️
