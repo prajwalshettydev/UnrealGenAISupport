@@ -29,7 +29,6 @@ public class GenerativeAISupportEditor : ModuleRules
 				"UnrealEd",
 				"Slate",
 				"SlateCore",
-				"EditorStyle",
 				"WorkspaceMenuStructure",
 				"Projects",
 				"EditorScriptingUtilities",

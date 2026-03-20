@@ -137,7 +137,7 @@ AActor* UGenActorUtils::SpawnActorFromClass(const FString& ActorClassName, const
     {
         // Try to find class by name
         FString FullClassName = FString::Printf(TEXT("/Script/Engine.%s"), *ActorClassName);
-        ActorClass = FindObject<UClass>(ANY_PACKAGE, *ActorClassName);
+        ActorClass = FindFirstObject<UClass>( *ActorClassName);
         
         if (!ActorClass)
         {
@@ -411,7 +411,7 @@ FString UGenActorUtils::CreateGameModeWithPawn(const FString& GameModePath, cons
 
     // Load the base class (default to AGameModeBase if not specified)
     FString BaseClassToUse = BaseClassName.IsEmpty() ? TEXT("GameModeBase") : BaseClassName;
-    UClass* BaseClass = FindObject<UClass>(ANY_PACKAGE, *BaseClassToUse);
+    UClass* BaseClass = FindFirstObject<UClass>( *BaseClassToUse);
     if (!BaseClass || !BaseClass->IsChildOf(AGameModeBase::StaticClass()))
     {
         UE_LOG(LogTemp, Error, TEXT("Invalid base class %s for game mode"), *BaseClassToUse);
@@ -449,7 +449,7 @@ FString UGenActorUtils::CreateGameModeWithPawn(const FString& GameModePath, cons
         UE_LOG(LogTemp, Error, TEXT("Generated class not found for %s"), *GameModePath);
         return TEXT("{\"success\": false, \"error\": \"No generated class\"}");
     }
-    if (AGameModeBase* GameModeCDO = Cast<AGameModeBase>(GameModeClass->ClassDefaultObject))
+    if (AGameModeBase* GameModeCDO = Cast<AGameModeBase>(GameModeClass->GetDefaultObject()))
     {
         GameModeCDO->DefaultPawnClass = PawnBP->GeneratedClass;
     }

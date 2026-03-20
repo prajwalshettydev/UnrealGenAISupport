@@ -152,7 +152,7 @@ FString UGenWidgetUtils::AddWidgetToUserWidget(const FString& UserWidgetPath, co
     }
 
     // 4. Find Widget Class to Add
-    UClass* FoundClass = FindObject<UClass>(ANY_PACKAGE, *WidgetClassName);
+    UClass* FoundClass = FindFirstObject<UClass>( *WidgetClassName);
     if (!FoundClass) FoundClass = LoadClass<UWidget>(nullptr, *FString::Printf(TEXT("/Script/UMG.%s"), *WidgetClassName));
     if (!FoundClass) FoundClass = LoadClass<UWidget>(nullptr, *FString::Printf(TEXT("/Script/CommonUI.%s"), *WidgetClassName));
     // Add more lookups if needed for custom widget libraries
