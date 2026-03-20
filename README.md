@@ -27,7 +27,7 @@ community around it. It currently includes OpenAI's GPT, Deepseek R1, Claude Son
 , real-time APIs, Gemini, MCP, and Grok 3 APIs soon. The plugin will focus exclusively on APIs useful for
 game development, evals and interactive experiences. All suggestions and contributions are welcome. The plugin can also be used for setting up new evals and ways to compare models in game battlefields.
 
-Built and tested in Unreal Engine 5.4.4 
+Compatible with Unreal Engine 5.4 to 5.7+
 
 ## Current Progress:
 
