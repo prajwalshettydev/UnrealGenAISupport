@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "EditorStyleSet.h"
+#include "Styling/AppStyle.h"
 #include "Framework/Commands/Commands.h"
 
 /**
@@ -17,7 +17,7 @@ public:
          TEXT("GenerativeAISupport"), // Context name for fast lookup
          NSLOCTEXT("Contexts", "GenerativeAISupport", "Generative AI Support Plugin"), // Localized context name for displaying
          NAME_None, // Parent context name
-         FEditorStyle::GetStyleSetName() // Style set name
+         FAppStyle::GetAppStyleSetName() // Style set name
      )
  {
  }

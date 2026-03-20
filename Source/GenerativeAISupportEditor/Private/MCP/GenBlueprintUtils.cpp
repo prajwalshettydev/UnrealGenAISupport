@@ -738,13 +738,13 @@ UBlueprint* UGenBlueprintUtils::LoadBlueprintAsset(const FString& BlueprintPath)
 UClass* UGenBlueprintUtils::FindClassByName(const FString& ClassName)
 {
 	// Try to find the class by name
-	UClass* Class = FindObject<UClass>(ANY_PACKAGE, *ClassName);
+	UClass* Class = FindFirstObject<UClass>(*ClassName, EFindFirstObjectOptions::NativeFirst);
 
 	// If not found, try with various prefixes
 	if (!Class)
 	{
 		FString PrefixedClassName = TEXT("/Script/Engine.") + ClassName;
-		Class = FindObject<UClass>(ANY_PACKAGE, *PrefixedClassName);
+		Class = FindFirstObject<UClass>(*PrefixedClassName, EFindFirstObjectOptions::NativeFirst);
 	}
 
 	if (!Class)
@@ -1089,7 +1089,7 @@ FString UGenBlueprintUtils::AddComponentWithEvents(const FString& BlueprintPath,
     }
 
     // Find the component class (must be a shape/collision component)
-    UClass* ComponentClass = FindObject<UClass>(ANY_PACKAGE, *ComponentClassName);
+    UClass* ComponentClass = FindFirstObject<UClass>(*ComponentClassName, EFindFirstObjectOptions::NativeFirst);
     if (!ComponentClass || !ComponentClass->IsChildOf(UShapeComponent::StaticClass()))
     {
         UE_LOG(LogTemp, Error, TEXT("Component class %s must be a collision component (e.g., BoxComponent, SphereComponent)"), *ComponentClassName);
