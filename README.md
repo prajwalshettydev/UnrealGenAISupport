@@ -107,12 +107,21 @@ Compatible with Unreal Engine 5.4 to 5.7+
     - Multimodal API Support: `glm-4.6v`, `glm-4.6v-flash`, `glm-4.5v` [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
 - Baidu:
     - `ernie-5.0-8k`, `ernie-4.5-8k`, `ernie-4.5-turbo-128k`, `ernie-x1-32k`, `ernie-x1-turbo-32k` etc [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
-- 3D Model & Texture Generation (coming soon to Fab as "GenAI Model Generator"):
-    - Meshy AI: `meshy-6` - Text-to-3D, Image-to-3D, Retexture 🛠️
-    - Tripo AI: `v2.5-20250123` - Text-to-3D, Image-to-3D 🛠️
-    - Hyper3D Rodin: Image-to-3D, Text-to-3D with PBR materials 🛠️
-    - fal.ai: `hunyuan3d-v2.1`, `hunyuan3d-v3.1-pro`, `triposr`, `trellis-2`, `rodin` 🛠️
-    - Google Gemini Texture Generation: `nano-banana-2` - Full PBR texture generation 🛠️
+- Meshy AI (3D Generation) - coming soon to Fab as "GenAI Model Generator":
+    - `meshy-6` - Text-to-3D (auto preview + refine), Image-to-3D, Retexture, Auto-Rigging 🛠️
+- Tripo AI (3D Generation) - coming soon to Fab as "GenAI Model Generator":
+    - `tripo-v2.5` - Text-to-3D, Image-to-3D 🛠️
+- Fal.ai - Hunyuan3D (3D Generation) - coming soon to Fab as "GenAI Model Generator":
+    - `hunyuan3d-v3.1-pro` (Tencent, open-source) - Text-to-3D 🛠️
+    - `hunyuan3d-v2.1` (Tencent, open-source) - Image-to-3D 🛠️
+- Fal.ai - TripoSR (3D Generation) - coming soon to Fab as "GenAI Model Generator":
+    - `triposr` (MIT, open-source) - Image-to-3D (fast, <1s) 🛠️
+- Fal.ai - Rodin (3D Generation) - coming soon to Fab as "GenAI Model Generator":
+    - `rodin-gen-2` (Hyper3D, proprietary) - Text-to-3D, Image-to-3D with PBR materials 🛠️
+- Fal.ai - Trellis 2 (3D Generation) - coming soon to Fab as "GenAI Model Generator":
+    - `trellis-2` (Microsoft, open-source) - Image-to-3D with PBR materials 🛠️
+- Google Gemini Texture Generation - coming soon to Fab as "GenAI Model Generator":
+    - `gemini-3.1-flash` - PBR texture maps (base color, normal, roughness, metallic), reference image generation 🛠️
 - Plugin Example Project 🛠️ [here](https://github.com/prajwalshettydev/unreal-llm-api-test-project)
 - Version Control Support
     - Perforce Support 🛠️
