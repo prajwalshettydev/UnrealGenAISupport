@@ -32,7 +32,7 @@ Compatible with Unreal Engine 5.4 to 5.7+
 ## Current Progress:
 
 **This plugin will continue to get updates with the latest features and models as they become available. Contributions are welcome.**
-**If you want a more production ready alternative, with more features and guaranteed stability please checkout the [Gen AI Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) and [Gen AI Pro China](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) plugins (Supports Unreal Engine 5.1 to 5.7) , as it costs a lot of API credits for me to test different models per feature and per engine version to make sure everything works well and compatible. Together both these plugins support 200+ AI models, from all over the globe! Otherwise, I feel this free plugin is good enough for many use cases (including the examples shown in the beginning) and you can use it for free, forever.**
+**If you want a more production ready alternative, with more features and guaranteed stability please checkout the [Gen AI Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin), [Gen AI Pro China](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin), and [GenAI Model Generator](https://muddyterrain.com/t/genai-model-generator-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=gen3d-plugin) plugins (Supports Unreal Engine 5.1 to 5.7), as it costs a lot of API credits for me to test different models per feature and per engine version to make sure everything works well and compatible. Together these plugins support 200+ AI models, from all over the globe! Otherwise, I feel this free plugin is good enough for many use cases (including the examples shown in the beginning) and you can use it for free, forever.**
 
 ### LLM/GenAI API Support:
 
@@ -107,21 +107,21 @@ Compatible with Unreal Engine 5.4 to 5.7+
     - Multimodal API Support: `glm-4.6v`, `glm-4.6v-flash`, `glm-4.5v` [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
 - Baidu:
     - `ernie-5.0-8k`, `ernie-4.5-8k`, `ernie-4.5-turbo-128k`, `ernie-x1-32k`, `ernie-x1-turbo-32k` etc [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
-- Meshy AI (3D Generation) - coming soon to Fab as "GenAI Model Generator":
-    - `meshy-6` - Text-to-3D (auto preview + refine), Image-to-3D, Retexture, Auto-Rigging 🛠️
-- Tripo AI (3D Generation) - coming soon to Fab as "GenAI Model Generator":
-    - `tripo-v2.5` - Text-to-3D, Image-to-3D 🛠️
-- Fal.ai - Hunyuan3D (3D Generation) - coming soon to Fab as "GenAI Model Generator":
-    - `hunyuan3d-v3.1-pro` (Tencent, open-source) - Text-to-3D 🛠️
-    - `hunyuan3d-v2.1` (Tencent, open-source) - Image-to-3D 🛠️
-- Fal.ai - TripoSR (3D Generation) - coming soon to Fab as "GenAI Model Generator":
-    - `triposr` (MIT, open-source) - Image-to-3D (fast, <1s) 🛠️
-- Fal.ai - Rodin (3D Generation) - coming soon to Fab as "GenAI Model Generator":
-    - `rodin-gen-2` (Hyper3D, proprietary) - Text-to-3D, Image-to-3D with PBR materials 🛠️
-- Fal.ai - Trellis 2 (3D Generation) - coming soon to Fab as "GenAI Model Generator":
-    - `trellis-2` (Microsoft, open-source) - Image-to-3D with PBR materials 🛠️
-- Google Gemini Texture Generation - coming soon to Fab as "GenAI Model Generator":
-    - `gemini-3.1-flash` - PBR texture maps (base color, normal, roughness, metallic), reference image generation 🛠️
+- Meshy AI (3D Generation):
+    - `meshy-6` - Text-to-3D (auto preview + refine), Image-to-3D, Retexture, Auto-Rigging [(available in "GenAI Model Generator")](https://muddyterrain.com/t/genai-model-generator-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=gen3d-plugin) ☑️
+- Tripo AI (3D Generation):
+    - `tripo-v2.5` - Text-to-3D, Image-to-3D [(available in "GenAI Model Generator")](https://muddyterrain.com/t/genai-model-generator-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=gen3d-plugin) ☑️
+- Fal.ai - Hunyuan3D (3D Generation):
+    - `hunyuan3d-v3.1-pro` (Tencent, open-source) - Text-to-3D [(available in "GenAI Model Generator")](https://muddyterrain.com/t/genai-model-generator-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=gen3d-plugin) ☑️
+    - `hunyuan3d-v2.1` (Tencent, open-source) - Image-to-3D [(available in "GenAI Model Generator")](https://muddyterrain.com/t/genai-model-generator-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=gen3d-plugin) ☑️
+- Fal.ai - TripoSR (3D Generation):
+    - `triposr` (MIT, open-source) - Image-to-3D (fast, <1s) [(available in "GenAI Model Generator")](https://muddyterrain.com/t/genai-model-generator-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=gen3d-plugin) ☑️
+- Fal.ai - Rodin (3D Generation):
+    - `rodin-gen-2` (Hyper3D, proprietary) - Text-to-3D, Image-to-3D with PBR materials [(available in "GenAI Model Generator")](https://muddyterrain.com/t/genai-model-generator-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=gen3d-plugin) ☑️
+- Fal.ai - Trellis 2 (3D Generation):
+    - `trellis-2` (Microsoft, open-source) - Image-to-3D with PBR materials [(available in "GenAI Model Generator")](https://muddyterrain.com/t/genai-model-generator-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=gen3d-plugin) ☑️
+- Google Gemini Texture Generation:
+    - `gemini-3.1-flash` - PBR texture maps (base color, normal, roughness, metallic), reference image generation [(available in "GenAI Model Generator")](https://muddyterrain.com/t/genai-model-generator-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=gen3d-plugin) ☑️
 - Plugin Example Project 🛠️ [here](https://github.com/prajwalshettydev/unreal-llm-api-test-project)
 - Version Control Support
     - Perforce Support 🛠️
@@ -132,8 +132,8 @@ Compatible with Unreal Engine 5.4 to 5.7+
     - Exclude MCP from build ✅
 - Testing 
     - Automated Testing  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️ and [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
-    - Different Platforms  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️ and [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
-    - Different Engine Versions  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️ and [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳
+    - Different Platforms  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️, [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳, and [(available in "GenAI Model Generator")](https://muddyterrain.com/t/genai-model-generator-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=gen3d-plugin) ☑️
+    - Different Engine Versions  [(available in pro)](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin) ☑️, [(available in "gen-ai pro china")](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin) ☑️ 🇨🇳, and [(available in "GenAI Model Generator")](https://muddyterrain.com/t/genai-model-generator-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=gen3d-plugin) ☑️
 
 ### Unreal MCP (Model Control Protocol):
 
@@ -168,8 +168,9 @@ Compatible with Unreal Engine 5.4 to 5.7+
 
 Where,
 - ✅ - Completed
-- ☑️ - [Available in GenAI-Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin)
+- ☑️ (Pro) - [Available in GenAI-Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin)
 - ☑️ 🇨🇳 - [Available in "GenAI Pro China"](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin)
+- ☑️ (3D) - [Available in "GenAI Model Generator"](https://muddyterrain.com/t/genai-model-generator-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=gen3d-plugin)
 - 🛠️ - In Progress
 - 🚧 - Planned
 - 🤝 - Need Contributors
