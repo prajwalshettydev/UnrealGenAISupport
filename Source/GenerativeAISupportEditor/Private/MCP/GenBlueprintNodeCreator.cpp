@@ -347,6 +347,243 @@ bool UGenBlueprintNodeCreator::DeleteNode(const FString& BlueprintPath, const FS
 	return true;
 }
 
+// Move a node to a new position
+bool UGenBlueprintNodeCreator::MoveNode(const FString& BlueprintPath, const FString& FunctionGuid,
+                                        const FString& NodeGuid, float NewX, float NewY)
+{
+	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *BlueprintPath);
+	if (!Blueprint) return false;
+
+	UEdGraph* FunctionGraph = nullptr;
+	if (FunctionGuid.Equals(TEXT("EventGraph"), ESearchCase::IgnoreCase))
+	{
+		if (Blueprint->UbergraphPages.Num() > 0)
+			FunctionGraph = Blueprint->UbergraphPages[0];
+	}
+	else
+	{
+		FGuid GraphGuidObj;
+		if (!FGuid::Parse(FunctionGuid, GraphGuidObj)) return false;
+		FunctionGraph = FindGraphByGuid(Blueprint, GraphGuidObj);
+	}
+	if (!FunctionGraph) return false;
+
+	FGuid NodeGuidObj;
+	if (!FGuid::Parse(NodeGuid, NodeGuidObj)) return false;
+
+	for (UEdGraphNode* Node : FunctionGraph->Nodes)
+	{
+		if (Node && Node->NodeGuid == NodeGuidObj)
+		{
+			Node->Modify();
+			Node->NodePosX = FMath::RoundToInt(NewX);
+			Node->NodePosY = FMath::RoundToInt(NewY);
+			FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+			return true;
+		}
+	}
+	return false;
+}
+
+
+// Get detailed information about a specific node
+FString UGenBlueprintNodeCreator::GetNodeDetails(const FString& BlueprintPath, const FString& FunctionGuid,
+                                                  const FString& NodeGuid)
+{
+	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *BlueprintPath);
+	if (!Blueprint) return TEXT("{\"error\":\"Blueprint not found\"}");
+
+	UEdGraph* FunctionGraph = GetGraphFromFunctionId(Blueprint, FunctionGuid);
+	if (!FunctionGraph) return TEXT("{\"error\":\"Graph not found\"}");
+
+	FGuid NodeGuidObj;
+	if (!FGuid::Parse(NodeGuid, NodeGuidObj)) return TEXT("{\"error\":\"Invalid node GUID\"}");
+
+	UEdGraphNode* TargetNode = nullptr;
+	for (UEdGraphNode* Node : FunctionGraph->Nodes)
+	{
+		if (Node && Node->NodeGuid == NodeGuidObj)
+		{
+			TargetNode = Node;
+			break;
+		}
+	}
+	if (!TargetNode) return TEXT("{\"error\":\"Node not found\"}");
+
+	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
+	Result->SetStringField(TEXT("node_guid"), TargetNode->NodeGuid.ToString());
+	Result->SetStringField(TEXT("node_type"), TargetNode->GetClass()->GetName());
+	Result->SetStringField(TEXT("node_title"), TargetNode->GetNodeTitle(ENodeTitleType::FullTitle).ToString());
+
+	TArray<TSharedPtr<FJsonValue>> PosArray;
+	PosArray.Add(MakeShareable(new FJsonValueNumber(TargetNode->NodePosX)));
+	PosArray.Add(MakeShareable(new FJsonValueNumber(TargetNode->NodePosY)));
+	Result->SetArrayField(TEXT("position"), PosArray);
+
+	// Pins
+	TArray<TSharedPtr<FJsonValue>> PinsArray;
+	for (UEdGraphPin* Pin : TargetNode->Pins)
+	{
+		if (!Pin) continue;
+		TSharedPtr<FJsonObject> PinObj = MakeShareable(new FJsonObject);
+		PinObj->SetStringField(TEXT("name"), Pin->PinName.ToString());
+		PinObj->SetStringField(TEXT("direction"), Pin->Direction == EGPD_Input ? TEXT("input") : TEXT("output"));
+
+		// Pin type
+		FString PinType = Pin->PinType.PinCategory.ToString();
+		if (Pin->PinType.PinSubCategoryObject.IsValid())
+		{
+			PinType += TEXT(":") + Pin->PinType.PinSubCategoryObject->GetName();
+		}
+		PinObj->SetStringField(TEXT("type"), PinType);
+		PinObj->SetStringField(TEXT("default_value"), Pin->DefaultValue);
+		PinObj->SetBoolField(TEXT("is_connected"), Pin->LinkedTo.Num() > 0);
+
+		// Connected-to list
+		TArray<TSharedPtr<FJsonValue>> ConnArray;
+		for (UEdGraphPin* LinkedPin : Pin->LinkedTo)
+		{
+			if (!LinkedPin || !LinkedPin->GetOwningNode()) continue;
+			TSharedPtr<FJsonObject> ConnObj = MakeShareable(new FJsonObject);
+			ConnObj->SetStringField(TEXT("node_guid"), LinkedPin->GetOwningNode()->NodeGuid.ToString());
+			ConnObj->SetStringField(TEXT("pin_name"), LinkedPin->PinName.ToString());
+			ConnArray.Add(MakeShareable(new FJsonValueObject(ConnObj)));
+		}
+		PinObj->SetArrayField(TEXT("connected_to"), ConnArray);
+
+		PinsArray.Add(MakeShareable(new FJsonValueObject(PinObj)));
+	}
+	Result->SetArrayField(TEXT("pins"), PinsArray);
+
+	FString ResultJson;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
+	FJsonSerializer::Serialize(Result.ToSharedRef(), Writer);
+	return ResultJson;
+}
+
+
+// List all graphs in a blueprint
+FString UGenBlueprintNodeCreator::ListGraphs(const FString& BlueprintPath)
+{
+	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *BlueprintPath);
+	if (!Blueprint) return TEXT("[]");
+
+	TArray<TSharedPtr<FJsonValue>> GraphsArray;
+
+	auto AddGraphs = [&](const TArray<UEdGraph*>& Graphs, const FString& GraphType)
+	{
+		for (UEdGraph* Graph : Graphs)
+		{
+			if (!Graph) continue;
+			TSharedPtr<FJsonObject> Obj = MakeShareable(new FJsonObject);
+			Obj->SetStringField(TEXT("graph_guid"), Graph->GraphGuid.ToString());
+			Obj->SetStringField(TEXT("graph_name"), Graph->GetName());
+			Obj->SetStringField(TEXT("graph_type"), GraphType);
+			Obj->SetNumberField(TEXT("node_count"), Graph->Nodes.Num());
+			GraphsArray.Add(MakeShareable(new FJsonValueObject(Obj)));
+		}
+	};
+
+	AddGraphs(Blueprint->UbergraphPages, TEXT("EventGraph"));
+	AddGraphs(Blueprint->FunctionGraphs, TEXT("Function"));
+	AddGraphs(Blueprint->MacroGraphs, TEXT("Macro"));
+
+	FString ResultJson;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
+	FJsonSerializer::Serialize(GraphsArray, Writer);
+	return ResultJson;
+}
+
+
+// Set a pin's default value on an existing node
+bool UGenBlueprintNodeCreator::SetNodePinValue(const FString& BlueprintPath, const FString& FunctionGuid,
+                                                const FString& NodeGuid, const FString& PinName,
+                                                const FString& NewValue)
+{
+	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *BlueprintPath);
+	if (!Blueprint) return false;
+
+	UEdGraph* FunctionGraph = GetGraphFromFunctionId(Blueprint, FunctionGuid);
+	if (!FunctionGraph) return false;
+
+	FGuid NodeGuidObj;
+	if (!FGuid::Parse(NodeGuid, NodeGuidObj)) return false;
+
+	for (UEdGraphNode* Node : FunctionGraph->Nodes)
+	{
+		if (Node && Node->NodeGuid == NodeGuidObj)
+		{
+			UEdGraphPin* Pin = Node->FindPin(FName(*PinName));
+			if (!Pin)
+			{
+				UE_LOG(LogTemp, Error, TEXT("SetNodePinValue: Pin '%s' not found. Available pins:"), *PinName);
+				for (UEdGraphPin* P : Node->Pins)
+				{
+					if (P) UE_LOG(LogTemp, Error, TEXT("  - %s (%s)"), *P->PinName.ToString(),
+					              P->Direction == EGPD_Input ? TEXT("input") : TEXT("output"));
+				}
+				return false;
+			}
+
+			const UEdGraphSchema* Schema = FunctionGraph->GetSchema();
+			if (Schema)
+			{
+				Schema->TrySetDefaultValue(*Pin, NewValue);
+			}
+			else
+			{
+				Pin->DefaultValue = NewValue;
+			}
+
+			Node->PinDefaultValueChanged(Pin);
+			FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+			return true;
+		}
+	}
+	return false;
+}
+
+
+// Break a specific connection between two node pins
+bool UGenBlueprintNodeCreator::DisconnectNodes(const FString& BlueprintPath, const FString& FunctionGuid,
+                                                const FString& SourceNodeGuid, const FString& SourcePinName,
+                                                const FString& TargetNodeGuid, const FString& TargetPinName)
+{
+	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *BlueprintPath);
+	if (!Blueprint) return false;
+
+	UEdGraph* FunctionGraph = GetGraphFromFunctionId(Blueprint, FunctionGuid);
+	if (!FunctionGraph) return false;
+
+	FGuid SrcGuid, TgtGuid;
+	if (!FGuid::Parse(SourceNodeGuid, SrcGuid) || !FGuid::Parse(TargetNodeGuid, TgtGuid)) return false;
+
+	UEdGraphNode* SrcNode = nullptr;
+	UEdGraphNode* TgtNode = nullptr;
+	for (UEdGraphNode* Node : FunctionGraph->Nodes)
+	{
+		if (Node && Node->NodeGuid == SrcGuid) SrcNode = Node;
+		if (Node && Node->NodeGuid == TgtGuid) TgtNode = Node;
+		if (SrcNode && TgtNode) break;
+	}
+	if (!SrcNode || !TgtNode) return false;
+
+	UEdGraphPin* SrcPin = SrcNode->FindPin(FName(*SourcePinName));
+	UEdGraphPin* TgtPin = TgtNode->FindPin(FName(*TargetPinName));
+	if (!SrcPin || !TgtPin) return false;
+
+	if (!SrcPin->LinkedTo.Contains(TgtPin))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("DisconnectNodes: Pins are not connected"));
+		return false;
+	}
+
+	SrcPin->BreakLinkTo(TgtPin);
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	return true;
+}
+
+
 // Get all nodes in a graph with their positions
 FString UGenBlueprintNodeCreator::GetAllNodesInGraph(const FString& BlueprintPath, const FString& FunctionGuid)
 {

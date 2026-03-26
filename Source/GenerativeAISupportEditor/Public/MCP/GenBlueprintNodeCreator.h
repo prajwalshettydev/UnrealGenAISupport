@@ -38,8 +38,29 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "Blueprint")
 	static FString GetNodeSuggestions(const FString& NodeType);
-	
 
+	// Move a node to a new position in the graph
+	UFUNCTION(BlueprintCallable, Category = "Blueprint")
+	static bool MoveNode(const FString& BlueprintPath, const FString& FunctionGuid, const FString& NodeGuid, float NewX, float NewY);
+
+	// Get detailed info about a node: pins, connections, default values, title
+	UFUNCTION(BlueprintCallable, Category = "Blueprint")
+	static FString GetNodeDetails(const FString& BlueprintPath, const FString& FunctionGuid, const FString& NodeGuid);
+
+	// List all graphs (EventGraph, Functions, Macros) in a blueprint
+	UFUNCTION(BlueprintCallable, Category = "Blueprint")
+	static FString ListGraphs(const FString& BlueprintPath);
+
+	// Set the default value of a pin on an existing node
+	UFUNCTION(BlueprintCallable, Category = "Blueprint")
+	static bool SetNodePinValue(const FString& BlueprintPath, const FString& FunctionGuid,
+	                            const FString& NodeGuid, const FString& PinName, const FString& NewValue);
+
+	// Break a specific connection between two node pins
+	UFUNCTION(BlueprintCallable, Category = "Blueprint")
+	static bool DisconnectNodes(const FString& BlueprintPath, const FString& FunctionGuid,
+	                            const FString& SourceNodeGuid, const FString& SourcePinName,
+	                            const FString& TargetNodeGuid, const FString& TargetPinName);
 
 private:
 	// Static map of friendly node names to Unreal Engine node types

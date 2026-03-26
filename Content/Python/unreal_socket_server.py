@@ -70,6 +70,13 @@ class CommandDispatcher:
             # --- NEW UI COMMANDS ---
             "add_widget_to_user_widget": ui_commands.handle_add_widget_to_user_widget,
             "edit_widget_property": ui_commands.handle_edit_widget_property,
+
+            # --- Node CRUD ---
+            "get_node_details": blueprint_commands.handle_get_node_details,
+            "list_graphs": blueprint_commands.handle_list_graphs,
+            "set_node_pin_value": blueprint_commands.handle_set_node_pin_value,
+            "disconnect_nodes": blueprint_commands.handle_disconnect_nodes,
+            "move_node": blueprint_commands.handle_move_node,
         }
 
     def dispatch(self, command: Dict[str, Any]) -> Dict[str, Any]:

@@ -2,7 +2,8 @@ import socket
 import json
 import sys
 import os
-from fastmcp import FastMCP, Image
+from fastmcp import FastMCP
+from fastmcp.utilities.types import Image
 import re
 import mss
 import base64
@@ -593,13 +594,16 @@ def get_node_suggestions(node_type: str) -> str:
 @mcp.tool()
 def delete_node_from_blueprint(blueprint_path: str, function_id: str, node_id: str) -> str:
     """
-    Delete a node from a Blueprint graph
-    
+    Delete a node from a Blueprint graph. All connections to/from this node are
+    automatically broken.
+
+    Use get_all_nodes_in_graph first to find the node's GUID.
+
     Args:
-        blueprint_path: Path to the Blueprint asset
-        function_id: ID of the function containing the node
-        node_id: ID of the node to delete
-        
+        blueprint_path: Path to the Blueprint asset (e.g., "/Game/Blueprints/BP_MyActor")
+        function_id: "EventGraph" or function GUID
+        node_id: GUID of the node to delete
+
     Returns:
         Success or failure message
     """
@@ -620,14 +624,17 @@ def delete_node_from_blueprint(blueprint_path: str, function_id: str, node_id: s
 @mcp.tool()
 def get_all_nodes_in_graph(blueprint_path: str, function_id: str) -> str:
     """
-    Get all nodes in a Blueprint graph with their positions and types
-    
+    Get a summary of all nodes in a Blueprint graph: GUIDs, types, and positions.
+
+    This returns an OVERVIEW — for detailed pin/connection info on a specific node,
+    use get_node_details with the node's GUID.
+
     Args:
-        blueprint_path: Path to the Blueprint asset
-        function_id: ID of the function to get nodes from
-        
+        blueprint_path: Path to the Blueprint asset (e.g., "/Game/Blueprints/BP_MyActor")
+        function_id: "EventGraph" or function GUID from list_blueprint_graphs
+
     Returns:
-        JSON string containing all nodes with their GUIDs, types, and positions
+        JSON array of nodes, each with node_guid, node_type, and position [x, y].
     """
     command = {
         "type": "get_all_nodes",
@@ -646,6 +653,26 @@ def get_all_nodes_in_graph(blueprint_path: str, function_id: str) -> str:
 def connect_blueprint_nodes(blueprint_path: str, function_id: str,
                             source_node_id: str, source_pin: str,
                             target_node_id: str, target_pin: str) -> str:
+    """
+    Connect two nodes in a Blueprint graph by wiring an output pin to an input pin.
+
+    Use get_node_details on both nodes first to discover exact pin names.
+    Common pin naming conventions:
+    - Execution pins: "execute" (input exec), "then" (output exec)
+    - Return value: "ReturnValue"
+    - Data pins: named by parameter (e.g., "InString", "Duration", "Target")
+
+    Args:
+        blueprint_path: Path to the Blueprint (e.g., "/Game/Blueprints/BP_MyActor")
+        function_id: "EventGraph" or function GUID
+        source_node_id: GUID of the node with the OUTPUT pin
+        source_pin: Name of the output pin on the source node
+        target_node_id: GUID of the node with the INPUT pin
+        target_pin: Name of the input pin on the target node
+
+    Returns:
+        Success message, or failure with available pins listed for debugging.
+    """
     command = {
         "type": "connect_nodes",
         "blueprint_path": blueprint_path,
@@ -905,6 +932,175 @@ def get_blueprint_node_guid(blueprint_path: str, graph_type: str = "EventGraph",
         return f"Failed to get node GUID: {response.get('error', 'Unknown error')}"
 
 
+# ---------------------------------------------------------------------------
+# Node CRUD Tools (Complete set for blueprint node manipulation)
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def get_node_details(blueprint_path: str, function_id: str, node_guid: str) -> str:
+    """
+    Get detailed information about a specific Blueprint node including all its pins,
+    connections, default values, and display title.
+
+    Use this BEFORE connecting nodes — you need to know the exact pin names.
+    Use this AFTER adding a node — to verify it was created correctly.
+    Use this to inspect an existing node you want to modify.
+
+    Args:
+        blueprint_path: Path to the Blueprint (e.g., "/Game/Blueprints/BP_MyActor")
+        function_id: Graph identifier — use "EventGraph" for the main event graph,
+                     or a function GUID from list_blueprint_graphs for function graphs
+        node_guid: The GUID of the node (from get_all_nodes_in_graph or add_node_to_blueprint)
+
+    Returns:
+        JSON with node_guid, node_type, node_title, position, and pins array.
+        Each pin has: name, direction (input/output), type, default_value,
+        is_connected, and connected_to list [{node_guid, pin_name}].
+    """
+    command = {
+        "type": "get_node_details",
+        "blueprint_path": blueprint_path,
+        "function_id": function_id,
+        "node_guid": node_guid
+    }
+    response = send_to_unreal(command)
+    if response.get("success"):
+        return json.dumps(response.get("details", {}), indent=2)
+    else:
+        return f"Failed: {response.get('error', 'Unknown error')}"
+
+
+@mcp.tool()
+def list_blueprint_graphs(blueprint_path: str) -> str:
+    """
+    List all graphs (EventGraph, Functions, Macros) in a Blueprint with their GUIDs and node counts.
+
+    Use this FIRST when working with a Blueprint you haven't explored yet — it tells you
+    what graphs exist and gives you the function_id needed by all other node tools.
+
+    Args:
+        blueprint_path: Path to the Blueprint (e.g., "/Game/Blueprints/BP_MyActor")
+
+    Returns:
+        JSON array of graphs, each with graph_guid, graph_name, graph_type, node_count.
+    """
+    command = {
+        "type": "list_graphs",
+        "blueprint_path": blueprint_path
+    }
+    response = send_to_unreal(command)
+    if response.get("success"):
+        return json.dumps(response.get("graphs", []), indent=2)
+    else:
+        return f"Failed: {response.get('error', 'Unknown error')}"
+
+
+@mcp.tool()
+def move_blueprint_node(blueprint_path: str, function_id: str, node_guid: str,
+                        new_x: float, new_y: float) -> str:
+    """
+    Move a node to a new position in the Blueprint graph editor.
+
+    Use this to reposition nodes for better visual layout after adding or rearranging nodes.
+    Positions are in graph editor pixel coordinates (integers).
+
+    Args:
+        blueprint_path: Path to the Blueprint (e.g., "/Game/Blueprints/BP_MyActor")
+        function_id: "EventGraph" or function GUID
+        node_guid: The GUID of the node to move
+        new_x: New X position in graph editor coordinates
+        new_y: New Y position in graph editor coordinates
+
+    Returns:
+        Success or failure message.
+    """
+    command = {
+        "type": "move_node",
+        "blueprint_path": blueprint_path,
+        "function_id": function_id,
+        "node_guid": node_guid,
+        "new_x": new_x,
+        "new_y": new_y
+    }
+    response = send_to_unreal(command)
+    if response.get("success"):
+        return f"Node {node_guid} moved to ({new_x}, {new_y})"
+    else:
+        return f"Failed: {response.get('error', 'Unknown error')}"
+
+
+@mcp.tool()
+def set_node_pin_value(blueprint_path: str, function_id: str, node_guid: str,
+                       pin_name: str, value: str) -> str:
+    """
+    Set the default value of a pin on an existing Blueprint node.
+
+    Use this to change literal values on nodes (e.g., setting a float input to "3.14",
+    a string to "Hello", or a boolean to "true").
+    Use get_node_details first to discover the exact pin names and their current values.
+
+    Args:
+        blueprint_path: Path to the Blueprint (e.g., "/Game/Blueprints/BP_MyActor")
+        function_id: "EventGraph" or function GUID
+        node_guid: The GUID of the node
+        pin_name: Exact name of the pin to set (case-sensitive, from get_node_details)
+        value: New default value as a string
+
+    Returns:
+        Success or failure message. On failure, check UE log for available pin names.
+    """
+    command = {
+        "type": "set_node_pin_value",
+        "blueprint_path": blueprint_path,
+        "function_id": function_id,
+        "node_guid": node_guid,
+        "pin_name": pin_name,
+        "value": value
+    }
+    response = send_to_unreal(command)
+    if response.get("success"):
+        return f"Pin '{pin_name}' set to '{value}'"
+    else:
+        return f"Failed: {response.get('error', 'Unknown error')}"
+
+
+@mcp.tool()
+def disconnect_blueprint_nodes(blueprint_path: str, function_id: str,
+                               source_node_id: str, source_pin: str,
+                               target_node_id: str, target_pin: str) -> str:
+    """
+    Break a connection between two pins in a Blueprint graph.
+
+    Use this to remove a specific wire between nodes.
+    Use get_node_details to find what's currently connected before calling this.
+
+    Args:
+        blueprint_path: Path to the Blueprint (e.g., "/Game/Blueprints/BP_MyActor")
+        function_id: "EventGraph" or function GUID
+        source_node_id: GUID of the source node (output side)
+        source_pin: Pin name on the source node
+        target_node_id: GUID of the target node (input side)
+        target_pin: Pin name on the target node
+
+    Returns:
+        Success or failure message.
+    """
+    command = {
+        "type": "disconnect_nodes",
+        "blueprint_path": blueprint_path,
+        "function_id": function_id,
+        "source_node_id": source_node_id,
+        "source_pin": source_pin,
+        "target_node_id": target_node_id,
+        "target_pin": target_pin
+    }
+    response = send_to_unreal(command)
+    if response.get("success"):
+        return "Disconnected successfully"
+    else:
+        return f"Failed: {response.get('error', 'Unknown error')}"
+
+
 # Safety check for potentially destructive actions
 def is_potentially_destructive(script: str) -> bool:
     """
@@ -1095,6 +1291,225 @@ def add_input_binding(action_name: str, key: str) -> str:
     command = {"type": "add_input_binding", "action_name": action_name, "key": key}
     response = send_to_unreal(command)
     return response.get("message", f"Failed: {response.get('error')}")
+
+
+# ---------------------------------------------------------------------------
+# Source-file editing tools
+# These run entirely inside this process (outside Unreal) and need no socket.
+# ---------------------------------------------------------------------------
+
+_ALLOWED_SOURCE_EXTENSIONS = {
+    ".h", ".hpp", ".cpp", ".inl",
+    ".cs",
+    ".py",
+    ".ini", ".cfg",
+    ".json",
+    ".md", ".txt",
+    ".uplugin", ".uproject",
+}
+_MAX_READ_BYTES = 512 * 1024  # 512 KB
+_MAX_WRITE_BYTES = 1024 * 1024  # 1 MB
+
+
+def _get_project_root() -> Path:
+    """Walk up from this file until a .uproject is found."""
+    current = Path(__file__).resolve().parent
+    for _ in range(10):
+        if list(current.glob("*.uproject")):
+            return current
+        current = current.parent
+    raise RuntimeError(
+        "Could not locate project root: no .uproject found within 10 parent directories."
+    )
+
+
+def _validate_source_path(relative_path: str) -> Path:
+    """
+    Resolve relative_path against project root and enforce safety constraints.
+    Returns the resolved absolute Path on success, raises ValueError on violation.
+    """
+    project_root = _get_project_root()
+    # Resolve without following symlinks to detect traversal attempts
+    resolved = (project_root / relative_path).resolve()
+
+    if not str(resolved).startswith(str(project_root.resolve())):
+        raise ValueError(
+            f"Path traversal detected: '{relative_path}' resolves outside project root."
+        )
+
+    if resolved.suffix.lower() not in _ALLOWED_SOURCE_EXTENSIONS:
+        raise ValueError(
+            f"Extension '{resolved.suffix}' is not in the allowed list: "
+            f"{sorted(_ALLOWED_SOURCE_EXTENSIONS)}"
+        )
+
+    return resolved
+
+
+@mcp.tool()
+def read_source_file(relative_path: str, start_line: int = 1, end_line: int = 0) -> str:
+    """
+    Read a source-code or config file inside the Unreal project.
+
+    Args:
+        relative_path: Path relative to the project root (e.g. "Source/MyGame/MyActor.h").
+        start_line: First line to return, 1-based (default 1 = beginning of file).
+        end_line:   Last line to return inclusive, 1-based (default 0 = read to EOF).
+
+    Returns:
+        File content as a string, prefixed with the line range actually returned.
+        Allowed extensions: .h .hpp .cpp .inl .cs .py .ini .cfg .json .md .txt .uplugin .uproject
+        Maximum returned size: 512 KB.
+    """
+    try:
+        path = _validate_source_path(relative_path)
+    except ValueError as exc:
+        return f"Error: {exc}"
+
+    if not path.exists():
+        return f"Error: File not found: '{relative_path}'"
+
+    if path.stat().st_size > _MAX_READ_BYTES:
+        return (
+            f"Error: File exceeds the 512 KB read limit "
+            f"({path.stat().st_size} bytes). Use start_line/end_line to read a slice."
+        )
+
+    try:
+        content = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return f"Error: File is not valid UTF-8: '{relative_path}'"
+
+    lines = content.splitlines(keepends=True)
+    total = len(lines)
+
+    lo = max(1, start_line) - 1          # convert to 0-based index
+    hi = total if end_line <= 0 else min(end_line, total)
+
+    if lo >= total:
+        return f"Error: start_line {start_line} is beyond end of file ({total} lines)."
+
+    selected = lines[lo:hi]
+    header = f"// [{relative_path}] lines {lo + 1}-{lo + len(selected)} of {total}\n"
+    return header + "".join(selected)
+
+
+@mcp.tool()
+def write_source_file(relative_path: str, content: str) -> str:
+    """
+    Write (overwrite or create) a source-code or config file inside the Unreal project.
+
+    The file is written atomically: content is first written to a temp file in the
+    same directory, then renamed, so a crash mid-write cannot corrupt an existing file.
+
+    Args:
+        relative_path: Path relative to the project root (e.g. "Source/MyGame/NewActor.h").
+        content:       Full UTF-8 text to write.
+
+    Returns:
+        A summary string on success, or an error message.
+    """
+    try:
+        path = _validate_source_path(relative_path)
+    except ValueError as exc:
+        return f"Error: {exc}"
+
+    encoded = content.encode("utf-8")
+    if len(encoded) > _MAX_WRITE_BYTES:
+        return (
+            f"Error: Content exceeds the 1 MB write limit ({len(encoded)} bytes)."
+        )
+
+    existed = path.exists()
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Atomic write via temp file
+    tmp = path.with_suffix(path.suffix + ".mcp_tmp")
+    try:
+        tmp.write_text(content, encoding="utf-8")
+        tmp.replace(path)
+    except Exception as exc:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return f"Error writing file: {exc}"
+
+    action = "updated" if existed else "created"
+    return (
+        f"OK: '{relative_path}' {action} "
+        f"({len(encoded)} bytes, {len(content.splitlines())} lines)."
+    )
+
+
+@mcp.tool()
+def patch_source_file(relative_path: str, old_text: str, new_text: str) -> str:
+    """
+    Replace an exact substring in a source file (surgical edit, no full overwrite).
+
+    Finds the first occurrence of old_text in the file and replaces it with new_text.
+    If old_text occurs zero or more than once the operation is refused with an explanation,
+    so you can safely narrow your search string and retry.
+
+    Args:
+        relative_path: Path relative to the project root (e.g. "Source/MyGame/MyActor.cpp").
+        old_text:      The exact text to find (use several surrounding lines for uniqueness).
+        new_text:      The replacement text.
+
+    Returns:
+        A summary string on success, or an error message with a hint.
+    """
+    try:
+        path = _validate_source_path(relative_path)
+    except ValueError as exc:
+        return f"Error: {exc}"
+
+    if not path.exists():
+        return f"Error: File not found: '{relative_path}'"
+
+    if path.stat().st_size > _MAX_READ_BYTES:
+        return f"Error: File exceeds the 512 KB read limit; use write_source_file instead."
+
+    try:
+        original = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return f"Error: File is not valid UTF-8: '{relative_path}'"
+
+    count = original.count(old_text)
+    if count == 0:
+        return (
+            "Error: old_text not found in file. "
+            "Check whitespace, line endings, or indentation. "
+            "Tip: use read_source_file to inspect the exact content first."
+        )
+    if count > 1:
+        return (
+            f"Error: old_text occurs {count} times in the file; "
+            "provide more surrounding context so it is unique."
+        )
+
+    patched = original.replace(old_text, new_text, 1)
+    encoded = patched.encode("utf-8")
+    if len(encoded) > _MAX_WRITE_BYTES:
+        return f"Error: Patched content exceeds the 1 MB write limit."
+
+    tmp = path.with_suffix(path.suffix + ".mcp_tmp")
+    try:
+        tmp.write_text(patched, encoding="utf-8")
+        tmp.replace(path)
+    except Exception as exc:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return f"Error writing patched file: {exc}"
+
+    delta = len(patched.splitlines()) - len(original.splitlines())
+    sign = f"+{delta}" if delta >= 0 else str(delta)
+    return (
+        f"OK: patch applied to '{relative_path}' "
+        f"({sign} lines, {len(encoded)} bytes total)."
+    )
 
 
 if __name__ == "__main__":

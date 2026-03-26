@@ -625,3 +625,138 @@ def handle_get_node_guid(command: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         log.log_error(f"Error getting node GUID: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}
+
+
+def handle_get_node_details(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        blueprint_path = command.get("blueprint_path")
+        function_id = command.get("function_id")
+        node_guid = command.get("node_guid")
+
+        if not blueprint_path or not function_id or not node_guid:
+            return {"success": False, "error": "Missing required parameters"}
+
+        log.log_command("get_node_details", f"Blueprint: {blueprint_path}, Node: {node_guid}")
+
+        node_creator = unreal.GenBlueprintNodeCreator
+        result_json = node_creator.get_node_details(blueprint_path, function_id, node_guid)
+
+        if result_json:
+            result = json.loads(result_json)
+            if "error" in result:
+                return {"success": False, "error": result["error"]}
+            log.log_result("get_node_details", True, f"Got details for node {node_guid}")
+            return {"success": True, "details": result}
+        else:
+            return {"success": False, "error": "Failed to get node details"}
+
+    except Exception as e:
+        log.log_error(f"Error getting node details: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+def handle_list_graphs(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        blueprint_path = command.get("blueprint_path")
+        if not blueprint_path:
+            return {"success": False, "error": "Missing blueprint_path"}
+
+        log.log_command("list_graphs", f"Blueprint: {blueprint_path}")
+
+        node_creator = unreal.GenBlueprintNodeCreator
+        result_json = node_creator.list_graphs(blueprint_path)
+
+        if result_json:
+            graphs = json.loads(result_json)
+            log.log_result("list_graphs", True, f"Found {len(graphs)} graphs")
+            return {"success": True, "graphs": graphs}
+        else:
+            return {"success": False, "error": "Failed to list graphs"}
+
+    except Exception as e:
+        log.log_error(f"Error listing graphs: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+def handle_set_node_pin_value(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        blueprint_path = command.get("blueprint_path")
+        function_id = command.get("function_id")
+        node_guid = command.get("node_guid")
+        pin_name = command.get("pin_name")
+        value = command.get("value", "")
+
+        if not all([blueprint_path, function_id, node_guid, pin_name]):
+            return {"success": False, "error": "Missing required parameters"}
+
+        log.log_command("set_node_pin_value", f"Node: {node_guid}, Pin: {pin_name}, Value: {value}")
+
+        node_creator = unreal.GenBlueprintNodeCreator
+        success = node_creator.set_node_pin_value(blueprint_path, function_id, node_guid, pin_name, str(value))
+
+        if success:
+            log.log_result("set_node_pin_value", True, f"Set {pin_name}={value}")
+            return {"success": True}
+        else:
+            return {"success": False, "error": f"Failed to set pin '{pin_name}'. Use get_node_details to see available pins."}
+
+    except Exception as e:
+        log.log_error(f"Error setting pin value: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+def handle_disconnect_nodes(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        blueprint_path = command.get("blueprint_path")
+        function_id = command.get("function_id")
+        source_node_id = command.get("source_node_id")
+        source_pin = command.get("source_pin")
+        target_node_id = command.get("target_node_id")
+        target_pin = command.get("target_pin")
+
+        if not all([blueprint_path, function_id, source_node_id, source_pin, target_node_id, target_pin]):
+            return {"success": False, "error": "Missing required parameters"}
+
+        log.log_command("disconnect_nodes", f"{source_node_id}.{source_pin} -X- {target_node_id}.{target_pin}")
+
+        node_creator = unreal.GenBlueprintNodeCreator
+        success = node_creator.disconnect_nodes(blueprint_path, function_id,
+                                                 source_node_id, source_pin,
+                                                 target_node_id, target_pin)
+
+        if success:
+            log.log_result("disconnect_nodes", True, "Disconnected")
+            return {"success": True}
+        else:
+            return {"success": False, "error": "Failed to disconnect. Pins may not be connected or not found."}
+
+    except Exception as e:
+        log.log_error(f"Error disconnecting nodes: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+def handle_move_node(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        blueprint_path = command.get("blueprint_path")
+        function_id = command.get("function_id")
+        node_guid = command.get("node_guid")
+        new_x = command.get("new_x", 0)
+        new_y = command.get("new_y", 0)
+
+        if not all([blueprint_path, function_id, node_guid]):
+            return {"success": False, "error": "Missing required parameters"}
+
+        log.log_command("move_node", f"Node: {node_guid} -> ({new_x}, {new_y})")
+
+        node_creator = unreal.GenBlueprintNodeCreator
+        success = node_creator.move_node(blueprint_path, function_id, node_guid, float(new_x), float(new_y))
+
+        if success:
+            log.log_result("move_node", True, f"Moved to ({new_x}, {new_y})")
+            return {"success": True}
+        else:
+            return {"success": False, "error": "Failed to move node"}
+
+    except Exception as e:
+        log.log_error(f"Error moving node: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
