@@ -219,6 +219,9 @@ def _compact_response(obj):
 
     Falls back to heuristic detection (presence of 'guid'/'cname' at top level) for
     responses that predate the sentinel marker.
+
+    NOTE: `_semantic` is an internal marker only. It is always consumed (popped) here
+    and NEVER appears in the final MCP response returned to the caller.
     """
     if isinstance(obj, dict):
         has_sentinel = obj.pop("_semantic", False)
@@ -226,6 +229,17 @@ def _compact_response(obj):
         if has_sentinel or has_heuristic:
             return _strip_empty(obj)  # already semantic — only strip empties
     return _to_semantic(_strip_empty(obj))
+
+
+_VALID_SCHEMA_MODES = {"semantic", "verbose"}
+
+
+def _normalize_schema_mode(mode: str) -> str:
+    """Normalize and validate schema_mode. Raises ValueError on invalid input."""
+    normalized = mode.lower().strip()
+    if normalized not in _VALID_SCHEMA_MODES:
+        raise ValueError(f"Invalid schema_mode: {mode!r}. Must be one of: {_VALID_SCHEMA_MODES}")
+    return normalized
 
 
 def _make_envelope(tool_name: str, ok: bool, result: dict,
@@ -1216,7 +1230,8 @@ def get_blueprint_node_guid(blueprint_path: str, graph_type: str = "EventGraph",
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-def get_node_details(blueprint_path: str, function_id: str, node_guid: str) -> str:
+def get_node_details(blueprint_path: str, function_id: str, node_guid: str,
+                     schema_mode: str = "semantic") -> str:
     """
     Get detailed information about a specific Blueprint node including all its pins,
     connections, default values, and display title.
@@ -1230,14 +1245,17 @@ def get_node_details(blueprint_path: str, function_id: str, node_guid: str) -> s
         function_id: Graph identifier — use "EventGraph" for the main event graph,
                      or a function GUID from list_blueprint_graphs for function graphs
         node_guid: The GUID of the node (from get_all_nodes_in_graph or add_node_to_blueprint)
+        schema_mode: Output format — "semantic" (default, bp_json_v2, ~40% fewer tokens)
+                     or "verbose" (full field names, for debugging)
 
     Returns:
         JSON with node_guid, node_type, node_title, position, and pins array.
         Each pin has: name, direction (input/output), type, default_value,
         is_connected, and connected_to list [{node_guid, pin_name}].
     """
+    schema_mode = _normalize_schema_mode(schema_mode)
     # LRU cache for node details (invalidated alongside _describe_cache)
-    cache_key = (blueprint_path, function_id, node_guid)
+    cache_key = (blueprint_path, function_id, node_guid, schema_mode)
     if cache_key in _node_details_cache:
         return json.dumps(_node_details_cache[cache_key], indent=2)
 
@@ -1246,7 +1264,7 @@ def get_node_details(blueprint_path: str, function_id: str, node_guid: str) -> s
         "blueprint_path": blueprint_path,
         "function_id": function_id,
         "node_guid": node_guid,
-        "schema_mode": "semantic",
+        "schema_mode": schema_mode,
     }
     response = send_to_unreal(command)
     if response.get("success"):
@@ -4224,6 +4242,7 @@ def search_blueprint_nodes(
     blueprint_path: str = "",
     category_filter: str = "",
     max_results: int = 5,
+    schema_mode: str = "semantic",
 ) -> str:
     """
     Search ALL available Blueprint node types across the entire engine.
@@ -4238,17 +4257,19 @@ def search_blueprint_nodes(
         blueprint_path: Optional BP path for context-aware scoring (e.g., "/Game/Blueprints/BP_MyNPC")
         category_filter: Optional category filter (e.g., "AI|Navigation", "Math")
         max_results: Number of results (default 5, max 10)
+        schema_mode: Output format — "semantic" (default) or "verbose" (for debugging)
 
     Returns:
         JSON with candidates array (canonical_name, display_name, node_kind, spawn_strategy, score).
     """
+    schema_mode = _normalize_schema_mode(schema_mode)
     command = {
         "type": "search_blueprint_nodes",
         "query": query,
         "blueprint_path": blueprint_path,
         "category_filter": category_filter,
         "max_results": min(max_results, 10),
-        "schema_mode": "semantic",
+        "schema_mode": schema_mode,
     }
     response = send_to_unreal(command)
     if response.get("success"):
@@ -4265,6 +4286,7 @@ def search_blueprint_nodes(
 def inspect_blueprint_node(
     canonical_name: str,
     blueprint_path: str = "",
+    schema_mode: str = "semantic",
 ) -> str:
     """
     Get full pin schema and patch_hint for a specific Blueprint node type.
@@ -4275,16 +4297,18 @@ def inspect_blueprint_node(
     Args:
         canonical_name: The canonical name from search results (e.g., "KismetSystemLibrary.PrintString")
         blueprint_path: Optional BP path for context-aware inspection
+        schema_mode: Output format — "semantic" (default) or "verbose" (for debugging)
 
     Returns:
         JSON with: canonical_name, patch_hint (ready to copy into apply_blueprint_patch),
         pins array (name, direction, type, required, default), context_requirements.
     """
+    schema_mode = _normalize_schema_mode(schema_mode)
     command = {
         "type": "inspect_blueprint_node",
         "canonical_name": canonical_name,
         "blueprint_path": blueprint_path,
-        "schema_mode": "semantic",
+        "schema_mode": schema_mode,
     }
     response = send_to_unreal(command)
     if response.get("success"):
@@ -4596,6 +4620,46 @@ def save_all_dirty_packages() -> str:
         JSON with: {"success": bool, "count": int, "saved": [...], "failed": [...]}
     """
     resp = send_to_unreal({"type": "save_all_dirty_packages"})
+    if not isinstance(resp, dict):
+        return json.dumps({"success": False, "error": "No response from UE"})
+    return json.dumps(resp)
+
+
+@mcp.tool()
+def get_node_guid_by_fname(
+    blueprint_path: str,
+    graph_id: str,
+    node_fname: str,
+    node_class_filter: str = "",
+) -> str:
+    """Find any Blueprint graph node by its UObject FName and return its NodeGuid.
+
+    Solves the ForEachLoop body traversal problem: the instance_id resolver only
+    traverses exec-chain reachable nodes, so nodes inside loop bodies cannot be
+    found by K2NodeType#N instance_id syntax.
+
+    This tool iterates Graph->Nodes directly to find the node by UObject FName.
+
+    Get the FName via execute_python_script:
+        obj = unreal.load_object(None, f"{bp.get_path_name()}:EventGraph.K2Node_BreakStruct_0")
+        print(obj.get_fname())  # "K2Node_BreakStruct_0"
+
+    Args:
+        blueprint_path:    Asset path
+        graph_id:          "EventGraph", other graph name, or GUID string
+        node_fname:        UObject FName (e.g. "K2Node_BreakStruct_2")
+        node_class_filter: Optional class name filter (e.g. "BreakStruct")
+
+    Returns:
+        JSON: {"success": bool, "node_guid": str, "node_class": str, "node_name": str}
+    """
+    resp = send_to_unreal({
+        "type": "get_node_guid_by_fname",
+        "blueprint_path": blueprint_path,
+        "graph_id": graph_id,
+        "node_fname": node_fname,
+        "node_class_filter": node_class_filter,
+    })
     if not isinstance(resp, dict):
         return json.dumps({"success": False, "error": "No response from UE"})
     return json.dumps(resp)

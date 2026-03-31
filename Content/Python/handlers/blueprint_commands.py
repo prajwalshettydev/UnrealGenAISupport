@@ -924,6 +924,35 @@ def handle_save_all_dirty_packages(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("get_node_guid_by_fname", category="blueprint")
+def handle_get_node_guid_by_fname(command: Dict[str, Any]) -> Dict[str, Any]:
+    """Find any Blueprint graph node by its UObject FName and return its NodeGuid.
+
+    Solves the ForEachLoop body traversal problem: nodes inside loop bodies
+    (K2Node_SwitchString, K2Node_BreakStruct, etc.) are not reachable via the
+    exec-chain traversal used by instance_id resolution. This function iterates
+    Graph->Nodes directly to find them by FName.
+
+    Typical workflow:
+        fname = node_obj.get_fname()   # "K2Node_BreakStruct_0"
+        result = get_node_guid_by_fname(bp, "EventGraph", fname)
+        guid = result["node_guid"]     # use with connect_nodes
+
+    Args:
+        blueprint_path:   Asset path
+        graph_id:         "EventGraph", other graph name, or GUID string
+        node_fname:       UObject FName (from node.get_fname() in execute_python_script)
+        node_class_filter: Optional class name substring filter (e.g. "BreakStruct")
+    """
+    result_json = unreal.GenBlueprintUtils.get_node_guid_by_fname(
+        command.get("blueprint_path"),
+        command.get("graph_id", "EventGraph"),
+        command.get("node_fname"),
+        command.get("node_class_filter", ""),
+    )
+    return json.loads(result_json)
+
+
 @registry.command("add_switch_case", category="blueprint", mutates_blueprint=True)
 def handle_add_switch_case(command: Dict[str, Any]) -> Dict[str, Any]:
     """Add a new named case pin to a K2Node_SwitchString (Switch on String) node.

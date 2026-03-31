@@ -1373,6 +1373,63 @@ FString UGenBlueprintUtils::SaveAllDirtyPackages()
 	return ResultJson;
 }
 
+FString UGenBlueprintUtils::GetNodeGuidByFName(const FString& BlueprintPath,
+                                                const FString& GraphId,
+                                                const FString& NodeFName,
+                                                const FString& NodeClassFilter)
+{
+	UBlueprint* Blueprint = LoadBlueprintAsset(BlueprintPath);
+	if (!Blueprint)
+		return TEXT("{\"success\": false, \"error\": \"Blueprint not found\"}");
+
+	// Resolve graph (same logic as AddSwitchCase / ConnectNodes)
+	UEdGraph* Graph = nullptr;
+	if (GraphId.Equals(TEXT("EventGraph"), ESearchCase::IgnoreCase))
+	{
+		if (Blueprint->UbergraphPages.Num() > 0)
+			Graph = Blueprint->UbergraphPages[0];
+	}
+	else
+	{
+		FGuid GraphGuid;
+		if (FGuid::Parse(GraphId, GraphGuid))
+		{
+			for (UEdGraph* G : Blueprint->UbergraphPages)
+				if (G->GraphGuid == GraphGuid) { Graph = G; break; }
+			if (!Graph)
+				for (UEdGraph* G : Blueprint->FunctionGraphs)
+					if (G->GraphGuid == GraphGuid) { Graph = G; break; }
+		}
+		if (!Graph)
+		{
+			for (UEdGraph* G : Blueprint->UbergraphPages)
+				if (G->GetName().Equals(GraphId, ESearchCase::IgnoreCase)) { Graph = G; break; }
+			if (!Graph)
+				for (UEdGraph* G : Blueprint->FunctionGraphs)
+					if (G->GetName().Equals(GraphId, ESearchCase::IgnoreCase)) { Graph = G; break; }
+		}
+	}
+	if (!Graph)
+		return FString::Printf(TEXT("{\"success\": false, \"error\": \"Graph not found: %s\"}"), *GraphId);
+
+	// Iterate ALL nodes (bypasses exec-chain traversal limit)
+	const FName TargetFName(*NodeFName);
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (Node->GetFName() != TargetFName) continue;
+		const FString ClassName = Node->GetClass()->GetName();
+		if (!NodeClassFilter.IsEmpty() && !ClassName.Contains(NodeClassFilter)) continue;
+
+		return FString::Printf(
+			TEXT("{\"success\": true, \"node_guid\": \"%s\", \"node_class\": \"%s\", \"node_name\": \"%s\"}"),
+			*Node->NodeGuid.ToString(), *ClassName, *NodeFName);
+	}
+
+	return FString::Printf(
+		TEXT("{\"success\": false, \"error\": \"Node not found (fname=%s, filter=%s)\"}"),
+		*NodeFName, *NodeClassFilter);
+}
+
 FString UGenBlueprintUtils::AddSwitchCase(const FString& BlueprintPath,
                                            const FString& GraphId,
                                            const FString& NodeGuid,

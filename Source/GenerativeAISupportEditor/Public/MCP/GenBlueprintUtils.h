@@ -189,6 +189,31 @@ public:
 	                              const FString& NodeGuid,
 	                              const FString& CaseName);
 
+	/**
+	 * Find any node in a Blueprint graph by its UObject FName and return its NodeGuid.
+	 *
+	 * Solves the "ForEachLoop body node not reachable via exec-chain traversal" problem:
+	 * the Python-side instance_id resolver only traverses exec-reachable nodes, so nodes
+	 * inside ForEachLoop bodies (K2Node_SwitchString, K2Node_BreakStruct, etc.) cannot be
+	 * found by it. This function iterates Graph->Nodes directly, bypassing exec-chain limits.
+	 *
+	 * Usage from Python:
+	 *   fname = node_obj.get_fname()   # e.g. "K2Node_BreakStruct_0"
+	 *   result = U.get_node_guid_by_fname(bp, "EventGraph", fname)
+	 *   guid = result["node_guid"]     # pass to connect_nodes or add_switch_case
+	 *
+	 * @param BlueprintPath  Asset path
+	 * @param GraphId        "EventGraph", other graph name, or GUID string
+	 * @param NodeFName      UObject FName of the target node (from node.get_fname())
+	 * @param NodeClassFilter Optional: only match if node class name contains this string
+	 * @return JSON: {"success":bool, "node_guid":str, "node_class":str, "node_name":str}
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils|Query")
+	static FString GetNodeGuidByFName(const FString& BlueprintPath,
+	                                   const FString& GraphId,
+	                                   const FString& NodeFName,
+	                                   const FString& NodeClassFilter = TEXT(""));
+
 private:
 	// Helper functions for internal use
 	static UBlueprint* LoadBlueprintAsset(const FString& BlueprintPath);
