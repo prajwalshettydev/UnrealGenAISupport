@@ -1415,26 +1415,33 @@ FString UGenBlueprintUtils::AddSwitchCase(const FString& BlueprintPath,
 	if (!Graph)
 		return FString::Printf(TEXT("{\"success\": false, \"error\": \"Graph not found: %s\"}"), *GraphId);
 
-	// --- 3. Find K2Node_SwitchString by GUID ---
+	// --- 3. Find K2Node_SwitchString by GUID or UObject FName ---
+	// Accepts either a real GUID string (e.g. "A1B2C3D4-...")
+	// or a UObject FName (e.g. "K2Node_SwitchString_0" from Python's switch.get_fname()).
+	// FName lookup is the practical path since NodeGuid is not accessible from Python.
 	FGuid TargetGuid;
-	if (!FGuid::Parse(NodeGuid, TargetGuid))
-		return TEXT("{\"success\": false, \"error\": \"Invalid node GUID\"}");
+	const bool bUseGuid = FGuid::Parse(NodeGuid, TargetGuid);
+	const FName TargetFName = bUseGuid ? NAME_None : FName(*NodeGuid);
 
 	UK2Node_SwitchString* SwitchNode = nullptr;
 	for (UEdGraphNode* Node : Graph->Nodes)
 	{
-		if (Node->NodeGuid == TargetGuid)
+		const bool bMatch = bUseGuid ? (Node->NodeGuid == TargetGuid)
+		                             : (Node->GetFName() == TargetFName);
+		if (bMatch)
 		{
 			SwitchNode = Cast<UK2Node_SwitchString>(Node);
 			if (!SwitchNode)
 				return FString::Printf(
-					TEXT("{\"success\": false, \"error\": \"Node at GUID is not K2Node_SwitchString (is %s)\"}"),
+					TEXT("{\"success\": false, \"error\": \"Node is not K2Node_SwitchString (is %s)\"}"),
 					*Node->GetClass()->GetName());
 			break;
 		}
 	}
 	if (!SwitchNode)
-		return TEXT("{\"success\": false, \"error\": \"K2Node_SwitchString not found at given GUID\"}");
+		return FString::Printf(
+			TEXT("{\"success\": false, \"error\": \"K2Node_SwitchString not found (id=%s, using %s)\"}"),
+			*NodeGuid, bUseGuid ? TEXT("GUID") : TEXT("FName"));
 
 	// --- 4. Idempotency check ---
 	const FName NewCase(*CaseName);
