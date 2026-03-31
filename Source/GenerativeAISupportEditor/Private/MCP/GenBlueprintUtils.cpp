@@ -1448,8 +1448,8 @@ FString UGenBlueprintUtils::AddSwitchCase(const FString& BlueprintPath,
 	if (SwitchNode->PinNames.Contains(NewCase))
 	{
 		return FString::Printf(
-			TEXT("{\"success\": true, \"case_added\": \"%s\", \"method\": \"already_exists\", \"pin_count\": %d}"),
-			*CaseName, SwitchNode->PinNames.Num());
+			TEXT("{\"success\": true, \"case_added\": \"%s\", \"method\": \"already_exists\", \"pin_count\": %d, \"node_guid\": \"%s\"}"),
+			*CaseName, SwitchNode->PinNames.Num(), *SwitchNode->NodeGuid.ToString());
 	}
 
 	// --- 5. Structural mutation ---
@@ -1467,6 +1467,6 @@ FString UGenBlueprintUtils::AddSwitchCase(const FString& BlueprintPath,
 		*CaseName, *BlueprintPath, SwitchNode->PinNames.Num());
 
 	return FString::Printf(
-		TEXT("{\"success\": true, \"case_added\": \"%s\", \"method\": \"PinNames+ReconstructNode\", \"pin_count\": %d}"),
-		*CaseName, SwitchNode->PinNames.Num());
+		TEXT("{\"success\": true, \"case_added\": \"%s\", \"method\": \"PinNames+ReconstructNode\", \"pin_count\": %d, \"node_guid\": \"%s\"}"),
+		*CaseName, SwitchNode->PinNames.Num(), *SwitchNode->NodeGuid.ToString());
 }
