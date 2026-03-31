@@ -51,16 +51,21 @@ def start_mcp_server():
 
         # Create a detached process that will continue running
         # even if Unreal crashes (we'll handle proper shutdown with atexit)
-        creationflags = 0
+        popen_kwargs = {
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "text": True,
+        }
         if sys.platform == 'win32':
-            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            # On macOS/Linux, start_new_session detaches the child process
+            # so it doesn't receive signals from the parent's process group
+            popen_kwargs["start_new_session"] = True
 
         mcp_server_process = subprocess.Popen(
             [python_exe, mcp_server_path],
-            creationflags=creationflags,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
+            **popen_kwargs
         )
 
         log.log_info(f"MCP server started with PID: {mcp_server_process.pid}")

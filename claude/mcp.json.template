@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "unreal-handshake": {
+      "command": "uv",
+      "args": [
+        "run", "--directory", ".",
+        "--with", "fastmcp", "--with", "mss",
+        "python",
+        "__SUBMODULE_PATH__/Content/Python/mcp_server.py"
+      ]
+    }
+  }
+}

@@ -9,7 +9,10 @@ import tempfile # Used to find the OS's temporary folder
 
 from utils import unreal_conversions as uc
 from utils import logging as log
+from command_registry import registry
 
+
+@registry.command("spawn", category="basic")
 def handle_spawn(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a spawn command
@@ -77,6 +80,7 @@ def handle_spawn(command: Dict[str, Any]) -> Dict[str, Any]:
 
 
 
+@registry.command("take_screenshot", category="basic")
 def handle_take_screenshot(command):
     """
     Takes a screenshot using the HighResShot console command with a deterministic filename.
@@ -135,6 +139,7 @@ def handle_take_screenshot(command):
             except Exception as e_cleanup:
                 unreal.log_error(f"Failed to delete temporary screenshot file '{screenshot_path}': {e_cleanup}")
 
+@registry.command("create_material", category="basic", mutates_blueprint=True)
 def handle_create_material(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a create_material command
@@ -173,6 +178,7 @@ def handle_create_material(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("get_all_scene_objects", category="basic")
 def handle_get_all_scene_objects(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
         level = unreal.EditorLevelLibrary.get_level(unreal.EditorLevelLibrary.get_editor_world())
@@ -185,6 +191,7 @@ def handle_get_all_scene_objects(command: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@registry.command("create_project_folder", category="basic")
 def handle_create_project_folder(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
         folder_path = command.get("folder_path")
@@ -194,6 +201,7 @@ def handle_create_project_folder(command: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@registry.command("get_files_in_folder", category="basic")
 def handle_get_files_in_folder(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
         folder_path = f"/Game/{command.get('folder_path')}"
@@ -202,6 +210,7 @@ def handle_get_files_in_folder(command: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@registry.command("add_input_binding", category="basic")
 def handle_add_input_binding(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
         action_name = command.get("action_name")

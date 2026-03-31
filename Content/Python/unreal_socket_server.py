@@ -1,5 +1,7 @@
+import os
 import socket
 import json
+import importlib
 import unreal
 import threading
 import time
@@ -9,6 +11,9 @@ from typing import Dict, Any, Tuple, List, Optional
 from handlers import basic_commands, actor_commands, blueprint_commands, python_commands
 from handlers import ui_commands
 from utils import logging as log
+from utils import logging as log_module  # kept for importlib.reload() in reload_handlers
+from command_registry import registry
+from utils import unreal_conversions
 
 # Global queues and state
 command_queue = []
@@ -19,64 +24,69 @@ class CommandDispatcher:
     """
     Dispatches commands to appropriate handlers based on command type
     """
+    HANDLER_MODULES = [basic_commands, actor_commands, blueprint_commands,
+                       python_commands, ui_commands]
+    UTILITY_MODULES = [unreal_conversions, log_module]
+
     def __init__(self):
-        # Register command handlers
-        self.handlers = {
+        self._reload_revision = 0
+        self._build_handler_map()
+
+    def _build_handler_map(self):
+        """(Re)build the command -> handler dispatch table.
+
+        Built-in commands (handshake, reload_handlers) are registered here.
+        All other commands come from the @registry.command() decorators on
+        handler functions — imported modules auto-register at import time.
+        """
+        builtins = {
             "handshake": self._handle_handshake,
+            "reload_handlers": self._handle_reload,
+        }
+        registry_table = registry.build_dispatch_table()
 
-            # Basic object commands
-            "spawn": basic_commands.handle_spawn,
-            "create_material": basic_commands.handle_create_material,
-            "modify_object": actor_commands.handle_modify_object,
-            "take_screenshot": basic_commands.handle_take_screenshot,
+        conflicts = set(builtins) & set(registry_table)
+        if conflicts:
+            raise RuntimeError(f"Handler name conflicts with built-ins: {conflicts}")
 
-            # Blueprint commands
-            "create_blueprint": blueprint_commands.handle_create_blueprint,
-            "add_component": blueprint_commands.handle_add_component,
-            "add_variable": blueprint_commands.handle_add_variable,
-            "add_function": blueprint_commands.handle_add_function,
-            "add_node": blueprint_commands.handle_add_node,
-            "connect_nodes": blueprint_commands.handle_connect_nodes,
-            "compile_blueprint": blueprint_commands.handle_compile_blueprint,
-            "spawn_blueprint": blueprint_commands.handle_spawn_blueprint,
-            "delete_node": blueprint_commands.handle_delete_node,
-            
-            # Getters
-            "get_node_guid": blueprint_commands.handle_get_node_guid,
-            "get_all_nodes": blueprint_commands.handle_get_all_nodes,
-            "get_node_suggestions": blueprint_commands.handle_get_node_suggestions,
-            
-            
-            # Bulk commands
-            "add_nodes_bulk": blueprint_commands.handle_add_nodes_bulk,
-            "connect_nodes_bulk": blueprint_commands.handle_connect_nodes_bulk,
-            
-            # Python and console
-            "execute_python": python_commands.handle_execute_python,
-            "execute_unreal_command": python_commands.handle_execute_unreal_command,
-            
-            # New
-            "edit_component_property": actor_commands.handle_edit_component_property,
-            "add_component_with_events": actor_commands.handle_add_component_with_events,
-            
-            # Scene
-            "get_all_scene_objects": basic_commands.handle_get_all_scene_objects,
-            "create_project_folder": basic_commands.handle_create_project_folder,
-            "get_files_in_folder": basic_commands.handle_get_files_in_folder,
-            
-            # Input
-            "add_input_binding": basic_commands.handle_add_input_binding,
+        self.handlers = {**builtins, **registry_table}
+        log.log_info(f"CommandDispatcher: {len(self.handlers)} commands registered "
+                     f"({registry.count} from registry + {len(builtins)} built-in)")
 
-            # --- NEW UI COMMANDS ---
-            "add_widget_to_user_widget": ui_commands.handle_add_widget_to_user_widget,
-            "edit_widget_property": ui_commands.handle_edit_widget_property,
+    def _handle_reload(self, command: Dict[str, Any]) -> Dict[str, Any]:
+        """Hot-reload handler (and optionally utility) modules, then rebuild dispatch table.
+        Atomic: only rebuilds if ALL modules reload successfully."""
+        include_utils = command.get("include_utils", False)
+        modules_to_reload = []
+        if include_utils:
+            modules_to_reload += self.UTILITY_MODULES
+        modules_to_reload += self.HANDLER_MODULES
 
-            # --- Node CRUD ---
-            "get_node_details": blueprint_commands.handle_get_node_details,
-            "list_graphs": blueprint_commands.handle_list_graphs,
-            "set_node_pin_value": blueprint_commands.handle_set_node_pin_value,
-            "disconnect_nodes": blueprint_commands.handle_disconnect_nodes,
-            "move_node": blueprint_commands.handle_move_node,
+        reloaded = []
+        errors = []
+        for mod in modules_to_reload:
+            try:
+                importlib.reload(mod)
+                reloaded.append(mod.__name__)
+            except Exception as e:
+                errors.append(f"{mod.__name__}: {e}")
+
+        if errors:
+            return {
+                "success": False,
+                "reloaded": reloaded,
+                "errors": errors,
+                "note": "Handler map NOT updated — still running previous version",
+            }
+
+        self._build_handler_map()
+        self._reload_revision += 1
+        log.log_info(f"Handler reload complete (rev {self._reload_revision}): {reloaded}")
+        return {
+            "success": True,
+            "reloaded": reloaded,
+            "revision": self._reload_revision,
+            "handler_count": len(self.handlers),
         }
 
     def dispatch(self, command: Dict[str, Any]) -> Dict[str, Any]:
@@ -93,17 +103,14 @@ class CommandDispatcher:
             return {"success": False, "error": str(e)}
 
     def _handle_handshake(self, command: Dict[str, Any]) -> Dict[str, Any]:
-        """Built-in handler for handshake command"""
+        """Built-in handler for handshake command.
+        NOTE: This runs on the socket thread (not game thread) for speed.
+        Do NOT call any unreal.* APIs here — they require the main thread."""
         message = command.get("message", "")
         log.log_info(f"Handshake received: {message}")
-        
-        # Get Unreal Engine version
-        engine_version = unreal.SystemLibrary.get_engine_version()
-        
-        # Add connection and session information
+
         connection_info = {
             "status": "Connected",
-            "engine_version": engine_version,
             "timestamp": time.time(),
             "session_id": f"UE-{int(time.time())}"
         }
@@ -186,9 +193,10 @@ def socket_server_thread():
     """Socket server running in a separate thread"""
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_socket.bind(('localhost', 9877))
+    port = int(os.environ.get("UNREAL_PORT", "9877"))
+    server_socket.bind(('localhost', port))
     server_socket.listen(1)
-    log.log_info("Unreal Engine socket server started on port 9877")
+    log.log_info(f"Unreal Engine socket server started on port {port}")
 
     command_counter = 0
 

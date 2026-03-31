@@ -4,8 +4,10 @@ from typing import Dict, Any, List, Tuple, Union, Optional
 
 from utils import unreal_conversions as uc
 from utils import logging as log
+from command_registry import registry
 
 
+@registry.command("create_blueprint", category="blueprint", mutates_blueprint=True)
 def handle_create_blueprint(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to create a new Blueprint from a specified parent class
@@ -43,6 +45,7 @@ def handle_create_blueprint(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("add_component", category="blueprint", mutates_blueprint=True)
 def handle_add_component(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to add a component to a Blueprint
@@ -83,6 +86,7 @@ def handle_add_component(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("add_variable", category="blueprint", mutates_blueprint=True)
 def handle_add_variable(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to add a variable to a Blueprint
@@ -128,6 +132,7 @@ def handle_add_variable(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("add_function", category="blueprint", mutates_blueprint=True)
 def handle_add_function(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to add a function to a Blueprint
@@ -175,6 +180,7 @@ def handle_add_function(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("add_node", category="blueprint", mutates_blueprint=True)
 def handle_add_node(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to add any type of node to a Blueprint graph
@@ -206,7 +212,7 @@ def handle_add_node(command: Dict[str, Any]) -> Dict[str, Any]:
             log.log_error("Missing required parameters for add_node")
             return {"success": False, "error": "Missing required parameters"}
 
-        log.log_command("add_node", f"Blueprint: {blueprint_path}, Node: {node_type}")
+        log.log_command("add_node", f"Blueprint: {blueprint_path}, Node: {node_type}, Props: {node_properties}")
 
         # Convert node properties to JSON for C++ function
         node_properties_json = json.dumps(node_properties)
@@ -229,6 +235,7 @@ def handle_add_node(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("connect_nodes", category="blueprint", mutates_blueprint=True)
 def handle_connect_nodes(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
         blueprint_path = command.get("blueprint_path")
@@ -263,6 +270,7 @@ def handle_connect_nodes(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("compile_blueprint", category="blueprint")
 def handle_compile_blueprint(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to compile a Blueprint
@@ -299,6 +307,7 @@ def handle_compile_blueprint(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("spawn_blueprint", category="blueprint")
 def handle_spawn_blueprint(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to spawn a Blueprint actor in the level
@@ -348,6 +357,7 @@ def handle_spawn_blueprint(command: Dict[str, Any]) -> Dict[str, Any]:
         log.log_error(f"Error spawning blueprint: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}
 
+@registry.command("add_nodes_bulk", category="blueprint", mutates_blueprint=True)
 def handle_add_nodes_bulk(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to add multiple nodes to a Blueprint graph in a single operation
@@ -387,17 +397,31 @@ def handle_add_nodes_bulk(command: Dict[str, Any]) -> Dict[str, Any]:
         if results_json:
             results = json.loads(results_json)
             node_mapping = {}
+            failed = []
 
             # Create a mapping from reference IDs to actual node GUIDs
             for node_result in results:
-                if "ref_id" in node_result:
-                    node_mapping[node_result["ref_id"]] = node_result["node_guid"]
+                if node_result.get("ok", True) and "node_guid" in node_result:
+                    ref = node_result.get("ref_id", f"node_{len(node_mapping)}")
+                    node_mapping[ref] = node_result["node_guid"]
                 else:
-                    # For nodes without a reference ID, just include the GUID
-                    node_mapping[f"node_{len(node_mapping)}"] = node_result["node_guid"]
+                    # Node creation failed — collect structured error
+                    failed.append({
+                        "ref_id": node_result.get("ref_id", ""),
+                        "error_code": node_result.get("error_code", "NODE_CREATION_FAILED"),
+                        "message": node_result.get("message", "Unknown error"),
+                    })
 
-            log.log_result("add_nodes_bulk", True, f"Added {len(results)} nodes to {blueprint_path}")
-            return {"success": True, "nodes": node_mapping}
+            created_count = len(node_mapping)
+            failed_count = len(failed)
+            log.log_result("add_nodes_bulk", True,
+                           f"Added {created_count} nodes to {blueprint_path}"
+                           + (f" ({failed_count} failed)" if failed_count else ""))
+
+            resp = {"success": True, "nodes": node_mapping}
+            if failed:
+                resp["failed"] = failed
+            return resp
         else:
             log.log_error(f"Failed to add nodes to {blueprint_path}")
             return {"success": False, "error": f"Failed to add nodes to {blueprint_path}"}
@@ -407,6 +431,7 @@ def handle_add_nodes_bulk(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("connect_nodes_bulk", category="blueprint", mutates_blueprint=True)
 def handle_connect_nodes_bulk(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to connect multiple pairs of nodes in a Blueprint graph
@@ -458,6 +483,7 @@ def handle_connect_nodes_bulk(command: Dict[str, Any]) -> Dict[str, Any]:
         log.log_error(f"Error connecting nodes: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}
 
+@registry.command("delete_node", category="blueprint", mutates_blueprint=True)
 def handle_delete_node(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to delete a node from a Blueprint graph
@@ -498,6 +524,7 @@ def handle_delete_node(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("get_all_nodes", category="blueprint")
 def handle_get_all_nodes(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to get all nodes in a Blueprint graph
@@ -541,14 +568,58 @@ def handle_get_all_nodes(command: Dict[str, Any]) -> Dict[str, Any]:
         log.log_error(f"Error getting nodes: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}
 
+@registry.command("get_all_nodes_with_details", category="blueprint")
+def handle_get_all_nodes_with_details(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle a command to get ALL nodes with FULL details (pins, connections, titles)
+    in a single call. Avoids N+1 round-trips for describe_blueprint.
+
+    Args:
+        command: The command dictionary containing:
+            - blueprint_path: Path to the Blueprint asset
+            - function_id: ID of the function/graph
+
+    Returns:
+        Response dictionary with success/failure and array of node detail objects.
+    """
+    try:
+        blueprint_path = command.get("blueprint_path")
+        function_id = command.get("function_id")
+
+        if not blueprint_path or not function_id:
+            return {"success": False, "error": "Missing required parameters"}
+
+        log.log_command("get_all_nodes_with_details",
+                        f"Blueprint: {blueprint_path}, Function ID: {function_id}")
+
+        node_creator = unreal.GenBlueprintNodeCreator
+        nodes_json = node_creator.get_all_nodes_with_details(blueprint_path, function_id)
+
+        if nodes_json:
+            try:
+                nodes = json.loads(nodes_json)
+                log.log_result("get_all_nodes_with_details", True,
+                               f"Retrieved {len(nodes)} nodes with details from {blueprint_path}")
+                return {"success": True, "nodes": nodes}
+            except json.JSONDecodeError as e:
+                return {"success": False, "error": f"Error parsing nodes JSON: {str(e)}"}
+        else:
+            return {"success": False, "error": "Failed to get nodes with details"}
+
+    except Exception as e:
+        log.log_error(f"Error getting nodes with details: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+@registry.command("get_node_suggestions", category="blueprint")
 def handle_get_node_suggestions(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to get suggestions for a node type in Unreal Blueprints
-    
+
     Args:
         command: The command dictionary containing:
             - node_type: The partial or full node type to get suggestions for (e.g., "Add", "FloatToDouble")
-                
+
     Returns:
         Response dictionary with success/failure status and a list of suggested node types
     """
@@ -581,6 +652,7 @@ def handle_get_node_suggestions(command: Dict[str, Any]) -> Dict[str, Any]:
         log.log_error(f"Error getting node suggestions: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}
 
+@registry.command("get_node_guid", category="blueprint")
 def handle_get_node_guid(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to retrieve the GUID of a pre-existing node in a Blueprint graph.
@@ -627,6 +699,7 @@ def handle_get_node_guid(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("get_node_details", category="blueprint")
 def handle_get_node_details(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
         blueprint_path = command.get("blueprint_path")
@@ -638,8 +711,9 @@ def handle_get_node_details(command: Dict[str, Any]) -> Dict[str, Any]:
 
         log.log_command("get_node_details", f"Blueprint: {blueprint_path}, Node: {node_guid}")
 
+        schema_mode = command.get("schema_mode", "verbose")
         node_creator = unreal.GenBlueprintNodeCreator
-        result_json = node_creator.get_node_details(blueprint_path, function_id, node_guid)
+        result_json = node_creator.get_node_details(blueprint_path, function_id, node_guid, schema_mode)
 
         if result_json:
             result = json.loads(result_json)
@@ -655,6 +729,7 @@ def handle_get_node_details(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("list_graphs", category="blueprint")
 def handle_list_graphs(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
         blueprint_path = command.get("blueprint_path")
@@ -678,6 +753,7 @@ def handle_list_graphs(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("set_node_pin_value", category="blueprint", mutates_blueprint=True)
 def handle_set_node_pin_value(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
         blueprint_path = command.get("blueprint_path")
@@ -705,6 +781,7 @@ def handle_set_node_pin_value(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("disconnect_nodes", category="blueprint", mutates_blueprint=True)
 def handle_disconnect_nodes(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
         blueprint_path = command.get("blueprint_path")
@@ -735,6 +812,7 @@ def handle_disconnect_nodes(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("move_node", category="blueprint", mutates_blueprint=True)
 def handle_move_node(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
         blueprint_path = command.get("blueprint_path")
@@ -759,4 +837,236 @@ def handle_move_node(command: Dict[str, Any]) -> Dict[str, Any]:
 
     except Exception as e:
         log.log_error(f"Error moving node: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+@registry.command("undo_transaction", category="blueprint")
+def handle_undo_transaction(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        log.log_command("undo_transaction", "Undoing last transaction")
+        utils = unreal.GenBlueprintUtils
+        success = utils.undo_transaction()
+        if success:
+            log.log_result("undo_transaction", True, "Undo executed")
+            return {"success": True}
+        else:
+            return {"success": False, "error": "No transaction to undo or undo failed"}
+    except Exception as e:
+        log.log_error(f"Error undoing transaction: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+@registry.command("get_blueprint_variables", category="blueprint")
+def handle_get_blueprint_variables(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        blueprint_path = command.get("blueprint_path")
+        if not blueprint_path:
+            return {"success": False, "error": "Missing blueprint_path"}
+
+        log.log_command("get_blueprint_variables", f"Blueprint: {blueprint_path}")
+        utils = unreal.GenBlueprintUtils
+        result_json = utils.get_blueprint_variables(blueprint_path)
+
+        if result_json:
+            result = json.loads(result_json)
+            if isinstance(result, dict):
+                return {"success": False, "error": result.get("error", "Unexpected dict response from C++")}
+            if not isinstance(result, list):
+                return {"success": False, "error": f"Invalid response format: {type(result).__name__}"}
+            log.log_result("get_blueprint_variables", True, f"Found {len(result)} variables")
+            return {"success": True, "variables": result}
+        else:
+            return {"success": False, "error": "No result from C++"}
+
+    except Exception as e:
+        log.log_error(f"Error getting variables: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+@registry.command("scan_all_blueprints", category="blueprint")
+def handle_scan_all_blueprints(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        log.log_command("scan_all_blueprints", "Scanning /Game for all Blueprint assets")
+        utils = unreal.GenBlueprintUtils
+        result_json = utils.scan_all_blueprints()
+        if result_json:
+            result = json.loads(result_json)
+            log.log_result("scan_all_blueprints", True, f"Found {len(result)} blueprints")
+            return {"success": True, "blueprints": result}
+        else:
+            return {"success": False, "error": "No result from C++"}
+    except Exception as e:
+        log.log_error(f"Error scanning blueprints: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+@registry.command("save_all_dirty_packages", category="blueprint")
+def handle_save_all_dirty_packages(command: Dict[str, Any]) -> Dict[str, Any]:
+    """Save all unsaved (dirty) packages under /Game.
+
+    Call this after any MCP operation that modifies assets to prevent
+    git pull/merge conflicts on open files.
+    """
+    try:
+        log.log_command("save_all_dirty_packages", "Saving all dirty /Game packages")
+        utils = unreal.GenBlueprintUtils
+        result_json = utils.save_all_dirty_packages()
+        if result_json:
+            result = json.loads(result_json)
+            count = result.get("count", 0)
+            failed = result.get("failed", [])
+            log.log_result("save_all_dirty_packages", len(failed) == 0,
+                           f"Saved {count}, failed {len(failed)}")
+            return {"success": len(failed) == 0, **result}
+        return {"success": False, "error": "No result from C++"}
+    except Exception as e:
+        log.log_error(f"Error saving dirty packages: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+def _call_bool_cpp(cmd_name: str, cpp_method, log_details: str = "", *args) -> Dict[str, Any]:
+    """Shared boilerplate for handlers that call a C++ bool-returning method."""
+    try:
+        log.log_command(cmd_name, log_details)
+        result = cpp_method(*args)
+        log.log_result(cmd_name, result)
+        return {"success": result}
+    except Exception as e:
+        log.log_error(f"Error in {cmd_name}: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+# Transaction management for atomic blueprint operations
+
+@registry.command("begin_transaction", category="blueprint")
+def handle_begin_transaction(command: Dict[str, Any]) -> Dict[str, Any]:
+    name = command.get("transaction_name", "BlueprintPatch")
+    return _call_bool_cpp("begin_transaction",
+                          unreal.GenBlueprintUtils.begin_blueprint_transaction,
+                          f"Name: {name}", name)
+
+
+@registry.command("end_transaction", category="blueprint")
+def handle_end_transaction(command: Dict[str, Any]) -> Dict[str, Any]:
+    return _call_bool_cpp("end_transaction",
+                          unreal.GenBlueprintUtils.end_blueprint_transaction,
+                          "Committing transaction")
+
+
+@registry.command("cancel_transaction", category="blueprint")
+def handle_cancel_transaction(command: Dict[str, Any]) -> Dict[str, Any]:
+    return _call_bool_cpp("cancel_transaction",
+                          unreal.GenBlueprintUtils.cancel_blueprint_transaction,
+                          "Rolling back transaction")
+
+
+# ---------------------------------------------------------------------------
+# Preflight: validate patch without mutating
+# ---------------------------------------------------------------------------
+
+@registry.command("preflight_blueprint_patch", category="blueprint")
+def handle_preflight_blueprint_patch(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        blueprint_path = command.get("blueprint_path")
+        function_id = command.get("function_id", "EventGraph")
+        patch_json = command.get("patch_json", "{}")
+
+        if not blueprint_path:
+            return {"success": False, "error": "Missing blueprint_path"}
+
+        log.log_command("preflight_blueprint_patch", f"Blueprint: {blueprint_path}")
+
+        node_creator = unreal.GenBlueprintNodeCreator
+        result_json = node_creator.preflight_patch(blueprint_path, function_id, patch_json)
+
+        if result_json:
+            result = json.loads(result_json)
+            log.log_result("preflight_blueprint_patch", result.get("valid", False),
+                           f"Issues: {len(result.get('issues', []))}")
+            return {"success": True, **result}
+        else:
+            return {"success": False, "error": "No result from C++"}
+
+    except Exception as e:
+        log.log_error(f"Error in preflight: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Node Discovery: search, inspect, build index
+# ---------------------------------------------------------------------------
+
+@registry.command("build_node_index", category="blueprint")
+def handle_build_node_index(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        log.log_command("build_node_index", "Building full engine node index")
+        node_creator = unreal.GenBlueprintNodeCreator
+        count = node_creator.build_node_index()
+        log.log_result("build_node_index", True, f"Indexed {count} entries")
+        return {"success": True, "indexed_count": count}
+    except Exception as e:
+        log.log_error(f"Error building node index: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+@registry.command("search_blueprint_nodes", category="blueprint")
+def handle_search_blueprint_nodes(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        query = command.get("query", "")
+        blueprint_path = command.get("blueprint_path", "")
+        category_filter = command.get("category_filter", "")
+        max_results = command.get("max_results", 5)
+
+        if not query:
+            return {"success": False, "error": "Missing query"}
+
+        log.log_command("search_blueprint_nodes", f"Query: {query}")
+
+        schema_mode = command.get("schema_mode", "verbose")
+        node_creator = unreal.GenBlueprintNodeCreator
+        result_json = node_creator.search_blueprint_nodes(
+            query, blueprint_path, category_filter, max_results, schema_mode)
+
+        if result_json:
+            result = json.loads(result_json)
+            candidates = result.get("candidates", [])
+            log.log_result("search_blueprint_nodes", True,
+                           f"Found {len(candidates)} candidates")
+            return {"success": True, **result}
+        else:
+            return {"success": False, "error": "No result from C++"}
+
+    except Exception as e:
+        log.log_error(f"Error searching nodes: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+@registry.command("inspect_blueprint_node", category="blueprint")
+def handle_inspect_blueprint_node(command: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        canonical_name = command.get("canonical_name", "")
+        blueprint_path = command.get("blueprint_path", "")
+
+        if not canonical_name:
+            return {"success": False, "error": "Missing canonical_name"}
+
+        log.log_command("inspect_blueprint_node", f"Node: {canonical_name}")
+
+        node_creator = unreal.GenBlueprintNodeCreator
+        schema_mode = command.get("schema_mode", "verbose")
+        result_json = node_creator.inspect_blueprint_node(canonical_name, blueprint_path, schema_mode)
+
+        if result_json:
+            result = json.loads(result_json)
+            if "error" in result:
+                log.log_result("inspect_blueprint_node", False, result["error"])
+                return {"success": False, "error": result["error"]}
+            log.log_result("inspect_blueprint_node", True,
+                           f"Pins: {len(result.get('pins', []))}")
+            return {"success": True, **{k: v for k, v in result.items() if k != "error"}}
+        else:
+            return {"success": False, "error": "No result from C++"}
+
+    except Exception as e:
+        log.log_error(f"Error inspecting node: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}

@@ -10,6 +10,8 @@ import traceback
 
 # Assuming a logging module similar to your example
 from utils import logging as log
+from command_registry import registry
+from constants import DESTRUCTIVE_SCRIPT_PATTERNS, DESTRUCTIVE_COMMAND_KEYWORDS
 
 
 def execute_script(script_file, output_file, error_file, status_file):
@@ -83,6 +85,7 @@ def get_recent_unreal_logs(start_line=None):
         return None
 
 
+@registry.command("execute_python", category="python", destructive=True, requires_confirmation=True)
 def handle_execute_python(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to execute a Python script in Unreal Engine
@@ -108,16 +111,7 @@ def handle_execute_python(command: Dict[str, Any]) -> Dict[str, Any]:
         # Get log line count before execution
         log_start_line = get_log_line_count()
 
-        destructive_keywords = [
-            "unreal.EditorAssetLibrary.delete_asset",
-            "unreal.EditorLevelLibrary.destroy_actor",
-            "unreal.save_package",
-            "os.remove",
-            "shutil.rmtree",
-            "file.write",
-            "unreal.EditorAssetLibrary.save_asset"
-        ]
-        is_destructive = any(keyword in script for keyword in destructive_keywords)
+        is_destructive = any(keyword in script for keyword in DESTRUCTIVE_SCRIPT_PATTERNS)
 
         if is_destructive and not force:
             log.log_warning("Potentially destructive script detected")
@@ -201,6 +195,7 @@ def handle_execute_python(command: Dict[str, Any]) -> Dict[str, Any]:
                     pass
 
 
+@registry.command("execute_unreal_command", category="python", destructive=True, requires_confirmation=True)
 def handle_execute_unreal_command(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to execute an Unreal Engine console command
@@ -238,8 +233,7 @@ def handle_execute_unreal_command(command: Dict[str, Any]) -> Dict[str, Any]:
         # Get log line count before execution
         log_start_line = get_log_line_count()
 
-        destructive_keywords = ["delete", "save", "quit", "exit", "restart"]
-        is_destructive = any(keyword in cmd.lower() for keyword in destructive_keywords)
+        is_destructive = any(keyword in cmd.lower() for keyword in DESTRUCTIVE_COMMAND_KEYWORDS)
 
         if is_destructive and not force:
             log.log_warning("Potentially destructive command detected")

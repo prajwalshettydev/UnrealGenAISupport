@@ -131,6 +131,37 @@ public:
 	static FString AddComponentWithEvents(const FString& BlueprintPath, const FString& ComponentName,
 	                               const FString& ComponentClassName);
 
+	// Undo the last editor transaction (calls GEditor->UndoTransaction)
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
+	static bool UndoTransaction();
+
+	// Begin a named transaction for atomic blueprint operations
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
+	static bool BeginBlueprintTransaction(const FString& TransactionName);
+
+	// End (commit) the current transaction
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
+	static bool EndBlueprintTransaction();
+
+	// Cancel (rollback) the current transaction — undoes all changes since Begin
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
+	static bool CancelBlueprintTransaction();
+
+	// Get all variables defined in a Blueprint (reads NewVariables directly)
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
+	static FString GetBlueprintVariables(const FString& BlueprintPath);
+
+	// Scan all Blueprint assets under /Game and return lightweight metadata
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
+	static FString ScanAllBlueprints();
+
+	// Save all dirty (unsaved) packages in the editor.
+	// Returns JSON: {"saved": [...], "failed": [...], "count": N}
+	// Call this after any MCP operation that modifies assets to prevent
+	// conflicts when git pull/merge runs on open files.
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
+	static FString SaveAllDirtyPackages();
+
 private:
 	// Helper functions for internal use
 	static UBlueprint* LoadBlueprintAsset(const FString& BlueprintPath);

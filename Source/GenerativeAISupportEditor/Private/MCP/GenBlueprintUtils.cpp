@@ -12,7 +12,11 @@
 #include "Kismet2/KismetEditorUtilities.h"
 #include "UObject/SavePackage.h"
 #include "Blueprint/BlueprintSupport.h"
+#include "FileHelpers.h"
 #include "K2Node_FunctionEntry.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "Editor.h"
 #include "K2Node_FunctionResult.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
@@ -1184,4 +1188,186 @@ FString UGenBlueprintUtils::AddComponentWithEvents(const FString& BlueprintPath,
     // Return success with GUIDs
     return FString::Printf(TEXT("{\"success\": true, \"message\": \"Added collision component %s with overlap events\", \"begin_overlap_guid\": \"%s\", \"end_overlap_guid\": \"%s\"}"),
                            *ComponentName, *BeginOverlapEvent->NodeGuid.ToString(), *EndOverlapEvent->NodeGuid.ToString());
+}
+
+
+bool UGenBlueprintUtils::UndoTransaction()
+{
+	return GEditor && GEditor->Trans && GEditor->UndoTransaction();
+}
+
+bool UGenBlueprintUtils::BeginBlueprintTransaction(const FString& TransactionName)
+{
+	if (!GEditor) return false;
+	GEditor->BeginTransaction(FText::FromString(TEXT("MCP: ") + TransactionName));
+	UE_LOG(LogTemp, Log, TEXT("BeginBlueprintTransaction: %s"), *TransactionName);
+	return true;
+}
+
+bool UGenBlueprintUtils::EndBlueprintTransaction()
+{
+	if (!GEditor) return false;
+	GEditor->EndTransaction();
+	UE_LOG(LogTemp, Log, TEXT("EndBlueprintTransaction: committed"));
+	return true;
+}
+
+bool UGenBlueprintUtils::CancelBlueprintTransaction()
+{
+	if (!GEditor) return false;
+	GEditor->CancelTransaction(0); // 0 = most recent (topmost) transaction on the stack
+	UE_LOG(LogTemp, Log, TEXT("CancelBlueprintTransaction: rolled back"));
+	return true;
+}
+
+
+FString UGenBlueprintUtils::GetBlueprintVariables(const FString& BlueprintPath)
+{
+	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *BlueprintPath);
+	if (!Blueprint) return TEXT("");
+
+	TArray<TSharedPtr<FJsonValue>> VarsArray;
+	for (const FBPVariableDescription& Var : Blueprint->NewVariables)
+	{
+		TSharedPtr<FJsonObject> VarObj = MakeShareable(new FJsonObject);
+		VarObj->SetStringField(TEXT("name"), Var.VarName.ToString());
+		VarObj->SetStringField(TEXT("type"), Var.VarType.PinCategory.ToString());
+
+		FString SubType;
+		if (Var.VarType.PinSubCategoryObject.IsValid())
+		{
+			SubType = Var.VarType.PinSubCategoryObject->GetName();
+		}
+		if (!SubType.IsEmpty())
+		{
+			VarObj->SetStringField(TEXT("sub_type"), SubType);
+		}
+
+		VarObj->SetStringField(TEXT("default_value"), Var.DefaultValue);
+		VarObj->SetStringField(TEXT("category"), Var.Category.ToString());
+		VarObj->SetBoolField(TEXT("is_instance_editable"),
+			Var.PropertyFlags & CPF_Edit ? true : false);
+
+		VarsArray.Add(MakeShareable(new FJsonValueObject(VarObj)));
+	}
+
+	FString ResultJson;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
+	FJsonSerializer::Serialize(VarsArray, Writer);
+	return ResultJson;
+}
+
+
+FString UGenBlueprintUtils::ScanAllBlueprints()
+{
+	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
+
+	FARFilter Filter;
+	Filter.ClassPaths.Add(UBlueprint::StaticClass()->GetClassPathName());
+	Filter.PackagePaths.Add(TEXT("/Game"));
+	Filter.bRecursivePaths = true;
+
+	TArray<FAssetData> AssetList;
+	AssetRegistry.GetAssets(Filter, AssetList);
+
+	TArray<TSharedPtr<FJsonValue>> ResultArray;
+	for (const FAssetData& Asset : AssetList)
+	{
+		TSharedPtr<FJsonObject> Obj = MakeShareable(new FJsonObject);
+		Obj->SetStringField(TEXT("path"), Asset.GetObjectPathString());
+		Obj->SetStringField(TEXT("name"), Asset.AssetName.ToString());
+		Obj->SetStringField(TEXT("package"), Asset.PackageName.ToString());
+
+		// Extract short class name from asset tag: "/Script/Engine.Actor'" → "Actor"
+		FString ParentClass;
+		if (Asset.GetTagValue(FName("ParentClass"), ParentClass))
+		{
+			int32 DotIdx = ParentClass.Find(TEXT("."), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+			if (DotIdx != INDEX_NONE)
+			{
+				ParentClass = ParentClass.Mid(DotIdx + 1);
+				if (ParentClass.EndsWith(TEXT("'")))
+					ParentClass.RemoveFromEnd(TEXT("'"));
+			}
+			Obj->SetStringField(TEXT("parent_class"), ParentClass);
+		}
+		else
+		{
+			Obj->SetStringField(TEXT("parent_class"), TEXT("Unknown"));
+		}
+
+		ResultArray.Add(MakeShareable(new FJsonValueObject(Obj)));
+	}
+
+	FString ResultJson;
+	TSharedRef<TJsonWriter<>> JsonWriter = TJsonWriterFactory<>::Create(&ResultJson);
+	FJsonSerializer::Serialize(ResultArray, JsonWriter);
+
+	UE_LOG(LogTemp, Log, TEXT("ScanAllBlueprints: found %d blueprints"), ResultArray.Num());
+	return ResultJson;
+}
+
+
+FString UGenBlueprintUtils::SaveAllDirtyPackages()
+{
+	TArray<FString> SavedPaths;
+	TArray<FString> FailedPaths;
+
+	// Collect all dirty packages that are under /Game (skip engine/plugin content)
+	TArray<UPackage*> DirtyPackages;
+	for (TObjectIterator<UPackage> It; It; ++It)
+	{
+		UPackage* Pkg = *It;
+		if (!Pkg || !Pkg->IsDirty()) continue;
+		FString PkgName = Pkg->GetName();
+		// Only save game-content packages, not transient or engine packages
+		if (!PkgName.StartsWith(TEXT("/Game"))) continue;
+		DirtyPackages.Add(Pkg);
+	}
+
+	for (UPackage* Pkg : DirtyPackages)
+	{
+		FString Filename;
+		if (!FPackageName::TryConvertLongPackageNameToFilename(Pkg->GetName(), Filename,
+		                                                       FPackageName::GetAssetPackageExtension()))
+			continue;
+
+		FSavePackageArgs SaveArgs;
+		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+
+		FSavePackageResultStruct SaveResult = UPackage::Save(Pkg, nullptr, *Filename, SaveArgs);
+		bool bSaved = SaveResult.IsSuccessful();
+
+		if (bSaved)
+		{
+			Pkg->MarkAsFullyLoaded();
+			SavedPaths.Add(Pkg->GetName());
+			UE_LOG(LogTemp, Log, TEXT("SaveAllDirtyPackages: saved %s"), *Pkg->GetName());
+		}
+		else
+		{
+			FailedPaths.Add(Pkg->GetName());
+			UE_LOG(LogTemp, Warning, TEXT("SaveAllDirtyPackages: failed to save %s"), *Pkg->GetName());
+		}
+	}
+
+	// Build JSON response
+	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
+	Result->SetNumberField(TEXT("count"), SavedPaths.Num());
+
+	auto ToJsonArray = [](const TArray<FString>& Arr) -> TArray<TSharedPtr<FJsonValue>>
+	{
+		TArray<TSharedPtr<FJsonValue>> Out;
+		for (const FString& S : Arr)
+			Out.Add(MakeShareable(new FJsonValueString(S)));
+		return Out;
+	};
+
+	Result->SetArrayField(TEXT("saved"), ToJsonArray(SavedPaths));
+	Result->SetArrayField(TEXT("failed"), ToJsonArray(FailedPaths));
+
+	FString ResultJson;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
+	FJsonSerializer::Serialize(Result.ToSharedRef(), Writer);
+	return ResultJson;
 }
