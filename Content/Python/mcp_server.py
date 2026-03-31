@@ -151,7 +151,6 @@ _COMPACT_KEY_MAP = {
     "blueprint_name": "bp_name",
     "node_count": "nc",
     "default_value": "dv",
-    "is_connected": "conn",
     "direction": "dir",
     "position": "pos",
 }
@@ -212,9 +211,20 @@ def _to_semantic(obj):
 
 
 def _compact_response(obj):
-    """Strip empties + apply semantic keys. Passthrough if C++ already returned semantic keys."""
-    if isinstance(obj, dict) and ("guid" in obj or "cname" in obj or "dir" in obj):
-        return _strip_empty(obj)  # C++ already semantic — just strip empties
+    """Strip empties + apply semantic keys.
+
+    If the response contains the sentinel key `_semantic: true` (injected by C++ when
+    schema_mode=semantic is active), skip _to_semantic transformation — C++ already
+    output bp_json_v2 keys directly. The sentinel is stripped before returning.
+
+    Falls back to heuristic detection (presence of 'guid'/'cname' at top level) for
+    responses that predate the sentinel marker.
+    """
+    if isinstance(obj, dict):
+        has_sentinel = obj.pop("_semantic", False)
+        has_heuristic = "guid" in obj or "cname" in obj
+        if has_sentinel or has_heuristic:
+            return _strip_empty(obj)  # already semantic — only strip empties
     return _to_semantic(_strip_empty(obj))
 
 
@@ -1905,7 +1915,7 @@ def _build_data_expression(node_guid, pin_name, details_map, visited=None):
         for p in det.get("pins", []):
             if p["direction"] != "input" or p.get("type") == "exec":
                 continue
-            if p.get("is_connected") and p.get("connected_to"):
+            if p.get("connected_to"):
                 conn = p["connected_to"][0]
                 arg_expr = _build_data_expression(
                     conn["node_guid"], conn["pin_name"], details_map, visited)
@@ -1937,7 +1947,7 @@ def _build_data_expression(node_guid, pin_name, details_map, visited=None):
     # Reroute: pass through
     if abstract == "Reroute":
         for p in det.get("pins", []):
-            if p["direction"] == "input" and p.get("is_connected"):
+            if p["direction"] == "input" and p.get("connected_to"):
                 conn = p["connected_to"][0]
                 return _build_data_expression(
                     conn["node_guid"], conn["pin_name"], details_map, visited)
@@ -2169,14 +2179,14 @@ def _build_graph_description(blueprint_path, graph_info, depth, include_pseudo, 
                     "kind": "exec" if p.get("type") == "exec" else "data",
                     "data_type": p.get("type", "") if p.get("type") != "exec" else None,
                     "default_value": p.get("default_value", ""),
-                    "is_connected": p.get("is_connected", False),
+                    "connected_to": p.get("connected_to", []),
                 })
 
         nodes_out.append(node_entry)
 
         # Extract edges from output pins
         for p in det.get("pins", []):
-            if p["direction"] != "output" or not p.get("is_connected"):
+            if p["direction"] != "output" or not p.get("connected_to"):
                 continue
             for conn in p.get("connected_to", []):
                 edge = {
@@ -2296,7 +2306,7 @@ def _build_graph_description(blueprint_path, graph_info, depth, include_pseudo, 
                     continue
                 if p["name"] in _SKIP_PINS:
                     continue
-                if p.get("is_connected") and p.get("connected_to"):
+                if p.get("connected_to"):
                     conn = p["connected_to"][0]
                     expr = _build_data_expression(
                         conn["node_guid"], conn["pin_name"], details_by_guid)
@@ -2456,7 +2466,7 @@ def _build_graph_description(blueprint_path, graph_info, depth, include_pseudo, 
             for p in det.get("pins", []):
                 if p["direction"] != "input" or p.get("type") == "exec":
                     continue
-                if p.get("is_connected") and p.get("connected_to"):
+                if p.get("connected_to"):
                     conn = p["connected_to"][0]
                     src_node = node_map.get(conn["node_guid"])
                     src_det = details_by_guid.get(conn["node_guid"], {})
@@ -3620,7 +3630,7 @@ def auto_layout_graph(blueprint_path: str, function_id: str = "EventGraph") -> s
         guid = n.get("node_guid", n.get("id", ""))
         node_by_guid[guid] = n
         for p in n.get("pins", []):
-            if p.get("type") == "exec" and p["direction"] == "output" and p.get("is_connected"):
+            if p.get("type") == "exec" and p["direction"] == "output" and p.get("connected_to"):
                 for conn in p.get("connected_to", []):
                     exec_adj.setdefault(guid, []).append(conn["node_guid"])
 

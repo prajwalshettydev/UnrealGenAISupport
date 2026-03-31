@@ -2818,13 +2818,21 @@ FString UGenBlueprintNodeCreator::SearchBlueprintNodes(const FString& Query, con
 	// Sort by score descending
 	Candidates.Sort([](const FScoredEntry& A, const FScoredEntry& B) { return A.Score > B.Score; });
 
-	// Dedup consecutive entries with same canonical name (keep higher-scored one)
-	for (int32 i = Candidates.Num() - 1; i > 0; i--)
+	// Full dedup: remove any entry whose canonical name was already seen at a higher score.
+	// Since Candidates is sorted descending by score, the first occurrence of each name wins.
 	{
-		if (Candidates[i].GetEntry(ContextEntries).CanonicalName ==
-			Candidates[i - 1].GetEntry(ContextEntries).CanonicalName)
+		TSet<FString> SeenNames;
+		for (int32 i = Candidates.Num() - 1; i >= 0; i--)
 		{
-			Candidates.RemoveAt(i);
+			const FString& CName = Candidates[i].GetEntry(ContextEntries).CanonicalName;
+			if (SeenNames.Contains(CName))
+			{
+				Candidates.RemoveAt(i);
+			}
+			else
+			{
+				SeenNames.Add(CName);
+			}
 		}
 	}
 
