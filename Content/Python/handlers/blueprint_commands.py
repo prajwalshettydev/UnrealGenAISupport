@@ -924,6 +924,47 @@ def handle_save_all_dirty_packages(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("add_switch_case", category="blueprint", mutates_blueprint=True)
+def handle_add_switch_case(command: Dict[str, Any]) -> Dict[str, Any]:
+    """Add a new named case pin to a K2Node_SwitchString (Switch on String) node.
+
+    STRUCTURAL MUTATION — set_editor_property("PinNames") alone does NOT work because
+    ReconstructNode() is never called, leaving the exec pin unmaterialized. This handler
+    calls the C++ AddSwitchCase which explicitly calls ReconstructNode() so the new
+    output pin is immediately available for connect_nodes / apply_blueprint_patch.
+
+    Args:
+        blueprint_path: Asset path (e.g. "/Game/Blueprints/Core/BP_My")
+        graph_id:       "EventGraph", other graph name, or graph GUID string
+        node_guid:      GUID of the K2Node_SwitchString node
+        case_name:      Case string to add (e.g. "StepOn")
+
+    Returns:
+        {"success": bool, "case_added": str, "method": str, "pin_count": int}
+        method values: "PinNames+ReconstructNode" | "already_exists"
+    """
+    blueprint_path = command.get("blueprint_path")
+    graph_id = command.get("graph_id", "EventGraph")
+    node_guid = command.get("node_guid")
+    case_name = command.get("case_name")
+
+    if not all([blueprint_path, node_guid, case_name]):
+        return {"success": False, "error": "blueprint_path, node_guid, and case_name are required"}
+
+    try:
+        log.log_command("add_switch_case",
+                        f"BP={blueprint_path} graph={graph_id} guid={node_guid} case={case_name}")
+        utils = unreal.GenBlueprintUtils
+        result_json = utils.add_switch_case(blueprint_path, graph_id, node_guid, case_name)
+        result = json.loads(result_json)
+        log.log_result("add_switch_case", result.get("success", False),
+                       f"method={result.get('method')} pins={result.get('pin_count')}")
+        return result
+    except Exception as e:
+        log.log_error(f"Error in add_switch_case: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
 def _call_bool_cpp(cmd_name: str, cpp_method, log_details: str = "", *args) -> Dict[str, Any]:
     """Shared boilerplate for handlers that call a C++ bool-returning method."""
     try:

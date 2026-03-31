@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See LICENSE file in the root directory of this
 // source tree or http://opensource.org/licenses/MIT.
 #include "MCP/GenBlueprintUtils.h"
+#include "K2Node_SwitchString.h"
 
 #include "BlueprintEditor.h"
 #include "K2Node_ComponentBoundEvent.h"
@@ -1370,4 +1371,95 @@ FString UGenBlueprintUtils::SaveAllDirtyPackages()
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
 	FJsonSerializer::Serialize(Result.ToSharedRef(), Writer);
 	return ResultJson;
+}
+
+FString UGenBlueprintUtils::AddSwitchCase(const FString& BlueprintPath,
+                                           const FString& GraphId,
+                                           const FString& NodeGuid,
+                                           const FString& CaseName)
+{
+	// --- 1. Load blueprint ---
+	UBlueprint* Blueprint = LoadBlueprintAsset(BlueprintPath);
+	if (!Blueprint)
+		return TEXT("{\"success\": false, \"error\": \"Blueprint not found\"}");
+
+	// --- 2. Resolve graph (mirrors ConnectNodes logic) ---
+	UEdGraph* Graph = nullptr;
+	if (GraphId.Equals(TEXT("EventGraph"), ESearchCase::IgnoreCase))
+	{
+		if (Blueprint->UbergraphPages.Num() > 0)
+			Graph = Blueprint->UbergraphPages[0];
+	}
+	else
+	{
+		// Try GUID parse first
+		FGuid GraphGuid;
+		if (FGuid::Parse(GraphId, GraphGuid))
+		{
+			for (UEdGraph* G : Blueprint->UbergraphPages)
+				if (G->GraphGuid == GraphGuid) { Graph = G; break; }
+			if (!Graph)
+				for (UEdGraph* G : Blueprint->FunctionGraphs)
+					if (G->GraphGuid == GraphGuid) { Graph = G; break; }
+		}
+		// Try graph name match as fallback
+		if (!Graph)
+		{
+			for (UEdGraph* G : Blueprint->UbergraphPages)
+				if (G->GetName().Equals(GraphId, ESearchCase::IgnoreCase)) { Graph = G; break; }
+			if (!Graph)
+				for (UEdGraph* G : Blueprint->FunctionGraphs)
+					if (G->GetName().Equals(GraphId, ESearchCase::IgnoreCase)) { Graph = G; break; }
+		}
+	}
+	if (!Graph)
+		return FString::Printf(TEXT("{\"success\": false, \"error\": \"Graph not found: %s\"}"), *GraphId);
+
+	// --- 3. Find K2Node_SwitchString by GUID ---
+	FGuid TargetGuid;
+	if (!FGuid::Parse(NodeGuid, TargetGuid))
+		return TEXT("{\"success\": false, \"error\": \"Invalid node GUID\"}");
+
+	UK2Node_SwitchString* SwitchNode = nullptr;
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (Node->NodeGuid == TargetGuid)
+		{
+			SwitchNode = Cast<UK2Node_SwitchString>(Node);
+			if (!SwitchNode)
+				return FString::Printf(
+					TEXT("{\"success\": false, \"error\": \"Node at GUID is not K2Node_SwitchString (is %s)\"}"),
+					*Node->GetClass()->GetName());
+			break;
+		}
+	}
+	if (!SwitchNode)
+		return TEXT("{\"success\": false, \"error\": \"K2Node_SwitchString not found at given GUID\"}");
+
+	// --- 4. Idempotency check ---
+	const FName NewCase(*CaseName);
+	if (SwitchNode->PinNames.Contains(NewCase))
+	{
+		return FString::Printf(
+			TEXT("{\"success\": true, \"case_added\": \"%s\", \"method\": \"already_exists\", \"pin_count\": %d}"),
+			*CaseName, SwitchNode->PinNames.Num());
+	}
+
+	// --- 5. Structural mutation ---
+	// Note: K2Node_SwitchString::AddPinToSwitchNode() auto-generates a name (for the
+	// editor "Add Pin" button). For a specifically-named case, PinNames.Add +
+	// ReconstructNode is the correct programmatic path.
+	SwitchNode->Modify();
+	SwitchNode->PinNames.Add(NewCase);
+	SwitchNode->ReconstructNode();   // materializes the new exec output pin
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+
+	UE_LOG(LogTemp, Log,
+		TEXT("AddSwitchCase: added case '%s' to switch in %s (total cases: %d)"),
+		*CaseName, *BlueprintPath, SwitchNode->PinNames.Num());
+
+	return FString::Printf(
+		TEXT("{\"success\": true, \"case_added\": \"%s\", \"method\": \"PinNames+ReconstructNode\", \"pin_count\": %d}"),
+		*CaseName, SwitchNode->PinNames.Num());
 }

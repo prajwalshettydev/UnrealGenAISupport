@@ -162,6 +162,33 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
 	static FString SaveAllDirtyPackages();
 
+	/**
+	 * Add a new named case to a K2Node_SwitchString (Switch on String) node.
+	 *
+	 * This is a STRUCTURAL mutation — it modifies the node's dynamic pin layout.
+	 * set_editor_property("PinNames") alone does NOT work because ReconstructNode()
+	 * is not triggered, leaving exec pins unmaterialized. This function calls
+	 * ReconstructNode() explicitly so the new exec output pin is immediately usable
+	 * by connect_nodes / apply_blueprint_patch.
+	 *
+	 * Note: K2Node_SwitchString::AddPinToSwitchNode() auto-generates a pin name and
+	 * is intended for the editor "Add Pin" button — it does not accept a specific name.
+	 * Therefore this function uses PinNames.AddUnique() + ReconstructNode() directly,
+	 * which is the correct path for adding a named case programmatically.
+	 *
+	 * @param BlueprintPath  Asset path (e.g. "/Game/Blueprints/Core/BP_MyActor")
+	 * @param GraphId        "EventGraph", other graph name, or graph GUID string
+	 * @param NodeGuid       GUID of the K2Node_SwitchString node
+	 * @param CaseName       Case string to add (e.g. "StepOn")
+	 * @return JSON: {"success":bool, "case_added":str, "method":str, "pin_count":int}
+	 *         method values: "PinNames+ReconstructNode" | "already_exists"
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils|Structural Mutation")
+	static FString AddSwitchCase(const FString& BlueprintPath,
+	                              const FString& GraphId,
+	                              const FString& NodeGuid,
+	                              const FString& CaseName);
+
 private:
 	// Helper functions for internal use
 	static UBlueprint* LoadBlueprintAsset(const FString& BlueprintPath);

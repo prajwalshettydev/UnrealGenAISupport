@@ -4602,6 +4602,53 @@ def save_all_dirty_packages() -> str:
 
 
 @mcp.tool()
+def add_switch_case(
+    blueprint_path: str,
+    graph_id: str,
+    node_guid: str,
+    case_name: str,
+) -> str:
+    """Add a new named case to a Switch on String (K2Node_SwitchString) node.
+
+    STRUCTURAL MUTATION — this is the correct tool for extending a Switch on String
+    node with a new case. Do NOT use apply_blueprint_patch set_pin_values or
+    execute_python_script to modify PinNames directly; those approaches do NOT call
+    ReconstructNode() at the C++ level, so the exec output pin is never materialized
+    and subsequent connect_nodes calls will return src_pins=[].
+
+    This tool explicitly calls ReconstructNode() after adding the case, so the new
+    exec output pin is immediately available for apply_blueprint_patch / connect_nodes.
+
+    Workflow after calling this tool:
+      1. Use connect_nodes or apply_blueprint_patch to wire the new case output pin
+         to its handler node.
+      2. Compile with compile_blueprint_with_errors.
+
+    Args:
+        blueprint_path: Asset path (e.g. "/Game/Blueprints/Core/BP_NPCAIController")
+        graph_id:       Graph name ("EventGraph", "Actions", etc.) or GUID string
+        node_guid:      GUID of the K2Node_SwitchString node (get via execute_python_script
+                        + ObjectIterator, or from describe_blueprint node IDs)
+        case_name:      Case string to add (e.g. "StepOn", "WalkTo")
+
+    Returns:
+        JSON: {"success": bool, "case_added": str, "method": str, "pin_count": int}
+        method "PinNames+ReconstructNode": case was added and exec pin materialized
+        method "already_exists": case was already present, no change made (idempotent)
+    """
+    resp = send_to_unreal({
+        "type": "add_switch_case",
+        "blueprint_path": blueprint_path,
+        "graph_id": graph_id,
+        "node_guid": node_guid,
+        "case_name": case_name,
+    })
+    if not isinstance(resp, dict):
+        return json.dumps({"success": False, "error": "No response from UE"})
+    return json.dumps(resp)
+
+
+@mcp.tool()
 def check_ue_editor_running() -> str:
     """Check whether Unreal Editor is currently running.
 
