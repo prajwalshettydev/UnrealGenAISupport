@@ -3125,9 +3125,34 @@ def apply_blueprint_patch(
                 results["errors"].append(err_msg)
                 patch_log["error_categories"].append(_classify_error(str(fc)))
         else:
-            err_msg = f"connect_bulk: {resp.get('error')}"
+            raw_err = resp.get("error")
+            err_msg = f"connect_bulk: {raw_err}"
             results["errors"].append(err_msg)
             patch_log["error_categories"].append(_classify_error(err_msg))
+            # When error is None the C++ handler returned no detail — run pin introspection
+            # on the first few connections to surface actual available pin names.
+            if raw_err is None and bulk_conns:
+                diag_hints = []
+                for conn in bulk_conns[:4]:
+                    diag_resp = send_to_unreal({
+                        "type": "connect_nodes",
+                        "blueprint_path": blueprint_path,
+                        "function_guid": function_id,
+                        "source_node_guid": conn["source_node_id"],
+                        "source_pin_name": conn["source_pin"],
+                        "target_node_guid": conn["target_node_id"],
+                        "target_pin_name": conn["target_pin"],
+                    })
+                    if not diag_resp.get("success"):
+                        src_avail = [p.get("name") for p in diag_resp.get("source_available_pins", [])[:6]]
+                        tgt_avail = [p.get("name") for p in diag_resp.get("target_available_pins", [])[:6]]
+                        diag_hints.append(
+                            f"  {conn['source_pin']}→{conn['target_pin']}: "
+                            f"src_pins={src_avail} tgt_pins={tgt_avail}"
+                        )
+                        break  # one diagnostic is usually enough to identify locale/pin-name issue
+                if diag_hints:
+                    results["errors"].append("connect_diagnostic: " + " | ".join(diag_hints))
     patch_log["phases"]["add_connections"] = {
         "success": results["connections_made"] == len(patch.get("add_connections", [])),
         "count": results["connections_made"],
@@ -3182,6 +3207,13 @@ def apply_blueprint_patch(
                 results["created_nodes"] = {}  # Nodes no longer exist after rollback
                 ref_to_guid.clear()
                 patch_log["rollback"] = True
+            # UE5 Python CancelTransaction does not reliably remove nodes added via Python API.
+            # Always run remove_unused_nodes as a hard cleanup guard after any rollback attempt.
+            cleanup_resp = send_to_unreal({
+                "type": "remove_unused_nodes",
+                "blueprint_path": blueprint_path,
+            })
+            results["cleanup_ran"] = cleanup_resp.get("success", False)
         else:
             send_to_unreal({"type": "end_transaction"})
             results["committed"] = True
