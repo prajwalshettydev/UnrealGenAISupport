@@ -1530,3 +1530,95 @@ FString UGenBlueprintUtils::AddSwitchCase(const FString& BlueprintPath,
 		TEXT("{\"success\": true, \"case_added\": \"%s\", \"method\": \"PinNames+ReconstructNode\", \"pin_count\": %d, \"node_guid\": \"%s\"}"),
 		*CaseName, SwitchNode->PinNames.Num(), *SwitchNode->NodeGuid.ToString());
 }
+
+FString UGenBlueprintUtils::ConnectNodesByFName(const FString& BlueprintPath,
+                                                  const FString& GraphId,
+                                                  const FString& SrcFName,
+                                                  const FString& SrcPin,
+                                                  const FString& TgtFName,
+                                                  const FString& TgtPin)
+{
+	UBlueprint* Blueprint = LoadBlueprintAsset(BlueprintPath);
+	if (!Blueprint)
+		return TEXT("{\"success\": false, \"error\": \"Blueprint not found\"}");
+
+	// Resolve graph (same name-fallback logic as AddSwitchCase / GetNodeGuidByFName)
+	UEdGraph* Graph = nullptr;
+	if (GraphId.Equals(TEXT("EventGraph"), ESearchCase::IgnoreCase))
+	{
+		if (Blueprint->UbergraphPages.Num() > 0)
+			Graph = Blueprint->UbergraphPages[0];
+	}
+	else
+	{
+		FGuid GraphGuid;
+		if (FGuid::Parse(GraphId, GraphGuid))
+		{
+			for (UEdGraph* G : Blueprint->UbergraphPages)
+				if (G->GraphGuid == GraphGuid) { Graph = G; break; }
+			if (!Graph)
+				for (UEdGraph* G : Blueprint->FunctionGraphs)
+					if (G->GraphGuid == GraphGuid) { Graph = G; break; }
+		}
+	}
+	// Name-based fallback (handles case where UbergraphPages[0] is not "EventGraph")
+	if (!Graph)
+	{
+		for (UEdGraph* G : Blueprint->UbergraphPages)
+			if (G->GetName().Equals(GraphId, ESearchCase::IgnoreCase)) { Graph = G; break; }
+		if (!Graph)
+			for (UEdGraph* G : Blueprint->FunctionGraphs)
+				if (G->GetName().Equals(GraphId, ESearchCase::IgnoreCase)) { Graph = G; break; }
+	}
+	if (!Graph)
+		return FString::Printf(TEXT("{\"success\": false, \"error\": \"Graph not found: %s\"}"), *GraphId);
+
+	// Find source and target nodes by FName (not GUID — avoids GUID instability)
+	const FName SrcName(*SrcFName), TgtName(*TgtFName);
+	UEdGraphNode* SrcNode = nullptr;
+	UEdGraphNode* TgtNode = nullptr;
+	for (UEdGraphNode* Node : Graph->Nodes)
+	{
+		if (!SrcNode && Node->GetFName() == SrcName) SrcNode = Node;
+		if (!TgtNode && Node->GetFName() == TgtName) TgtNode = Node;
+		if (SrcNode && TgtNode) break;
+	}
+
+	if (!SrcNode)
+		return FString::Printf(TEXT("{\"success\": false, \"error\": \"Source node not found: %s\"}"), *SrcFName);
+	if (!TgtNode)
+		return FString::Printf(TEXT("{\"success\": false, \"error\": \"Target node not found: %s\"}"), *TgtFName);
+
+	UEdGraphPin* SrcPinObj = SrcNode->FindPin(FName(*SrcPin), EGPD_Output);
+	UEdGraphPin* TgtPinObj = TgtNode->FindPin(FName(*TgtPin), EGPD_Input);
+
+	if (!SrcPinObj)
+	{
+		TArray<FString> AvailPins;
+		for (UEdGraphPin* P : SrcNode->Pins)
+			if (P->Direction == EGPD_Output) AvailPins.Add(P->PinName.ToString());
+		return FString::Printf(
+			TEXT("{\"success\": false, \"error\": \"Source pin '%s' not found on %s\", \"available_pins\": [\"%s\"]}"),
+			*SrcPin, *SrcFName, *FString::Join(AvailPins, TEXT("\",\"")));
+	}
+	if (!TgtPinObj)
+	{
+		TArray<FString> AvailPins;
+		for (UEdGraphPin* P : TgtNode->Pins)
+			if (P->Direction == EGPD_Input) AvailPins.Add(P->PinName.ToString());
+		return FString::Printf(
+			TEXT("{\"success\": false, \"error\": \"Target pin '%s' not found on %s\", \"available_pins\": [\"%s\"]}"),
+			*TgtPin, *TgtFName, *FString::Join(AvailPins, TEXT("\",\"")));
+	}
+
+	SrcPinObj->MakeLinkTo(TgtPinObj);
+
+	// Verify connection was made
+	for (UEdGraphPin* Link : SrcPinObj->LinkedTo)
+		if (Link == TgtPinObj)
+			return TEXT("{\"success\": true}");
+
+	return FString::Printf(
+		TEXT("{\"success\": false, \"error\": \"Connection failed: %s.%s -> %s.%s\"}"),
+		*SrcFName, *SrcPin, *TgtFName, *TgtPin);
+}

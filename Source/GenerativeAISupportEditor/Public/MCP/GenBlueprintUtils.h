@@ -214,6 +214,30 @@ public:
 	                                   const FString& NodeFName,
 	                                   const FString& NodeClassFilter = TEXT(""));
 
+	/**
+	 * Connect two Blueprint graph nodes identified by their UObject FNames.
+	 *
+	 * Solves the GUID instability problem: ConnectNodes uses StaticLoadObject which
+	 * may return a different blueprint version than the live in-editor object, causing
+	 * GUID mismatches. ConnectNodesByFName performs lookup by FName within the SAME
+	 * graph reference, avoiding GUIDs entirely.
+	 *
+	 * @param BlueprintPath  Asset path
+	 * @param GraphId        "EventGraph", other graph name, or GUID string
+	 * @param SrcFName       UObject FName of the source node (e.g. "K2Node_SwitchString_0")
+	 * @param SrcPin         Output pin name on source node (e.g. "StepOn")
+	 * @param TgtFName       UObject FName of the target node
+	 * @param TgtPin         Input pin name on target node (e.g. "execute")
+	 * @return JSON: {"success":bool, "error":str}
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils|Structural Mutation")
+	static FString ConnectNodesByFName(const FString& BlueprintPath,
+	                                    const FString& GraphId,
+	                                    const FString& SrcFName,
+	                                    const FString& SrcPin,
+	                                    const FString& TgtFName,
+	                                    const FString& TgtPin);
+
 private:
 	// Helper functions for internal use
 	static UBlueprint* LoadBlueprintAsset(const FString& BlueprintPath);
