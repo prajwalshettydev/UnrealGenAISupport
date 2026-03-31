@@ -1516,8 +1516,11 @@ FString UGenBlueprintUtils::AddSwitchCase(const FString& BlueprintPath,
 	SwitchNode->Modify();
 	SwitchNode->PinNames.Add(NewCase);
 	SwitchNode->ReconstructNode();   // materializes the new exec output pin
-
-	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	// NOTE: We deliberately do NOT call MarkBlueprintAsStructurallyModified here.
+	// That call triggers an immediate full recompile which regenerates all node GUIDs,
+	// making subsequent connect_nodes calls fail (old GUIDs no longer match).
+	// The blueprint will be marked dirty by Modify() and can be compiled by the caller.
+	Blueprint->Modify();
 
 	UE_LOG(LogTemp, Log,
 		TEXT("AddSwitchCase: added case '%s' to switch in %s (total cases: %d)"),
