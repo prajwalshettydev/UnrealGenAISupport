@@ -228,6 +228,27 @@ def _compact_response(obj):
     return _to_semantic(_strip_empty(obj))
 
 
+def _make_envelope(tool_name: str, ok: bool, result: dict,
+                   summary: str = "", warnings: list | None = None,
+                   diagnostics: list | None = None,
+                   job_id: str | None = None) -> dict:
+    """Build the unified response envelope for MCP tool responses.
+
+    {ok, request_id, tool, summary, warnings, diagnostics, result, job_id}
+    """
+    import uuid
+    return {
+        "ok": ok,
+        "request_id": str(uuid.uuid4())[:8],
+        "tool": tool_name,
+        "summary": summary or ("OK" if ok else result.get("error", "failed")),
+        "warnings": warnings or [],
+        "diagnostics": diagnostics or [],
+        "result": result,
+        "job_id": job_id,
+    }
+
+
 def _json_out(obj, compact=False):
     """Serialize to JSON, optionally compact (short keys, no indent, no empties)."""
     if compact:
@@ -2087,7 +2108,14 @@ def _build_graph_description(blueprint_path, graph_info, depth, include_pseudo, 
     # 2. Index by GUID
     details_by_guid = {}
     for det in all_details:
-        details_by_guid[det.get("node_guid", "")] = det
+        # C++ may return individual elements as JSON-encoded strings; deserialize if needed
+        if isinstance(det, str):
+            try:
+                det = json.loads(det)
+            except (json.JSONDecodeError, TypeError):
+                continue
+        if isinstance(det, dict):
+            details_by_guid[det.get("node_guid", "")] = det
 
     # 3. Build node list, edges, symbol table (v2: with roles, semantics, expressions)
     nodes_out = []
@@ -2683,6 +2711,7 @@ def apply_blueprint_patch(
     function_id: str,
     patch_json: str,
     verify: bool = True,
+    dry_run: bool = False,
 ) -> str:
     """
     Apply a batch of blueprint modifications in one call.
@@ -2696,6 +2725,8 @@ def apply_blueprint_patch(
         function_id: "EventGraph" or function GUID
         patch_json: JSON string with the patch operations (see format below)
         verify: If True, return a compact verification of affected nodes (saves a separate describe call)
+        dry_run: If True, validate the patch via preflight WITHOUT applying. Returns
+                 predicted changes and issues. Safe to call before live apply.
 
     Patch format:
     {
@@ -2725,6 +2756,26 @@ def apply_blueprint_patch(
     Returns:
         JSON with results: created node GUIDs, connection results, errors.
     """
+    # dry_run: validate via preflight and return predicted changes without applying
+    if dry_run:
+        pf_resp = send_to_unreal({
+            "type": "preflight_blueprint_patch",
+            "blueprint_path": blueprint_path,
+            "function_id": function_id,
+            "patch_json": patch_json,
+        })
+        valid = pf_resp.get("valid", pf_resp.get("success", False))
+        issues = pf_resp.get("issues", [])
+        predicted = pf_resp.get("predicted_nodes", [])
+        envelope = _make_envelope(
+            "apply_blueprint_patch", True,
+            {"dry_run": True, "valid": valid, "issues": issues,
+             "predicted_nodes": predicted},
+            summary=f"dry_run: {'valid' if valid else 'invalid'}, {len(issues)} issue(s)",
+            diagnostics=[{"message": i.get("message", str(i))} for i in issues],
+        )
+        return json.dumps(envelope, separators=(",", ":"), ensure_ascii=False)
+
     try:
         patch = json.loads(patch_json)
     except json.JSONDecodeError as e:
@@ -3183,7 +3234,22 @@ def apply_blueprint_patch(
                     "total_graph_nodes": verify_desc.get("metadata", {}).get("node_count", 0),
                 }
 
-    return json.dumps(results, separators=(",", ":"), ensure_ascii=False)
+    # Wrap in unified envelope
+    ok = results.get("success", False)
+    errs = results.get("errors", [])
+    created = results.get("created_nodes", {})
+    summary = (
+        f"Patch applied: {len(created)} node(s) created"
+        if ok and created else
+        ("Patch applied" if ok else f"Patch failed: {errs[:1]}")
+    )
+    envelope = _make_envelope(
+        "apply_blueprint_patch", ok, results,
+        summary=summary,
+        warnings=[e for e in errs if "warning" in e.lower()],
+        diagnostics=[{"message": e} for e in errs if "warning" not in e.lower()],
+    )
+    return json.dumps(envelope, separators=(",", ":"), ensure_ascii=False)
 
 
 # ---------------------------------------------------------------------------
@@ -3580,8 +3646,29 @@ else:
         output = resp.get("output", "")
         for line in output.strip().split("\n"):
             if line.strip().startswith("{"):
-                return line.strip()
-    return json.dumps({"success": False, "error": resp.get("error", "Unknown")})
+                try:
+                    inner = json.loads(line.strip())
+                    compiled = inner.get("compiled", False)
+                    errors = inner.get("errors", [])
+                    warnings = inner.get("warnings", [])
+                    summary = (
+                        f"Compiled OK" if compiled else
+                        f"Compile failed: {len(errors)} error(s)"
+                    )
+                    envelope = _make_envelope(
+                        "compile_blueprint_with_errors", compiled, inner,
+                        summary=summary,
+                        warnings=warnings,
+                        diagnostics=[{"message": e} for e in errors],
+                    )
+                    return json.dumps(envelope, separators=(",", ":"), ensure_ascii=False)
+                except Exception:
+                    return line.strip()
+    return json.dumps(_make_envelope(
+        "compile_blueprint_with_errors", False,
+        {"error": resp.get("error", "Unknown")},
+        summary="Compile failed: could not reach UE",
+    ), separators=(",", ":"), ensure_ascii=False)
 
 
 # ---------------------------------------------------------------------------
@@ -4572,6 +4659,121 @@ def safe_pull(remote: str = "origin", branch: str = "") -> str:
         return json.dumps({"success": False, "step": "git_pull", "output": "", "error": "git pull timed out (>120s)"})
     except Exception as e:
         return json.dumps({"success": False, "step": "git_pull", "output": "", "error": str(e)})
+
+
+# ---------------------------------------------------------------------------
+# P0.4 Transaction Tools (explicit MCP exposure)
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def begin_transaction(transaction_name: str = "MCPEdit") -> str:
+    """Begin an atomic UE editor transaction.
+
+    All Blueprint modifications made after this call will be grouped under
+    a single undo entry.  Always pair with end_transaction or cancel_transaction.
+
+    Args:
+        transaction_name: Label shown in UE Undo history (e.g. "AddHealthLogic").
+
+    Returns:
+        JSON: {"ok": bool, "transaction_name": str}
+    """
+    resp = send_to_unreal({"type": "begin_transaction",
+                           "transaction_name": transaction_name})
+    ok = resp.get("success", False)
+    return json.dumps({"ok": ok, "transaction_name": transaction_name,
+                       "error": resp.get("error") if not ok else None})
+
+
+@mcp.tool()
+def end_transaction() -> str:
+    """Commit the current UE editor transaction.
+
+    Call this after all Blueprint modifications are complete.
+    Enables Ctrl+Z undo of the entire change set in UE Editor.
+
+    Returns:
+        JSON: {"ok": bool}
+    """
+    resp = send_to_unreal({"type": "end_transaction"})
+    ok = resp.get("success", False)
+    return json.dumps({"ok": ok, "error": resp.get("error") if not ok else None})
+
+
+@mcp.tool()
+def cancel_transaction() -> str:
+    """Roll back the current UE editor transaction.
+
+    Call this when a modification sequence fails and you want to discard
+    all changes made since begin_transaction.
+
+    Returns:
+        JSON: {"ok": bool}
+    """
+    resp = send_to_unreal({"type": "cancel_transaction"})
+    ok = resp.get("success", False)
+    return json.dumps({"ok": ok, "error": resp.get("error") if not ok else None})
+
+
+# ---------------------------------------------------------------------------
+# P0.1 Job Management Tools
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def job_status(job_id: str) -> str:
+    """Query the status of a long-running job (e.g. build_navigation, build_target).
+
+    Args:
+        job_id: The job identifier returned when the job was submitted.
+
+    Returns:
+        JSON: {
+          "job_id": str,
+          "label": str,
+          "state": "pending" | "running" | "completed" | "failed" | "cancelled" | "not_found",
+          "result": any,
+          "error": str | null,
+          "elapsed_s": float | null
+        }
+    """
+    from job_manager import get_job_status
+    return json.dumps(get_job_status(job_id))
+
+
+@mcp.tool()
+def job_cancel(job_id: str) -> str:
+    """Cancel a pending job before it runs.
+
+    Only works if the job is still in 'pending' state.
+    Running jobs cannot be cancelled mid-execution.
+
+    Args:
+        job_id: The job identifier to cancel.
+
+    Returns:
+        JSON: {"ok": bool, "job_id": str, "message": str}
+    """
+    from job_manager import cancel_job
+    cancelled = cancel_job(job_id)
+    return json.dumps({
+        "ok": cancelled,
+        "job_id": job_id,
+        "message": "Job cancelled." if cancelled else "Job not found or already running/completed.",
+    })
+
+
+@mcp.tool()
+def job_list(include_completed: bool = False) -> str:
+    """List active (and optionally completed) jobs.
+
+    Args:
+        include_completed: If True, also return completed/failed/cancelled jobs.
+
+    Returns:
+        JSON array of job status objects.
+    """
+    from job_manager import list_jobs
+    return json.dumps(list_jobs(include_completed))
 
 
 if __name__ == "__main__":

@@ -328,3 +328,16 @@ When outputting a change spec that will be executed by blueprint-edit:
 - **Scoped tracing**: When tracing a pattern, ONLY trace the specific chain referenced by the user. Do NOT describe/explore all blueprints. "Like E key add U key" → trace E-key chain only (2 BPs, 3 nodes). Do NOT map the entire interaction architecture unless explicitly asked.
 - **Local-first read**: When modifying a single flow, use `subgraph_filter` to read only that flow. Do NOT describe the entire graph to understand one flow. Example: `describe_blueprint(path, max_depth="pseudocode", compact=true, subgraph_filter="OnPressU")`.
 - **Typed pin gate**: If the spec contains `class:*` / `object:*` / `softclass` / `softobject` / array→single pins, the Typed Pin Audit (Step 4.6) is MANDATORY. Spec cannot be output without it.
+
+## Conflict Reapply Planning
+
+When `.bp_merge_work/reapply_report.md` exists (post-rebase conflict recovery):
+
+1. Read the report to identify which blueprints lost logic
+2. Read the pre-rebase IR (`.bp_merge_work/ours/ir.json`) for the affected blueprints
+3. Compare against current state: `uv run python Scripts/blueprint_ir_tools.py diff <base> <ours>`
+4. Generate a re-apply spec listing:
+   - Which nodes/connections/variables to re-add
+   - Which blueprints to modify in what order
+   - Any cross-BP dependencies (Change DAG)
+5. Output as standard change spec for blueprint-edit to execute

@@ -133,6 +133,22 @@ After successful edit, `blueprint-qa` should run. If it finds issues, it will re
 
 After any `apply_blueprint_spec` or `apply_blueprint_patch`, call `save_all_dirty_packages()`.
 
+## Git + Blueprint Conflict Recovery
+
+When a git rebase/merge has resolved .uasset conflicts by taking the target branch version:
+
+1. Check `.bp_merge_work/reapply_report.md` for list of affected blueprints
+2. For each affected blueprint, read the pre-rebase IR at `.bp_merge_work/ours/ir.json`
+3. Compare with current state via `describe_blueprint(pseudocode, compact)`
+4. Identify missing logic (nodes, connections, events) from the IR diff
+5. Use standard `/bp` flow to re-apply: search → inspect → preflight → apply
+6. Compile, verify, save
+
+Key rules:
+- **Do NOT copy .uasset files from old branches** — they may be incompatible with current C++ classes
+- Always work from the target branch's .uasset as base, add logic on top via MCP
+- Use `blueprint_ir_tools.py diff` to see exactly what was lost
+
 ## Auto Layout Rules (mandatory)
 
 - **Do NOT specify explicit `"position"` coordinates unless you have a specific layout reason.** Let `apply_blueprint_patch` auto-place via the layout engine — it avoids overlap, anchors to the target flow, and is deterministic.

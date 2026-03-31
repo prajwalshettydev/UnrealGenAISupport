@@ -14,6 +14,7 @@ from utils import logging as log
 from utils import logging as log_module  # kept for importlib.reload() in reload_handlers
 from command_registry import registry
 from utils import unreal_conversions
+from job_manager import tick as _job_tick
 
 # Global queues and state
 command_queue = []
@@ -127,7 +128,10 @@ dispatcher = CommandDispatcher()
 
 
 def process_commands(delta_time=None):
-    """Process commands on the main thread"""
+    """Process commands on the main thread.  Also advances the job queue."""
+    # Advance one job step per tick (non-blocking — job runs on this call)
+    _job_tick(delta_time)
+
     if not command_queue:
         return
 
