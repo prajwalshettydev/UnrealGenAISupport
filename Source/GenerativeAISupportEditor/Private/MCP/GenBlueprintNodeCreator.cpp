@@ -17,6 +17,8 @@
 #include "Engine/Blueprint.h"
 #include "BlueprintEditor.h"
 #include "Editor.h"
+#include "K2Node_BreakStruct.h"
+#include "K2Node_MakeStruct.h"
 #include "K2Node_ComponentBoundEvent.h"
 #include "K2Node_Event.h"
 #include "K2Node_FunctionEntry.h"
@@ -96,8 +98,149 @@ static bool ApplyNodeCreationProperties(UK2Node* Node, const TSharedPtr<FJsonObj
 		}
 	}
 
-	// Future: add EnhancedInputAction, ComponentBoundEvent, Timeline, etc.
-	// Each new node type is one Cast + property assignment — no structural change.
+	// --- SwitchEnum: enum_type → Enum member ---
+	if (UK2Node_SwitchEnum* SE = Cast<UK2Node_SwitchEnum>(Node))
+	{
+		FString EnumName;
+		if (Props->TryGetStringField(TEXT("enum_type"), EnumName) && !EnumName.IsEmpty())
+		{
+			UEnum* Enum = FindFirstObject<UEnum>(*EnumName);
+			if (!Enum)
+			{
+				// Try with /Script/ package prefix
+				TArray<FString> Packages = {TEXT("/Script/AiNpcUE"), TEXT("/Script/AiNpcCore"),
+				                            TEXT("/Script/Engine"), TEXT("/Script/GameplayAbilities")};
+				for (const FString& Pkg : Packages)
+				{
+					Enum = FindObject<UEnum>(nullptr, *(Pkg + TEXT(".") + EnumName));
+					if (Enum) break;
+				}
+			}
+			if (!Enum) Enum = LoadObject<UEnum>(nullptr, *EnumName);
+
+			if (Enum)
+			{
+				SE->Enum = Enum;
+				UE_LOG(LogTemp, Log, TEXT("ApplyNodeCreationProperties: SwitchEnum set to '%s'"), *EnumName);
+			}
+			else
+			{
+				OutIssues.Add(FString::Printf(TEXT("K2Node_SwitchEnum: cannot find enum '%s'"), *EnumName));
+			}
+		}
+	}
+
+	// --- BreakStruct: struct_type → StructType member ---
+	if (UK2Node_BreakStruct* BS = Cast<UK2Node_BreakStruct>(Node))
+	{
+		FString StructName;
+		if (Props->TryGetStringField(TEXT("struct_type"), StructName) && !StructName.IsEmpty())
+		{
+			// Try bare name first, then with common package prefixes
+			UScriptStruct* Struct = FindFirstObject<UScriptStruct>(*StructName);
+			if (!Struct)
+			{
+				TArray<FString> Packages = {TEXT("/Script/AiNpcUE"), TEXT("/Script/AiNpcCore"),
+				                            TEXT("/Script/Engine"), TEXT("/Script/CoreUObject")};
+				for (const FString& Pkg : Packages)
+				{
+					Struct = FindObject<UScriptStruct>(nullptr, *(Pkg + TEXT(".") + StructName));
+					if (Struct) break;
+				}
+			}
+			if (!Struct) Struct = LoadObject<UScriptStruct>(nullptr, *StructName);
+
+			if (Struct)
+			{
+				BS->StructType = Struct;
+				UE_LOG(LogTemp, Log, TEXT("ApplyNodeCreationProperties: BreakStruct type set to '%s'"), *StructName);
+			}
+			else
+			{
+				OutIssues.Add(FString::Printf(TEXT("K2Node_BreakStruct: cannot find struct '%s'"), *StructName));
+			}
+		}
+	}
+
+	// --- MakeStruct: struct_type → StructType member (symmetric with BreakStruct) ---
+	if (UK2Node_MakeStruct* MS = Cast<UK2Node_MakeStruct>(Node))
+	{
+		FString StructName;
+		if (Props->TryGetStringField(TEXT("struct_type"), StructName) && !StructName.IsEmpty())
+		{
+			UScriptStruct* Struct = FindFirstObject<UScriptStruct>(*StructName);
+			if (!Struct)
+			{
+				TArray<FString> Packages = {TEXT("/Script/AiNpcUE"), TEXT("/Script/AiNpcCore"),
+				                            TEXT("/Script/Engine"), TEXT("/Script/CoreUObject")};
+				for (const FString& Pkg : Packages)
+				{
+					Struct = FindObject<UScriptStruct>(nullptr, *(Pkg + TEXT(".") + StructName));
+					if (Struct) break;
+				}
+			}
+			if (!Struct) Struct = LoadObject<UScriptStruct>(nullptr, *StructName);
+
+			if (Struct)
+			{
+				MS->StructType = Struct;
+				UE_LOG(LogTemp, Log, TEXT("ApplyNodeCreationProperties: MakeStruct type set to '%s'"), *StructName);
+			}
+			else
+			{
+				OutIssues.Add(FString::Printf(TEXT("K2Node_MakeStruct: cannot find struct '%s'"), *StructName));
+			}
+		}
+	}
+
+	// --- ComponentBoundEvent: component_name + delegate_name (+ optional component_class) ---
+	if (UK2Node_ComponentBoundEvent* CBE = Cast<UK2Node_ComponentBoundEvent>(Node))
+	{
+		FString CompName, DelegName, CompClass;
+		if (Props->TryGetStringField(TEXT("component_name"), CompName) && !CompName.IsEmpty())
+		{
+			CBE->ComponentPropertyName = FName(*CompName);
+		}
+		if (Props->TryGetStringField(TEXT("delegate_name"), DelegName) && !DelegName.IsEmpty())
+		{
+			CBE->DelegatePropertyName = FName(*DelegName);
+		}
+		// Full initialization (generates delegate parameter output pins) requires component_class
+		if (Props->TryGetStringField(TEXT("component_class"), CompClass) && !CompClass.IsEmpty()
+		    && !DelegName.IsEmpty())
+		{
+			UClass* Class = FindFirstObject<UClass>(*CompClass);
+			if (!Class) Class = StaticLoadClass(UObject::StaticClass(), nullptr, *CompClass);
+			if (Class)
+			{
+				FMulticastDelegateProperty* DelegateProp =
+					CastField<FMulticastDelegateProperty>(Class->FindPropertyByName(FName(*DelegName)));
+				if (DelegateProp)
+				{
+					CBE->InitializeComponentBoundEventParams(nullptr, DelegateProp);
+					UE_LOG(LogTemp, Log, TEXT("ApplyNodeCreationProperties: ComponentBoundEvent '%s::%s' initialized"),
+					       *CompClass, *DelegName);
+				}
+				else
+				{
+					OutIssues.Add(FString::Printf(
+						TEXT("K2Node_ComponentBoundEvent: delegate '%s' not found on class '%s'"),
+						*DelegName, *CompClass));
+				}
+			}
+			else
+			{
+				OutIssues.Add(FString::Printf(
+					TEXT("K2Node_ComponentBoundEvent: cannot find class '%s'"), *CompClass));
+			}
+		}
+		else if (!DelegName.IsEmpty() && CompClass.IsEmpty())
+		{
+			// Names set but no class — partial config, no parameter pins generated
+			UE_LOG(LogTemp, Warning,
+			       TEXT("K2Node_ComponentBoundEvent: component_class not provided; delegate parameter pins will not be generated"));
+		}
+	}
 
 	return OutIssues.Num() == 0;
 }
@@ -255,36 +398,16 @@ FString UGenBlueprintNodeCreator::AddNode(const FString& BlueprintPath, const FS
 			UEdGraphPin* Pin = NewNode->FindPin(FName(*PropName));
 			if (Pin)
 			{
+				FString StrVal;
 				if (PropValue->Type == EJson::String)
-				{
-					FString StrVal = PropValue->AsString();
-					// For class/object pins, resolve asset path → UObject
-					FName PinCat = Pin->PinType.PinCategory;
-					if ((PinCat == UEdGraphSchema_K2::PC_Class ||
-						 PinCat == UEdGraphSchema_K2::PC_Object) &&
-						(StrVal.Contains(TEXT("/Game/")) || StrVal.Contains(TEXT("/Script/"))))
-					{
-						UObject* Obj = StaticLoadObject(UObject::StaticClass(), nullptr, *StrVal);
-						if (Obj)
-						{
-							Pin->DefaultObject = Obj;
-							UE_LOG(LogTemp, Log, TEXT("AddNode: Set DefaultObject on pin '%s' to %s"),
-								*PropName, *Obj->GetPathName());
-						}
-						else
-						{
-							Pin->DefaultValue = StrVal;
-						}
-					}
-					else
-					{
-						Pin->DefaultValue = StrVal;
-					}
-				}
+					StrVal = PropValue->AsString();
 				else if (PropValue->Type == EJson::Number)
-					Pin->DefaultValue = FString::SanitizeFloat(PropValue->AsNumber());
+					StrVal = FString::SanitizeFloat(PropValue->AsNumber());
 				else if (PropValue->Type == EJson::Boolean)
-					Pin->DefaultValue = PropValue->AsBool() ? TEXT("true") : TEXT("false");
+					StrVal = PropValue->AsBool() ? TEXT("true") : TEXT("false");
+
+				if (PropValue->Type != EJson::Null)
+					ApplyPinValue(Pin, StrVal, Blueprint);
 			}
 
 			if ((NodeType.Equals(TEXT("VariableGet"), ESearchCase::IgnoreCase) ||
@@ -461,15 +584,7 @@ bool UGenBlueprintNodeCreator::DeleteNode(const FString& BlueprintPath, const FS
 	}
 	else
 	{
-		// Parse GUID if not EventGraph
-		FGuid GraphGuidObj;
-		if (!FGuid::Parse(FunctionGuid, GraphGuidObj))
-		{
-			UE_LOG(LogTemp, Error, TEXT("Invalid graph GUID format: %s"), *FunctionGuid);
-			return false;
-		}
-
-		FunctionGraph = FindGraphByGuid(Blueprint, GraphGuidObj);
+		FunctionGraph = GetGraphFromFunctionId(Blueprint, FunctionGuid);
 	}
 
 	if (!FunctionGraph)
@@ -533,9 +648,7 @@ bool UGenBlueprintNodeCreator::MoveNode(const FString& BlueprintPath, const FStr
 	}
 	else
 	{
-		FGuid GraphGuidObj;
-		if (!FGuid::Parse(FunctionGuid, GraphGuidObj)) return false;
-		FunctionGraph = FindGraphByGuid(Blueprint, GraphGuidObj);
+		FunctionGraph = GetGraphFromFunctionId(Blueprint, FunctionGuid);
 	}
 	if (!FunctionGraph) return false;
 
@@ -689,6 +802,8 @@ FString UGenBlueprintNodeCreator::GetNodeDetails(const FString& BlueprintPath, c
 	bool bSemantic = SchemaMode.Equals(TEXT("semantic"), ESearchCase::IgnoreCase);
 
 	TSharedPtr<FJsonObject> Result = MakeShareable(new FJsonObject);
+	if (bSemantic)
+		Result->SetBoolField(TEXT("_semantic"), true);
 	Result->SetStringField(bSemantic ? TEXT("guid") : TEXT("node_guid"), TargetNode->NodeGuid.ToString());
 	Result->SetStringField(bSemantic ? TEXT("type") : TEXT("node_type"), TargetNode->GetClass()->GetName());
 	Result->SetStringField(bSemantic ? TEXT("title") : TEXT("node_title"),
@@ -786,6 +901,45 @@ FString UGenBlueprintNodeCreator::ListGraphs(const FString& BlueprintPath)
 }
 
 
+// Unified pin-value setter.
+// Handles PC_Class / PC_SoftClass / PC_Object / PC_SoftObject via DefaultObject (asset path required).
+// Falls back to Schema->TrySetDefaultValue, then Pin->DefaultValue for all other pin types.
+// Callers are responsible for ReconstructNode, PinDefaultValueChanged, and MarkBlueprintAsModified.
+void UGenBlueprintNodeCreator::ApplyPinValue(UEdGraphPin* Pin, const FString& Value, UBlueprint* Blueprint)
+{
+	if (!Pin) return;
+
+	const FName PinCat = Pin->PinType.PinCategory;
+	if ((PinCat == UEdGraphSchema_K2::PC_Class     ||
+	     PinCat == UEdGraphSchema_K2::PC_SoftClass  ||
+	     PinCat == UEdGraphSchema_K2::PC_Object     ||
+	     PinCat == UEdGraphSchema_K2::PC_SoftObject) &&
+	    (Value.Contains(TEXT("/Game/")) || Value.Contains(TEXT("/Script/"))))
+	{
+		UObject* Obj = StaticLoadObject(UObject::StaticClass(), nullptr, *Value);
+		if (Obj)
+		{
+			Pin->DefaultObject = Obj;
+			UE_LOG(LogTemp, Log, TEXT("ApplyPinValue: Set DefaultObject on pin '%s' to %s"),
+				*Pin->PinName.ToString(), *Obj->GetPathName());
+			return;
+		}
+		UE_LOG(LogTemp, Warning, TEXT("ApplyPinValue: Could not load object '%s' for pin '%s'"),
+			*Value, *Pin->PinName.ToString());
+	}
+
+	// Fallback: schema-validated string assignment
+	const UEdGraph* Graph = Pin->GetOwningNode() ? Pin->GetOwningNode()->GetGraph() : nullptr;
+	const UEdGraphSchema* Schema = Graph ? Graph->GetSchema() : nullptr;
+	if (Schema)
+	{
+		Schema->TrySetDefaultValue(*Pin, Value);
+		return;
+	}
+	Pin->DefaultValue = Value;
+}
+
+
 // Set a pin's default value on an existing node
 bool UGenBlueprintNodeCreator::SetNodePinValue(const FString& BlueprintPath, const FString& FunctionGuid,
                                                 const FString& NodeGuid, const FString& PinName,
@@ -816,44 +970,10 @@ bool UGenBlueprintNodeCreator::SetNodePinValue(const FString& BlueprintPath, con
 				return false;
 			}
 
-			// For class/object pins, resolve asset path → UObject and set DefaultObject
-			FName PinCat = Pin->PinType.PinCategory;
-			if ((PinCat == UEdGraphSchema_K2::PC_Class ||
-				 PinCat == UEdGraphSchema_K2::PC_SoftClass ||
-				 PinCat == UEdGraphSchema_K2::PC_Object ||
-				 PinCat == UEdGraphSchema_K2::PC_SoftObject) &&
-				(NewValue.Contains(TEXT("/Game/")) || NewValue.Contains(TEXT("/Script/"))))
-			{
-				UObject* Obj = StaticLoadObject(UObject::StaticClass(), nullptr, *NewValue);
-				if (Obj)
-				{
-					Pin->DefaultObject = Obj;
-					Node->PinDefaultValueChanged(Pin);
-					Node->ReconstructNode();
-					FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
-					UE_LOG(LogTemp, Log, TEXT("SetNodePinValue: Set DefaultObject on '%s' to %s"),
-						*PinName, *Obj->GetPathName());
-					return true;
-				}
-				else
-				{
-					UE_LOG(LogTemp, Warning, TEXT("SetNodePinValue: Could not load object '%s' for pin '%s'"),
-						*NewValue, *PinName);
-				}
-			}
-
-			// Fallback: string-based setting for literal pins
-			const UEdGraphSchema* Schema = FunctionGraph->GetSchema();
-			if (Schema)
-			{
-				Schema->TrySetDefaultValue(*Pin, NewValue);
-			}
-			else
-			{
-				Pin->DefaultValue = NewValue;
-			}
+			ApplyPinValue(Pin, NewValue, Blueprint);
 
 			Node->PinDefaultValueChanged(Pin);
+			Node->ReconstructNode();
 			FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
 			return true;
 		}
@@ -917,10 +1037,7 @@ FString UGenBlueprintNodeCreator::GetAllNodesInGraph(const FString& BlueprintPat
 	}
 	else
 	{
-		FGuid GraphGuid;
-		if (!FGuid::Parse(FunctionGuid, GraphGuid)) return TEXT("");
-
-		FunctionGraph = FindGraphByGuid(Blueprint, GraphGuid);
+		FunctionGraph = GetGraphFromFunctionId(Blueprint, FunctionGuid);
 	}
 
 	if (!FunctionGraph) return TEXT("");
@@ -945,40 +1062,6 @@ FString UGenBlueprintNodeCreator::GetAllNodesInGraph(const FString& BlueprintPat
 	FJsonSerializer::Serialize(NodesArray, Writer);
 
 	return ResultJson;
-}
-
-UEdGraph* UGenBlueprintNodeCreator::FindGraphByGuid(UBlueprint* Blueprint, const FGuid& GraphGuid)
-{
-	if (!Blueprint) return nullptr;
-
-	// Look in UbergraphPages
-	for (UEdGraph* Graph : Blueprint->UbergraphPages)
-	{
-		if (Graph && Graph->GraphGuid == GraphGuid)
-		{
-			return Graph;
-		}
-	}
-
-	// Look in FunctionGraphs
-	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
-	{
-		if (Graph && Graph->GraphGuid == GraphGuid)
-		{
-			return Graph;
-		}
-	}
-
-	// Look in MacroGraphs (if needed)
-	for (UEdGraph* Graph : Blueprint->MacroGraphs)
-	{
-		if (Graph && Graph->GraphGuid == GraphGuid)
-		{
-			return Graph;
-		}
-	}
-
-	return nullptr;
 }
 
 
@@ -1254,9 +1337,33 @@ bool UGenBlueprintNodeCreator::TryCreateKnownNodeType(UEdGraph* Graph, const FSt
 		bNodeCreationDirty = true;
 		return true;
 	}
-	else if (ActualNodeType.Equals(TEXT("SwitchEnum"), ESearchCase::IgnoreCase))
+	else if (ActualNodeType.Equals(TEXT("SwitchEnum"), ESearchCase::IgnoreCase) ||
+	         ActualNodeType.Equals(TEXT("K2Node_SwitchEnum"), ESearchCase::IgnoreCase))
 	{
 		OutNode = NewObject<UK2Node_SwitchEnum>(Graph);
+		bNodeCreationDirty = true;
+		return true;
+	}
+	else if (ActualNodeType.Equals(TEXT("K2Node_BreakStruct"), ESearchCase::IgnoreCase) ||
+	         ActualNodeType.Equals(TEXT("BreakStruct"), ESearchCase::IgnoreCase))
+	{
+		// DO NOT call AllocateDefaultPins here — StructType is set in ApplyNodeCreationProperties,
+		// and AddNode calls AllocateDefaultPins AFTER that. Calling it here would double-allocate pins.
+		OutNode = NewObject<UK2Node_BreakStruct>(Graph);
+		bNodeCreationDirty = true;
+		return true;
+	}
+	else if (ActualNodeType.Equals(TEXT("K2Node_MakeStruct"), ESearchCase::IgnoreCase) ||
+	         ActualNodeType.Equals(TEXT("MakeStruct"), ESearchCase::IgnoreCase))
+	{
+		OutNode = NewObject<UK2Node_MakeStruct>(Graph);
+		bNodeCreationDirty = true;
+		return true;
+	}
+	else if (ActualNodeType.Equals(TEXT("K2Node_ComponentBoundEvent"), ESearchCase::IgnoreCase) ||
+	         ActualNodeType.Equals(TEXT("ComponentBoundEvent"), ESearchCase::IgnoreCase))
+	{
+		OutNode = NewObject<UK2Node_ComponentBoundEvent>(Graph);
 		bNodeCreationDirty = true;
 		return true;
 	}
@@ -1433,6 +1540,13 @@ UEdGraph* UGenBlueprintNodeCreator::GetGraphFromFunctionId(UBlueprint* Blueprint
 			if (Graph->GraphGuid == GraphGuid) return Graph;
 		for (UEdGraph* Graph : Blueprint->FunctionGraphs)
 			if (Graph->GraphGuid == GraphGuid) return Graph;
+		for (UEdGraph* MacroGraph : Blueprint->MacroGraphs)
+		{
+			if (MacroGraph && MacroGraph->GraphGuid == GraphGuid)
+			{
+				return MacroGraph;
+			}
+		}
 	}
 	UE_LOG(LogTemp, Error, TEXT("Could not resolve function ID %s to a graph"), *FunctionGuid);
 	return nullptr;
@@ -1578,6 +1692,59 @@ UGenBlueprintNodeCreator::FMatchResult UGenBlueprintNodeCreator::ScoreFunctionMa
 
 // ---------------------------------------------------------------------------
 
+// Shared result type for CollectLibraryFunctionMatches.
+struct FLibraryMatch
+{
+	UFunction* Function     = nullptr;
+	UClass*    LibraryClass = nullptr;
+	int32      Score        = 0;
+	bool       bAccepted    = false;
+	FString    DisplayName; // "LibraryName.FunctionName"
+};
+
+// Iterates GetCommonLibraries(), skips deprecated/internal functions, scores each
+// against FunctionName using ScoreFunctionMatch, and returns up to MaxResults
+// results sorted descending by score.
+static TArray<FLibraryMatch> CollectLibraryFunctionMatches(
+	const FString& FunctionName,
+	int32 MaxResults = 10)
+{
+	TArray<FLibraryMatch> Results;
+
+	for (const FString& LibraryName : UGenBlueprintNodeCreator::GetCommonLibraries())
+	{
+		UClass* LibClass = FindFirstObject<UClass>(*LibraryName);
+		if (!LibClass) continue;
+
+		for (TFieldIterator<UFunction> FuncIt(LibClass); FuncIt; ++FuncIt)
+		{
+			UFunction* Function = *FuncIt;
+			if (Function->HasMetaData(TEXT("DeprecatedFunction")) ||
+				Function->HasMetaData(TEXT("BlueprintInternalUseOnly")))
+				continue;
+
+			UGenBlueprintNodeCreator::FMatchResult M =
+				UGenBlueprintNodeCreator::ScoreFunctionMatch(FunctionName, Function->GetName());
+			if (M.Score > 0)
+			{
+				FLibraryMatch LM;
+				LM.Function     = Function;
+				LM.LibraryClass = LibClass;
+				LM.Score        = M.Score;
+				LM.bAccepted    = M.bAccepted;
+				LM.DisplayName  = FString::Printf(TEXT("%s.%s"), *LibraryName, *Function->GetName());
+				Results.Add(LM);
+			}
+		}
+	}
+
+	Results.Sort([](const FLibraryMatch& A, const FLibraryMatch& B) { return A.Score > B.Score; });
+	while (Results.Num() > MaxResults) Results.RemoveAt(Results.Num() - 1);
+	return Results;
+}
+
+// ---------------------------------------------------------------------------
+
 bool UGenBlueprintNodeCreator::BindFunctionByName(UK2Node_CallFunction* FuncNode, const FString& FunctionName)
 {
 	// Delegate to the unified resolver — avoids duplicating the multi-scope search logic here.
@@ -1598,54 +1765,20 @@ FString UGenBlueprintNodeCreator::TryCreateNodeFromLibraries(UEdGraph* Graph, co
                                                              UK2Node*& OutNode,
                                                              TArray<FString>& OutSuggestions)
 {
-	struct FFunctionMatch
-	{
-		FString DisplayName;
-		FMatchResult Match;
-		UFunction* Function;
-		UClass* Class;
-	};
-
-	TArray<FFunctionMatch> Matches;
-
-	for (const FString& LibraryName : GetCommonLibraries())
-	{
-		UClass* LibClass = FindFirstObject<UClass>(*LibraryName);
-		if (!LibClass) continue;
-
-		for (TFieldIterator<UFunction> FuncIt(LibClass); FuncIt; ++FuncIt)
-		{
-			UFunction* Function = *FuncIt;
-			if (Function->HasMetaData(TEXT("DeprecatedFunction")) || Function->HasMetaData(
-				TEXT("BlueprintInternalUseOnly")))
-				continue;
-
-			FMatchResult M = ScoreFunctionMatch(NodeType, Function->GetName());
-			if (M.Score > 0)
-			{
-				FFunctionMatch FM;
-				FM.DisplayName = FString::Printf(TEXT("%s.%s"), *LibraryName, *Function->GetName());
-				FM.Match = M;
-				FM.Function = Function;
-				FM.Class = LibClass;
-				Matches.Add(FM);
-			}
-		}
-	}
+	TArray<FLibraryMatch> Matches = CollectLibraryFunctionMatches(NodeType, 10);
 
 	if (Matches.Num() == 0) return TEXT("");
 
-	Matches.Sort([](const FFunctionMatch& A, const FFunctionMatch& B) { return A.Match.Score > B.Match.Score; });
-	for (const FFunctionMatch& FM : Matches) OutSuggestions.Add(FM.DisplayName);
+	for (const FLibraryMatch& LM : Matches) OutSuggestions.Add(LM.DisplayName);
 
-	if (Matches[0].Match.bAccepted)
+	if (Matches[0].bAccepted)
 	{
-		const FFunctionMatch& Best = Matches[0];
+		const FLibraryMatch& Best = Matches[0];
 		UK2Node_CallFunction* FunctionNode = NewObject<UK2Node_CallFunction>(Graph);
 		bNodeCreationDirty = true;
 		if (FunctionNode)
 		{
-			FunctionNode->FunctionReference.SetExternalMember(Best.Function->GetFName(), Best.Class);
+			FunctionNode->FunctionReference.SetExternalMember(Best.Function->GetFName(), Best.LibraryClass);
 			OutNode = FunctionNode;
 			OutSuggestions.Empty();
 			return Best.DisplayName;
@@ -1683,42 +1816,16 @@ bool UGenBlueprintNodeCreator::CreateMathFunctionNode(UEdGraph* Graph, const FSt
 
 FString UGenBlueprintNodeCreator::GetNodeSuggestions(const FString& NodeType)
 {
-	struct FSuggestion { FString DisplayName; int32 Score; };
-	TArray<FSuggestion> Suggestions;
+	TArray<FLibraryMatch> Matches = CollectLibraryFunctionMatches(NodeType, 5);
 
-	for (const FString& LibraryName : GetCommonLibraries())
-	{
-		UClass* LibClass = FindFirstObject<UClass>(*LibraryName);
-		if (!LibClass) continue;
-
-		for (TFieldIterator<UFunction> FuncIt(LibClass); FuncIt; ++FuncIt)
-		{
-			UFunction* Function = *FuncIt;
-			if (Function->HasMetaData(TEXT("DeprecatedFunction")) || Function->HasMetaData(
-				TEXT("BlueprintInternalUseOnly")))
-				continue;
-
-			FMatchResult M = ScoreFunctionMatch(NodeType, Function->GetName());
-			if (M.Score > 0)
-			{
-				FSuggestion S;
-				S.DisplayName = FString::Printf(TEXT("%s.%s"), *LibraryName, *Function->GetName());
-				S.Score = M.Score;
-				Suggestions.Add(S);
-			}
-		}
-	}
-
-	if (Suggestions.Num() == 0)
+	if (Matches.Num() == 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("No suggestions found for node type: %s"), *NodeType);
 		return TEXT("");
 	}
 
-	Suggestions.Sort([](const FSuggestion& A, const FSuggestion& B) { return A.Score > B.Score; });
 	TArray<FString> Names;
-	for (const FSuggestion& S : Suggestions) Names.Add(S.DisplayName);
-	while (Names.Num() > 5) Names.RemoveAt(Names.Num() - 1);
+	for (const FLibraryMatch& LM : Matches) Names.Add(LM.DisplayName);
 
 	FString SuggestionStr = FString::Join(Names, TEXT(", "));
 	UE_LOG(LogTemp, Log, TEXT("Suggestions for %s: %s"), *NodeType, *SuggestionStr);
@@ -1908,6 +2015,29 @@ static TArray<TSharedPtr<FJsonValue>> GetKnownTypePins(const FString& NodeType)
 		Pins.Add(MakePin(TEXT("execute"), TEXT("input"), TEXT("exec")));
 		Pins.Add(MakePin(TEXT("Selection"), TEXT("input"), TEXT("FString")));
 		Pins.Add(MakePin(TEXT("Default"), TEXT("output"), TEXT("exec"), false));
+	}
+	else if (Lower == TEXT("switchenum") || Lower == TEXT("k2node_switchenum"))
+	{
+		// Case pins are dynamic (generated from enum values after SetEnum).
+		// Preflight can validate exec structure; actual case pins verified post-create.
+		Pins.Add(MakePin(TEXT("execute"), TEXT("input"), TEXT("exec")));
+		Pins.Add(MakePin(TEXT("Selection"), TEXT("input"), TEXT("byte"), false));
+		Pins.Add(MakePin(TEXT("Default"), TEXT("output"), TEXT("exec"), false));
+	}
+	else if (Lower == TEXT("breakstruct") || Lower == TEXT("k2node_breakstruct"))
+	{
+		// Output pins are dynamic (generated from struct fields after StructType is set).
+		// No static pins to validate — struct input is implicitly the struct value.
+	}
+	else if (Lower == TEXT("makestruct") || Lower == TEXT("k2node_makestruct"))
+	{
+		// Input pins are dynamic (struct member inputs). Output is the constructed struct.
+		Pins.Add(MakePin(TEXT("Value"), TEXT("output"), TEXT("struct"), false));
+	}
+	else if (Lower == TEXT("componentboundevent") || Lower == TEXT("k2node_componentboundevent"))
+	{
+		// Parameter pins are dynamic (from delegate signature).
+		Pins.Add(MakePin(TEXT("then"), TEXT("output"), TEXT("exec"), false));
 	}
 
 	return Pins;
@@ -2152,22 +2282,10 @@ static UFunction* ResolveFunctionWithSuggestions(const FString& FunctionName, UB
 	if (QueryName.Split(TEXT("."), &DotClass, &DotFunc))
 		QueryName = DotFunc;
 
-	for (const FString& LibName : UGenBlueprintNodeCreator::GetCommonLibraries())
-	{
-		UClass* LibClass = FindFirstObject<UClass>(*LibName);
-		if (!LibClass) continue;
-		for (TFieldIterator<UFunction> It(LibClass); It; ++It)
-		{
-			UFunction* Func = *It;
-			if (Func->HasMetaData(TEXT("DeprecatedFunction")) || Func->HasMetaData(TEXT("BlueprintInternalUseOnly")))
-				continue;
-			auto M = UGenBlueprintNodeCreator::ScoreFunctionMatch(QueryName, Func->GetName());
-			if (M.Score > 0)
-				OutSuggestions.Add(FString::Printf(TEXT("%s.%s"), *LibName, *Func->GetName()));
-		}
-	}
+	TArray<FLibraryMatch> Matches = CollectLibraryFunctionMatches(QueryName, 10);
+	for (const FLibraryMatch& LM : Matches)
+		OutSuggestions.Add(LM.DisplayName);
 	OutSuggestions.Sort();
-	while (OutSuggestions.Num() > 10) OutSuggestions.RemoveAt(OutSuggestions.Num() - 1);
 	return nullptr;
 }
 
@@ -2873,6 +2991,8 @@ FString UGenBlueprintNodeCreator::SearchBlueprintNodes(const FString& Query, con
 	}
 
 	TSharedPtr<FJsonObject> Root = MakeShareable(new FJsonObject);
+	if (bSemantic)
+		Root->SetBoolField(TEXT("_semantic"), true);
 	Root->SetArrayField(TEXT("candidates"), CandidatesArray);
 	Root->SetNumberField(bSemantic ? TEXT("total") : TEXT("total_indexed"), GNodeIndex.Num());
 	Root->SetNumberField(bSemantic ? TEXT("filtered") : TEXT("filtered_out"), GNodeIndex.Num() - Candidates.Num());
@@ -2894,6 +3014,8 @@ FString UGenBlueprintNodeCreator::InspectBlueprintNode(const FString& CanonicalN
 	bool bSemantic = SchemaMode.Equals(TEXT("semantic"), ESearchCase::IgnoreCase);
 
 	TSharedPtr<FJsonObject> Root = MakeShareable(new FJsonObject);
+	if (bSemantic)
+		Root->SetBoolField(TEXT("_semantic"), true);
 	Root->SetStringField(bSemantic ? TEXT("cname") : TEXT("canonical_name"), CanonicalName);
 
 	// O(1) map lookup instead of O(N) linear scan
