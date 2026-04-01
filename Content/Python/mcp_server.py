@@ -3382,14 +3382,17 @@ def apply_blueprint_patch(
     # --- graph_state: best-effort node count (diagnostic only, never blocks patch) ---
     def _get_node_count_lightweight() -> int:
         try:
-            dr = send_to_unreal({
+            raw = send_to_unreal({
                 "type": "describe_blueprint",
                 "blueprint_path": blueprint_path,
                 "graph_name": function_id,
                 "max_depth": "minimal",
                 "compact": True,
             })
-            if isinstance(dr, dict):
+            # send_to_unreal for describe returns {"result": "...json string..."}
+            if isinstance(raw, dict):
+                result_str = raw.get("result", raw)
+                dr = json.loads(result_str) if isinstance(result_str, str) else result_str
                 bp = dr.get("blueprint", {})
                 # Case 1: single-graph response (graph_name specified)
                 #   → blueprint.metadata.nc
