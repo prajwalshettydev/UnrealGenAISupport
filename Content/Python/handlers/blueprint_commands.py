@@ -944,7 +944,7 @@ def handle_get_node_guid_by_fname(command: Dict[str, Any]) -> Dict[str, Any]:
         node_fname:       UObject FName (from node.get_fname() in execute_python_script)
         node_class_filter: Optional class name substring filter (e.g. "BreakStruct")
     """
-    result_json = unreal.GenBlueprintUtils.get_node_guid_by_fname(
+    result_json = unreal.GenBlueprintUtils.get_node_guid_by_f_name(
         command.get("blueprint_path"),
         command.get("graph_id", "EventGraph"),
         command.get("node_fname"),

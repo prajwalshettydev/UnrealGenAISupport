@@ -2988,20 +2988,17 @@ def apply_blueprint_patch(
     # Record node count before mutation (best-effort, for graph_state diagnostic)
     try:
         _before_dr = send_to_unreal({
-            "type": "describe_blueprint",
+            "type": "list_graphs",
             "blueprint_path": blueprint_path,
-            "graph_name": function_id,
-            "max_depth": "minimal",
-            "compact": True,
         })
         _before_nc = -1
-        if isinstance(_before_dr, dict):
-            for _g in _before_dr.get("blueprint", {}).get("graphs", []):
-                _m = _g.get("metadata") or {}
-                _v = _m.get("nc", _m.get("node_count", -1))
-                if isinstance(_v, int) and _v >= 0:
-                    _before_nc = _v
-                    break
+        if isinstance(_before_dr, dict) and _before_dr.get("success"):
+            for _g in _before_dr.get("graphs", []):
+                if _g.get("graph_name", "") == function_id or _g.get("graph_type") == "EventGraph":
+                    _v = _g.get("node_count", -1)
+                    if isinstance(_v, int) and _v >= 0:
+                        _before_nc = _v
+                        break
         results["_node_count_before"] = _before_nc
     except Exception:
         results["_node_count_before"] = -1
