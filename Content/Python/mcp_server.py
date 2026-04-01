@@ -326,6 +326,13 @@ _node_details_cache = {}  # (bp_path, func_id, guid) → details dict, max 100 e
 _NODE_DETAILS_CACHE_MAX = 100
 
 
+def _node_details_cache_evict(blueprint_path: str):
+    """Remove all cached node details for a given blueprint path."""
+    keys_to_remove = [k for k in _node_details_cache if k[0] == blueprint_path]
+    for k in keys_to_remove:
+        del _node_details_cache[k]
+
+
 def _postprocess_describe(result_json, compact, max_depth, blueprint_path):
     """Post-process describe output: strip legend on repeat, strip redundant graph fields.
     Operates on a parsed copy — never mutates cached data."""
@@ -2883,18 +2890,60 @@ def apply_blueprint_patch(
                 _existing_ys.append(yf)
                 _guid_to_pos[guid] = [xf, yf]
 
-    def resolve_node_id(ref: str) -> str:
-        """Resolve a ref_id, instance_id, canonical_id, GUID, or title to a GUID.
+    # guid_drift_log collects all GUID drift events for the response
+    guid_drift_log: list[dict] = []
+
+    def _fname_lookup(fname: str) -> str:
+        """Look up a node's current GUID via its FName. Returns GUID or ''."""
+        fb_resp = send_to_unreal({
+            "type": "get_node_guid_by_fname",
+            "blueprint_path": blueprint_path,
+            "graph_id": function_id,
+            "node_fname": fname,
+            "node_class_filter": "",
+        })
+        if isinstance(fb_resp, dict) and fb_resp.get("success"):
+            return fb_resp.get("node_guid", "")
+        return ""
+
+    def resolve_node_id(ref: str, *, late: bool = False) -> str:
+        """Resolve a ref_id, fname:, instance_id, canonical_id, GUID, or title to a GUID.
 
         Resolution order:
-          1. ref_to_guid (freshly added nodes in this patch)
-          2. instance_to_guid / canonical_to_guid / title_to_guid (exec-chain traversal)
-          3. FName fallback: NodeType#N → NodeType_N lookup via get_node_guid_by_fname
-             (reaches ForEachLoop body nodes, Switch body nodes, etc.)
-          4. Assume it's already a GUID (passthrough)
+          1. ref_to_guid   — same-patch new nodes (ref_id), always immediate
+          2. fname:        — explicit FName prefix (new)
+          3. GUID          — passthrough if looks like hex GUID
+          4. instance_to_guid / canonical_to_guid / title_to_guid (exec-chain)
+          5. FName fallback: NodeType#N → NodeType_N
+          6. Implicit FName passthrough (deprecated — emits warning)
+
+        Args:
+            late: if True, this is a late-resolve call during add_connections
+                  execution. GUID miss triggers defensive cache invalidation.
         """
+        # 1. ref_id — same-patch new nodes, always immediate
         if ref in ref_to_guid:
             return ref_to_guid[ref]
+
+        # 2. Explicit fname: prefix
+        if ref.startswith("fname:"):
+            fname = ref[6:]
+            guid = _fname_lookup(fname)
+            if guid:
+                guid_drift_log.append({
+                    "fname": fname, "old_guid": None, "new_guid": guid,
+                    "reason": "explicit fname", "phase": "resolve",
+                })
+                return guid
+            if late:
+                _describe_cache.invalidate(blueprint_path)
+            raise ValueError(f"FName '{fname}' not found in graph")
+
+        # 3. GUID passthrough (if it looks like a hex GUID)
+        if _looks_like_guid(ref):
+            return ref
+
+        # 4. Exec-chain maps
         if ref in instance_to_guid:
             return instance_to_guid[ref]
         if ref in canonical_to_guid:
@@ -2902,50 +2951,32 @@ def apply_blueprint_patch(
         if ref in title_to_guid:
             return title_to_guid[ref]
 
-        # FName fallback: handles nodes inside ForEachLoop/Switch bodies
-        # that exec-chain traversal cannot reach.
-        # instance_id format "NodeType#N" → FName fast path "NodeType_N"
-        if "#" in ref and not _looks_like_guid(ref):
+        # 5. FName fallback: instance_id "NodeType#N" → FName "NodeType_N"
+        if "#" in ref:
             node_type, _, idx = ref.partition("#")
             fname_guess = f"{node_type}_{idx}"
-            # Fast path: try direct FName match (works ~80% of the time)
-            fb_resp = send_to_unreal({
-                "type": "get_node_guid_by_fname",
-                "blueprint_path": blueprint_path,
-                "graph_id": function_id,
-                "node_fname": fname_guess,
-                "node_class_filter": "",
-            })
-            if isinstance(fb_resp, dict) and fb_resp.get("success"):
-                guid = fb_resp.get("node_guid", "")
-                if guid:
-                    # Cache within this patch call's lifetime only
-                    instance_to_guid[ref] = guid
-                    return guid
-            # Slow path: _scan_graph_for_instance (not yet implemented)
-            # Falls through to passthrough below
+            guid = _fname_lookup(fname_guess)
+            if guid:
+                instance_to_guid[ref] = guid
+                return guid
 
-        # FName passthrough: if ref looks like a node FName (e.g. K2Node_CallFunction_24)
-        # but wasn't in exec-chain maps, try resolving it to a real GUID via FName lookup.
-        # This handles refs that are already FNames rather than instance_id/GUID format.
-        if not _looks_like_guid(ref) and "_" in ref and " " not in ref and "#" not in ref:
-            fb_resp = send_to_unreal({
-                "type": "get_node_guid_by_fname",
-                "blueprint_path": blueprint_path,
-                "graph_id": function_id,
-                "node_fname": ref,
-                "node_class_filter": "",
-            })
-            if isinstance(fb_resp, dict) and fb_resp.get("success"):
-                guid = fb_resp.get("node_guid", "")
-                if guid:
-                    instance_to_guid[ref] = guid
-                    return guid
+        # 6. Implicit FName passthrough (plain FName like K2Node_CallFunction_24)
+        if "_" in ref and " " not in ref and "#" not in ref:
+            print(f"[resolve_node_id] FName passthrough for ref={ref!r}", file=sys.stderr)
+            guid = _fname_lookup(ref)
+            if guid:
+                instance_to_guid[ref] = guid
+                return guid
 
-        # Assume it's already a GUID
+        # Defensive cache invalidation on GUID miss during late resolve
+        if late:
+            _describe_cache.invalidate(blueprint_path)
+            _node_details_cache_evict(blueprint_path)
+
+        # Unresolvable — return as-is (will fail at connect time)
         return ref
 
-    def resolve_endpoint(endpoint: str):
+    def resolve_endpoint(endpoint: str, *, late: bool = False):
         """Parse 'NodeRef::PinName' or 'NodeRef.PinName' into (guid, pin_name).
 
         The '::' separator is preferred because pin names can contain dots
@@ -2959,7 +2990,7 @@ def apply_blueprint_patch(
         if len(parts) != 2:
             return None, None
         node_ref, pin_name = parts
-        return resolve_node_id(node_ref), pin_name
+        return resolve_node_id(node_ref, late=late), pin_name
 
     # --- Auto-preflight: catch obvious issues before mutating the graph ---
     # Only run if patch has add_nodes or add_connections (skip for remove-only patches)
@@ -3187,10 +3218,13 @@ def apply_blueprint_patch(
     }
 
     # --- Phase 4: Add connections (bulk) ---
+    # Late resolve: pre-existing node refs are resolved here (not earlier)
+    # so that GUID changes from Phase 2/3 (add_nodes, add_switch_case) are
+    # captured. Same-patch ref_ids are still resolved immediately via ref_to_guid.
     bulk_conns = []
     for conn in patch.get("add_connections", []):
-        src_guid, src_pin = resolve_endpoint(conn.get("from", ""))
-        tgt_guid, tgt_pin = resolve_endpoint(conn.get("to", ""))
+        src_guid, src_pin = resolve_endpoint(conn.get("from", ""), late=True)
+        tgt_guid, tgt_pin = resolve_endpoint(conn.get("to", ""), late=True)
         if not src_guid or not tgt_guid:
             results["errors"].append(f"connect: cannot resolve {conn}")
             continue
@@ -3282,6 +3316,7 @@ def apply_blueprint_patch(
                             "node_fname": fname_guess,
                             "node_class_filter": "",
                         })
+                        print(f"[DEBUG _ref_to_fname] ref={ref!r} fname_guess={fname_guess!r} verify={verify}", file=sys.stderr)
                         if isinstance(verify, dict) and verify.get("success"):
                             return fname_guess
                     return ""
@@ -3312,6 +3347,26 @@ def apply_blueprint_patch(
                             f"cannot resolve FName for "
                             f"'{ci.get('_src_ref','')}' or '{ci.get('_tgt_ref','')}'"
                         )
+
+                # Record drift for all connections that needed FName fallback
+                for ci in bulk_conns:
+                    for role, ref_key, guid_key in [
+                        ("src", "_src_ref", "source_node_id"),
+                        ("tgt", "_tgt_ref", "target_node_id"),
+                    ]:
+                        orig_ref = ci.get(ref_key, "")
+                        orig_guid = ci.get(guid_key, "")
+                        fname_val = _ref_to_fname(orig_ref) if orig_ref else ""
+                        if fname_val and orig_guid and not _looks_like_guid(orig_ref):
+                            new_guid = _fname_lookup(fname_val)
+                            if new_guid and new_guid != orig_guid:
+                                guid_drift_log.append({
+                                    "fname": fname_val,
+                                    "old_guid": orig_guid,
+                                    "new_guid": new_guid,
+                                    "reason": "FName-fallback after GUID miss",
+                                    "phase": "add_connections",
+                                })
 
                 if fname_successes == len(bulk_conns):
                     # All connections succeeded via FName fallback
@@ -3464,6 +3519,10 @@ def apply_blueprint_patch(
                     } for n in v_nodes],
                     "total_graph_nodes": verify_desc.get("metadata", {}).get("node_count", 0),
                 }
+
+    # --- Attach GUID drift log ---
+    if guid_drift_log:
+        results["guid_drift"] = guid_drift_log
 
     # Wrap in unified envelope
     ok = results.get("success", False)
@@ -4890,6 +4949,14 @@ def add_switch_case(
     })
     if not isinstance(resp, dict):
         return json.dumps({"success": False, "error": "No response from UE"})
+
+    # Structural mutation: invalidate describe cache (GUID may have drifted)
+    if resp.get("success") and resp.get("method") != "already_exists":
+        _describe_cache.invalidate(blueprint_path)
+        keys_to_remove = [k for k in _node_details_cache if k[0] == blueprint_path]
+        for k in keys_to_remove:
+            del _node_details_cache[k]
+
     return json.dumps(resp)
 
 
