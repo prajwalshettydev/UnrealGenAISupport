@@ -3390,11 +3390,20 @@ def apply_blueprint_patch(
                 "compact": True,
             })
             if isinstance(dr, dict):
-                for g in dr.get("blueprint", {}).get("graphs", []):
-                    meta = g.get("metadata") or g.get("sym") or {}
-                    nc = meta.get("nc", meta.get("node_count", -1))
-                    if isinstance(nc, int) and nc >= 0:
-                        return nc
+                bp = dr.get("blueprint", {})
+                # Case 1: single-graph response (graph_name specified)
+                #   → blueprint.metadata.nc
+                meta = bp.get("metadata", {})
+                nc = meta.get("nc", meta.get("node_count", -1))
+                if isinstance(nc, int) and nc >= 0:
+                    return nc
+                # Case 2: multi-graph response (no graph_name)
+                #   → blueprint.graphs[].metadata.nc
+                for g in bp.get("graphs", []):
+                    m = g.get("metadata", {})
+                    nc2 = m.get("nc", m.get("node_count", -1))
+                    if isinstance(nc2, int) and nc2 >= 0:
+                        return nc2
         except Exception:
             pass
         return -1
