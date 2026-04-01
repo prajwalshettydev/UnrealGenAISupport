@@ -2962,7 +2962,6 @@ def apply_blueprint_patch(
 
         # 6. Implicit FName passthrough (plain FName like K2Node_CallFunction_24)
         if "_" in ref and " " not in ref and "#" not in ref:
-            print(f"[resolve_node_id] FName passthrough for ref={ref!r}", file=sys.stderr)
             guid = _fname_lookup(ref)
             if guid:
                 instance_to_guid[ref] = guid
@@ -3261,9 +3260,6 @@ def apply_blueprint_patch(
             err_msg = f"connect_bulk: {raw_err}"
             results["errors"].append(err_msg)
             patch_log["error_categories"].append(_classify_error(err_msg))
-            with open("C:/tmp/mcp_debug.txt", "a") as _f:
-                _f.write(f"connect_bulk FAILED: resp={resp}\n")
-                _f.write(f"bulk_conns={bulk_conns}\n")
 
             # ── Diagnostic probe ────────────────────────────────────────────
             # Surface actual available pin names when C++ returned no detail.
@@ -3319,8 +3315,6 @@ def apply_blueprint_patch(
                             "node_fname": fname_guess,
                             "node_class_filter": "",
                         })
-                        with open("C:/tmp/mcp_debug.txt", "a") as _f:
-                            _f.write(f"_ref_to_fname: ref={ref!r} fname={fname_guess!r} verify={verify}\n")
                         if isinstance(verify, dict) and verify.get("success"):
                             return fname_guess
                     return ""
