@@ -2925,6 +2925,23 @@ def apply_blueprint_patch(
             # Slow path: _scan_graph_for_instance (not yet implemented)
             # Falls through to passthrough below
 
+        # FName passthrough: if ref looks like a node FName (e.g. K2Node_CallFunction_24)
+        # but wasn't in exec-chain maps, try resolving it to a real GUID via FName lookup.
+        # This handles refs that are already FNames rather than instance_id/GUID format.
+        if not _looks_like_guid(ref) and "_" in ref and " " not in ref and "#" not in ref:
+            fb_resp = send_to_unreal({
+                "type": "get_node_guid_by_fname",
+                "blueprint_path": blueprint_path,
+                "graph_id": function_id,
+                "node_fname": ref,
+                "node_class_filter": "",
+            })
+            if isinstance(fb_resp, dict) and fb_resp.get("success"):
+                guid = fb_resp.get("node_guid", "")
+                if guid:
+                    instance_to_guid[ref] = guid
+                    return guid
+
         # Assume it's already a GUID
         return ref
 
@@ -3247,10 +3264,20 @@ def apply_blueprint_patch(
             )
             if _node_not_found:
                 def _ref_to_fname(ref: str) -> str:
-                    """Convert instance_id ref to FName guess, verify existence."""
-                    if "#" in ref and not _looks_like_guid(ref):
+                    """Convert node ref to FName, verify it exists in the graph.
+                    Handles: instance_id (K2Node_SwitchString#0 → K2Node_SwitchString_0)
+                             plain FName (K2Node_CallFunction_24 — already an FName)
+                    """
+                    if _looks_like_guid(ref):
+                        return ""  # GUID refs cannot be converted to FName here
+                    fname_guess = None
+                    if "#" in ref:
                         node_type, _, idx = ref.partition("#")
                         fname_guess = f"{node_type}_{idx}"
+                    elif "_" in ref:
+                        # Already looks like an FName (e.g. K2Node_CallFunction_24)
+                        fname_guess = ref
+                    if fname_guess:
                         verify = send_to_unreal({
                             "type": "get_node_guid_by_fname",
                             "blueprint_path": blueprint_path,
@@ -3383,30 +3410,16 @@ def apply_blueprint_patch(
     def _get_node_count_lightweight() -> int:
         try:
             raw = send_to_unreal({
-                "type": "describe_blueprint",
+                "type": "list_graphs",
                 "blueprint_path": blueprint_path,
-                "graph_name": function_id,
-                "max_depth": "minimal",
-                "compact": True,
             })
-            # send_to_unreal for describe returns {"result": "...json string..."}
-            if isinstance(raw, dict):
-                result_str = raw.get("result", raw)
-                dr = json.loads(result_str) if isinstance(result_str, str) else result_str
-                bp = dr.get("blueprint", {})
-                # Case 1: single-graph response (graph_name specified)
-                #   → blueprint.metadata.nc
-                meta = bp.get("metadata", {})
-                nc = meta.get("nc", meta.get("node_count", -1))
-                if isinstance(nc, int) and nc >= 0:
-                    return nc
-                # Case 2: multi-graph response (no graph_name)
-                #   → blueprint.graphs[].metadata.nc
-                for g in bp.get("graphs", []):
-                    m = g.get("metadata", {})
-                    nc2 = m.get("nc", m.get("node_count", -1))
-                    if isinstance(nc2, int) and nc2 >= 0:
-                        return nc2
+            # list_graphs returns {"success": true, "graphs": [{"graph_name": ..., "node_count": N}, ...]}
+            if isinstance(raw, dict) and raw.get("success"):
+                for g in raw.get("graphs", []):
+                    if g.get("graph_name", "") == function_id or g.get("graph_type") == "EventGraph":
+                        nc = g.get("node_count", -1)
+                        if isinstance(nc, int) and nc >= 0:
+                            return nc
         except Exception:
             pass
         return -1
