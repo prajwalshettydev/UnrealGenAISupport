@@ -2811,6 +2811,11 @@ def apply_blueprint_patch(
         "error_categories": [],
     }
 
+    def _looks_like_guid(s: str) -> bool:
+        """Return True if s looks like a UUID/GUID (32+ hex chars, optional hyphens)."""
+        import re as _re
+        return bool(_re.match(r'^[0-9A-Fa-f]{8}[-]?([0-9A-Fa-f]{4}[-]?){3}[0-9A-Fa-f]{12}$', s))
+
     def _classify_error(error_msg: str) -> str:
         """Classify an error message into a failure taxonomy category."""
         msg = error_msg.lower()
@@ -2879,7 +2884,15 @@ def apply_blueprint_patch(
                 _guid_to_pos[guid] = [xf, yf]
 
     def resolve_node_id(ref: str) -> str:
-        """Resolve a ref_id, instance_id, canonical_id, GUID, or title to a GUID."""
+        """Resolve a ref_id, instance_id, canonical_id, GUID, or title to a GUID.
+
+        Resolution order:
+          1. ref_to_guid (freshly added nodes in this patch)
+          2. instance_to_guid / canonical_to_guid / title_to_guid (exec-chain traversal)
+          3. FName fallback: NodeType#N → NodeType_N lookup via get_node_guid_by_fname
+             (reaches ForEachLoop body nodes, Switch body nodes, etc.)
+          4. Assume it's already a GUID (passthrough)
+        """
         if ref in ref_to_guid:
             return ref_to_guid[ref]
         if ref in instance_to_guid:
@@ -2888,6 +2901,30 @@ def apply_blueprint_patch(
             return canonical_to_guid[ref]
         if ref in title_to_guid:
             return title_to_guid[ref]
+
+        # FName fallback: handles nodes inside ForEachLoop/Switch bodies
+        # that exec-chain traversal cannot reach.
+        # instance_id format "NodeType#N" → FName fast path "NodeType_N"
+        if "#" in ref and not _looks_like_guid(ref):
+            node_type, _, idx = ref.partition("#")
+            fname_guess = f"{node_type}_{idx}"
+            # Fast path: try direct FName match (works ~80% of the time)
+            fb_resp = send_to_unreal({
+                "type": "get_node_guid_by_fname",
+                "blueprint_path": blueprint_path,
+                "graph_id": function_id,
+                "node_fname": fname_guess,
+                "node_class_filter": "",
+            })
+            if isinstance(fb_resp, dict) and fb_resp.get("success"):
+                guid = fb_resp.get("node_guid", "")
+                if guid:
+                    # Cache within this patch call's lifetime only
+                    instance_to_guid[ref] = guid
+                    return guid
+            # Slow path: _scan_graph_for_instance (not yet implemented)
+            # Falls through to passthrough below
+
         # Assume it's already a GUID
         return ref
 
@@ -2930,6 +2967,27 @@ def apply_blueprint_patch(
                 "issues": issues,
                 "errors": [f"Preflight rejected: {i.get('message', '')}" for i in issues],
             }, separators=(",", ":"), ensure_ascii=False)
+
+    # Record node count before mutation (best-effort, for graph_state diagnostic)
+    try:
+        _before_dr = send_to_unreal({
+            "type": "describe_blueprint",
+            "blueprint_path": blueprint_path,
+            "graph_name": function_id,
+            "max_depth": "minimal",
+            "compact": True,
+        })
+        _before_nc = -1
+        if isinstance(_before_dr, dict):
+            for _g in _before_dr.get("blueprint", {}).get("graphs", []):
+                _m = _g.get("metadata") or {}
+                _v = _m.get("nc", _m.get("node_count", -1))
+                if isinstance(_v, int) and _v >= 0:
+                    _before_nc = _v
+                    break
+        results["_node_count_before"] = _before_nc
+    except Exception:
+        results["_node_count_before"] = -1
 
     # --- Begin transaction for atomic rollback ---
     bp_short = blueprint_path.rsplit("/", 1)[-1] if "/" in blueprint_path else blueprint_path
@@ -3122,11 +3180,18 @@ def apply_blueprint_patch(
         if not src_guid or not tgt_guid:
             results["errors"].append(f"connect: cannot resolve {conn}")
             continue
+        # Store original ref strings for FName fallback later
+        def _extract_ref(endpoint: str) -> str:
+            if "::" in endpoint:
+                return endpoint.split("::", 1)[0]
+            return endpoint.rsplit(".", 1)[0] if "." in endpoint else endpoint
         bulk_conns.append({
             "source_node_id": src_guid,
             "source_pin": src_pin,
             "target_node_id": tgt_guid,
             "target_pin": tgt_pin,
+            "_src_ref": _extract_ref(conn.get("from", "")),
+            "_tgt_ref": _extract_ref(conn.get("to", "")),
         })
 
     if bulk_conns:
@@ -3134,7 +3199,8 @@ def apply_blueprint_patch(
             "type": "connect_nodes_bulk",
             "blueprint_path": blueprint_path,
             "function_id": function_id,
-            "connections": bulk_conns,
+            "connections": [{k: v for k, v in c.items() if not k.startswith("_")}
+                            for c in bulk_conns],
         })
         if resp.get("success"):
             results["connections_made"] = resp.get("successful_connections", len(bulk_conns))
@@ -3147,30 +3213,98 @@ def apply_blueprint_patch(
             err_msg = f"connect_bulk: {raw_err}"
             results["errors"].append(err_msg)
             patch_log["error_categories"].append(_classify_error(err_msg))
-            # When error is None the C++ handler returned no detail — run pin introspection
-            # on the first few connections to surface actual available pin names.
-            if raw_err is None and bulk_conns:
-                diag_hints = []
-                for conn in bulk_conns[:4]:
-                    diag_resp = send_to_unreal({
-                        "type": "connect_nodes",
-                        "blueprint_path": blueprint_path,
-                        "function_guid": function_id,
-                        "source_node_guid": conn["source_node_id"],
-                        "source_pin_name": conn["source_pin"],
-                        "target_node_guid": conn["target_node_id"],
-                        "target_pin_name": conn["target_pin"],
-                    })
-                    if not diag_resp.get("success"):
-                        src_avail = [p.get("name") for p in diag_resp.get("source_available_pins", [])[:6]]
-                        tgt_avail = [p.get("name") for p in diag_resp.get("target_available_pins", [])[:6]]
-                        diag_hints.append(
-                            f"  {conn['source_pin']}→{conn['target_pin']}: "
-                            f"src_pins={src_avail} tgt_pins={tgt_avail}"
+
+            # ── Diagnostic probe ────────────────────────────────────────────
+            # Surface actual available pin names when C++ returned no detail.
+            diag_result = {"src_pins": None, "tgt_pins": None}
+            if bulk_conns:
+                probe = bulk_conns[0]
+                diag_resp = send_to_unreal({
+                    "type": "connect_nodes",
+                    "blueprint_path": blueprint_path,
+                    "function_guid": function_id,
+                    "source_node_guid": probe["source_node_id"],
+                    "source_pin_name": probe["source_pin"],
+                    "target_node_guid": probe["target_node_id"],
+                    "target_pin_name": probe["target_pin"],
+                })
+                if not diag_resp.get("success"):
+                    src_avail = [p.get("name") for p in diag_resp.get("source_available_pins", [])[:6]]
+                    tgt_avail = [p.get("name") for p in diag_resp.get("target_available_pins", [])[:6]]
+                    diag_result = {"src_pins": src_avail, "tgt_pins": tgt_avail}
+                    results["errors"].append(
+                        f"connect_diagnostic:   {probe['source_pin']}→{probe['target_pin']}: "
+                        f"src_pins={src_avail} tgt_pins={tgt_avail}"
+                    )
+
+            # ── Automatic FName fallback ────────────────────────────────────
+            # Triggered when: GUID path failed AND diagnostic shows node-not-found
+            # (src_pins=[] or tgt_pins=[] means GUID drift, not pin-name issue)
+            _node_not_found = (
+                diag_result["src_pins"] == [] or
+                diag_result["tgt_pins"] == [] or
+                raw_err is None
+            )
+            if _node_not_found:
+                def _ref_to_fname(ref: str) -> str:
+                    """Convert instance_id ref to FName guess, verify existence."""
+                    if "#" in ref and not _looks_like_guid(ref):
+                        node_type, _, idx = ref.partition("#")
+                        fname_guess = f"{node_type}_{idx}"
+                        verify = send_to_unreal({
+                            "type": "get_node_guid_by_fname",
+                            "blueprint_path": blueprint_path,
+                            "graph_id": function_id,
+                            "node_fname": fname_guess,
+                            "node_class_filter": "",
+                        })
+                        if isinstance(verify, dict) and verify.get("success"):
+                            return fname_guess
+                    return ""
+
+                fname_successes = 0
+                fname_errors = []
+                for ci in bulk_conns:
+                    src_fname = _ref_to_fname(ci.get("_src_ref", ""))
+                    tgt_fname = _ref_to_fname(ci.get("_tgt_ref", ""))
+                    if src_fname and tgt_fname:
+                        fb = send_to_unreal({
+                            "type": "connect_nodes_by_fname",
+                            "blueprint_path": blueprint_path,
+                            "graph_id": function_id,
+                            "src_fname": src_fname, "src_pin": ci["source_pin"],
+                            "tgt_fname": tgt_fname, "tgt_pin": ci["target_pin"],
+                        })
+                        if isinstance(fb, dict) and fb.get("success"):
+                            fname_successes += 1
+                        else:
+                            fname_errors.append(
+                                f"{src_fname}.{ci['source_pin']}→"
+                                f"{tgt_fname}.{ci['target_pin']}: "
+                                f"{fb.get('error') if isinstance(fb, dict) else 'no response'}"
+                            )
+                    else:
+                        fname_errors.append(
+                            f"cannot resolve FName for "
+                            f"'{ci.get('_src_ref','')}' or '{ci.get('_tgt_ref','')}'"
                         )
-                        break  # one diagnostic is usually enough to identify locale/pin-name issue
-                if diag_hints:
-                    results["errors"].append("connect_diagnostic: " + " | ".join(diag_hints))
+
+                if fname_successes == len(bulk_conns):
+                    # All connections succeeded via FName fallback
+                    results["errors"] = [e for e in results["errors"]
+                                         if "connect_bulk" not in e]
+                    results["connections_made"] = fname_successes
+                    results["connection_method"] = "FName-fallback"
+                    patch_log["error_categories"] = [c for c in patch_log["error_categories"]
+                                                     if c != _classify_error(err_msg)]
+                elif fname_successes > 0:
+                    results["errors"].append(
+                        f"partial FName fallback: {fname_successes}/{len(bulk_conns)} succeeded"
+                    )
+                    results["errors"].extend(fname_errors)
+                else:
+                    results["errors"].extend(fname_errors)
+            # ───────────────────────────────────────────────────────────────
     patch_log["phases"]["add_connections"] = {
         "success": results["connections_made"] == len(patch.get("add_connections", [])),
         "count": results["connections_made"],
@@ -3244,6 +3378,31 @@ def apply_blueprint_patch(
     # Emit to stderr for structured observability (visible in MCP server logs)
     print(f"[PATCH_LOG] {json.dumps(patch_log, separators=(',', ':'), ensure_ascii=False)}",
           file=sys.stderr)
+
+    # --- graph_state: best-effort node count (diagnostic only, never blocks patch) ---
+    def _get_node_count_lightweight() -> int:
+        try:
+            dr = send_to_unreal({
+                "type": "describe_blueprint",
+                "blueprint_path": blueprint_path,
+                "graph_name": function_id,
+                "max_depth": "minimal",
+                "compact": True,
+            })
+            if isinstance(dr, dict):
+                for g in dr.get("blueprint", {}).get("graphs", []):
+                    meta = g.get("metadata") or g.get("sym") or {}
+                    nc = meta.get("nc", meta.get("node_count", -1))
+                    if isinstance(nc, int) and nc >= 0:
+                        return nc
+        except Exception:
+            pass
+        return -1
+
+    results["graph_state"] = {
+        "node_count_before": results.pop("_node_count_before", -1),
+        "node_count_after": _get_node_count_lightweight(),
+    }
 
     # Invalidate describe cache for this blueprint
     _describe_cache.invalidate(blueprint_path)
@@ -4917,6 +5076,90 @@ def job_list(include_completed: bool = False) -> str:
     """
     from job_manager import list_jobs
     return json.dumps(list_jobs(include_completed))
+
+
+# ---------------------------------------------------------------------------
+# Blueprint Quality Analyzer
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def analyze_blueprint_quality(blueprint_path: str, mode: str = "full", graph_name: str = "") -> str:
+    """Run static quality checks on a Blueprint.
+
+    Checks performed:
+      C1 — Empty Event Stub (entry nodes with no outgoing exec chain)
+      C2 — Orphan Nodes (not connected to anything)
+      C3 — Unreachable Nodes (per-graph BFS from entry nodes)
+      C4 — Variable Usage (never_referenced / write_only / read_only)
+      C5 — Complexity Metrics (node_count, branch_depth, entry_count, etc.)
+      C6 — Compile Warnings (filtered to Blueprint-relevant log entries)
+
+    Args:
+        blueprint_path: Blueprint asset path (e.g. "/Game/Blueprints/BP_X")
+        mode: "quick" (C1+C5+C6 only) or "full" (all checks, default)
+        graph_name: Analyze a specific graph only (empty = all graphs)
+
+    Returns:
+        JSON QA report with issues, metrics, suppressed, and summary.
+    """
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    _scripts_dir = str(_Path(__file__).parent.parent.parent.parent.parent.parent / "Scripts")
+    if _scripts_dir not in _sys.path:
+        _sys.path.insert(0, _scripts_dir)
+
+    from lib.blueprint_qa_core import analyze as _qa_analyze
+
+    # describe_blueprint
+    raw_desc = describe_blueprint(
+        blueprint_path=blueprint_path,
+        graph_name=graph_name,
+        max_depth="standard",
+        include_pseudocode=False,
+        compact=False,
+        force_refresh=True,
+    )
+    parsed = json.loads(raw_desc) if isinstance(raw_desc, str) else raw_desc
+    if "cache_hit" in parsed:
+        # Force fresh on cache hit
+        raw_desc = describe_blueprint(
+            blueprint_path=blueprint_path, graph_name=graph_name,
+            max_depth="standard", include_pseudocode=False,
+            compact=False, force_refresh=True,
+        )
+        parsed = json.loads(raw_desc) if isinstance(raw_desc, str) else raw_desc
+
+    bp = parsed.get("blueprint", parsed)
+
+    # Normalize multi-graph symbol_table
+    if "graphs" in bp and "subgraphs" not in bp:
+        merged_vars: dict = {}
+        total_nodes = 0
+        for g in bp.get("graphs", []):
+            sym = g.get("symbol_table", {})
+            raw_vars = sym.get("variables", {})
+            if isinstance(raw_vars, dict):
+                merged_vars.update(raw_vars)
+            elif isinstance(raw_vars, list):
+                for v in raw_vars:
+                    if isinstance(v, dict) and "name" in v:
+                        merged_vars[v["name"]] = v
+            total_nodes += g.get("metadata", {}).get("node_count", 0)
+        bp["symbol_table"] = {"variables": merged_vars}
+        bp["metadata"] = {"node_count": total_nodes}
+    else:
+        sym = bp.get("symbol_table", {})
+        raw_vars = sym.get("variables", {})
+        if isinstance(raw_vars, list):
+            sym["variables"] = {v["name"]: v for v in raw_vars if isinstance(v, dict) and "name" in v}
+            bp["symbol_table"] = sym
+
+    # compile
+    compile_resp = send_to_unreal({"type": "compile_blueprint", "blueprint_path": blueprint_path})
+
+    report = _qa_analyze(bp, compile_resp, mode=mode, blueprint_path=blueprint_path)
+    return json.dumps(report, indent=2, ensure_ascii=False)
 
 
 if __name__ == "__main__":

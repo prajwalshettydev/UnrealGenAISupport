@@ -953,6 +953,43 @@ def handle_get_node_guid_by_fname(command: Dict[str, Any]) -> Dict[str, Any]:
     return json.loads(result_json)
 
 
+@registry.command("connect_nodes_by_fname", category="blueprint", mutates_blueprint=True)
+def handle_connect_nodes_by_fname(command: Dict[str, Any]) -> Dict[str, Any]:
+    """Connect two Blueprint graph nodes by UObject FName — completely GUID-free.
+
+    Root cause of GUID-based connection failures: after MarkBlueprintAsStructurallyModified
+    or any structural modification, StaticLoadObject may return a stale blueprint version
+    with old GUIDs. ConnectNodesByFName uses FName + FindPin + MakeLinkTo within the SAME
+    Graph object reference, bypassing StaticLoadObject entirely.
+
+    This handler is also used as the automatic fallback inside apply_blueprint_patch when
+    GUID-based connect_nodes_bulk fails with node-not-found symptoms.
+
+    Args:
+        blueprint_path: Asset path
+        graph_id:       "EventGraph", other graph name, or GUID string
+        src_fname:      Source node UObject FName (from node.get_fname() in Python)
+        src_pin:        Output pin name (e.g. "StepOn", "then")
+        tgt_fname:      Target node UObject FName
+        tgt_pin:        Input pin name (e.g. "execute", "object_id")
+    """
+    blueprint_path = command.get("blueprint_path")
+    graph_id = command.get("graph_id", "EventGraph")
+    src_fname = command.get("src_fname")
+    src_pin = command.get("src_pin")
+    tgt_fname = command.get("tgt_fname")
+    tgt_pin = command.get("tgt_pin")
+    if not all([blueprint_path, src_fname, src_pin, tgt_fname, tgt_pin]):
+        return {"success": False,
+                "error": "Missing required: blueprint_path, src_fname, src_pin, tgt_fname, tgt_pin"}
+    try:
+        result_json = unreal.GenBlueprintUtils.connect_nodes_by_f_name(
+            blueprint_path, graph_id, src_fname, src_pin, tgt_fname, tgt_pin)
+        return json.loads(result_json)
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 @registry.command("add_switch_case", category="blueprint", mutates_blueprint=True)
 def handle_add_switch_case(command: Dict[str, Any]) -> Dict[str, Any]:
     """Add a new named case pin to a K2Node_SwitchString (Switch on String) node.
