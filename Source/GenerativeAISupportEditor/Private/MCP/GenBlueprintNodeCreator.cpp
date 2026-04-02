@@ -267,6 +267,11 @@ FString UGenBlueprintNodeCreator::AddNode(const FString& BlueprintPath, const FS
 	// Reset the creation-dirty flag for this call
 	bNodeCreationDirty = false;
 
+	// Record pre-mutation state for undo — must be before any graph/blueprint mutation.
+	// The transaction is already open (Python layer calls BeginBlueprintTransaction before AddNode).
+	FunctionGraph->Modify();
+	Blueprint->Modify();
+
 	// Parse PropertiesJson once — reused by resolver path, bind path, and property-set path below.
 	TSharedPtr<FJsonObject> PropertiesObject;
 	if (!PropertiesJson.IsEmpty())
@@ -338,7 +343,6 @@ FString UGenBlueprintNodeCreator::AddNode(const FString& BlueprintPath, const FS
 
 					if (bFinalizeChanges)
 					{
-						Blueprint->Modify();
 						FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 					}
 
@@ -435,7 +439,6 @@ FString UGenBlueprintNodeCreator::AddNode(const FString& BlueprintPath, const FS
 		// Mark modified BEFORE opening the editor so the UI reflects the change
 		if (bNodeCreationDirty)
 		{
-			Blueprint->Modify();
 			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 		}
 		if (GEditor)
@@ -488,6 +491,11 @@ FString UGenBlueprintNodeCreator::AddNodesBulk(const FString& BlueprintPath, con
 	TArray<TSharedPtr<FJsonValue>> ResultsArray;
 	bool bAnyDirty = false;
 
+	// Record pre-mutation state for undo — must be before the node creation loop.
+	// The transaction is already open (Python layer calls BeginBlueprintTransaction).
+	FunctionGraph->Modify();
+	Blueprint->Modify();
+
 	for (auto& NodeValue : NodesArray)
 	{
 		TSharedPtr<FJsonObject> NodeObject = NodeValue->AsObject();
@@ -537,8 +545,6 @@ FString UGenBlueprintNodeCreator::AddNodesBulk(const FString& BlueprintPath, con
 
 	if (bAnyDirty)
 	{
-		// Mark modified BEFORE opening the editor
-		Blueprint->Modify();
 		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 
 		if (GEditor)
@@ -2408,6 +2414,55 @@ FString UGenBlueprintNodeCreator::PreflightPatch(const FString& BlueprintPath,
 						*(Func->GetOwnerClass() ? Func->GetOwnerClass()->GetName() : TEXT("Unknown")), *Func->GetName());
 				}
 				// else: unknown type, no pins predicted (not necessarily an error — could be generic K2Node)
+			}
+
+			// Preflight: validate struct_type / enum_type before graph mutation.
+			// Must match ApplyNodeCreationProperties resolution chain (lines 107-194) exactly —
+			// if preflight accepts a name, apply must accept it too. No false negatives.
+			{
+				// struct_type: K2Node_BreakStruct and K2Node_MakeStruct
+				FString StructName;
+				if ((*NodeSpec)->TryGetStringField(TEXT("struct_type"), StructName) && !StructName.IsEmpty())
+				{
+					UScriptStruct* S = FindFirstObject<UScriptStruct>(*StructName);
+					if (!S)
+					{
+						TArray<FString> Packages = {TEXT("/Script/AiNpcUE"), TEXT("/Script/AiNpcCore"),
+						                            TEXT("/Script/Engine"), TEXT("/Script/CoreUObject")};
+						for (const FString& Pkg : Packages)
+						{
+							S = FindObject<UScriptStruct>(nullptr, *(Pkg + TEXT(".") + StructName));
+							if (S) break;
+						}
+					}
+					if (!S) S = LoadObject<UScriptStruct>(nullptr, *StructName);
+					if (!S)
+						AddIssue(TEXT("add_nodes"), TEXT("error"),
+							FString::Printf(TEXT("struct_type '%s' not found — omit the F prefix, use short name (e.g. 'RPActionPlanInfo')"), *StructName),
+							i);
+				}
+
+				// enum_type: K2Node_SwitchEnum
+				FString EnumName;
+				if ((*NodeSpec)->TryGetStringField(TEXT("enum_type"), EnumName) && !EnumName.IsEmpty())
+				{
+					UEnum* E = FindFirstObject<UEnum>(*EnumName);
+					if (!E)
+					{
+						TArray<FString> Packages = {TEXT("/Script/AiNpcUE"), TEXT("/Script/AiNpcCore"),
+						                            TEXT("/Script/Engine"), TEXT("/Script/GameplayAbilities")};
+						for (const FString& Pkg : Packages)
+						{
+							E = FindObject<UEnum>(nullptr, *(Pkg + TEXT(".") + EnumName));
+							if (E) break;
+						}
+					}
+					if (!E) E = LoadObject<UEnum>(nullptr, *EnumName);
+					if (!E)
+						AddIssue(TEXT("add_nodes"), TEXT("error"),
+							FString::Printf(TEXT("enum_type '%s' not found — omit the E prefix, use short name (e.g. 'ERPActionToken' or 'RPActionToken')"), *EnumName),
+							i);
+				}
 			}
 
 			RefPins.Add(RefId, Pins);
