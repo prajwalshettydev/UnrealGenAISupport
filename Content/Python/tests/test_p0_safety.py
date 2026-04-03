@@ -3,9 +3,11 @@
 Run with: uv run python -m pytest tests/test_p0_safety.py -v
 No live UE Editor required — unreal module is stubbed at import time.
 """
+
 import importlib
 import sys
 import threading
+import time
 import types
 import unittest
 from pathlib import Path
@@ -34,7 +36,9 @@ for _fn in ("log_info", "log_warning", "log_error", "log_command", "log_result")
 
 # Patch threading.Thread to prevent actual socket server startup during tests
 _real_thread = threading.Thread
-_thread_patcher = patch("threading.Thread", MagicMock(return_value=MagicMock(start=MagicMock())))
+_thread_patcher = patch(
+    "threading.Thread", MagicMock(return_value=MagicMock(start=MagicMock()))
+)
 _thread_patcher.start()
 
 
@@ -42,16 +46,19 @@ _thread_patcher.start()
 # P0-3 Tests: Timeout Cancel Semantics
 # ---------------------------------------------------------------------------
 
+
 class TestTimeoutCancelSemantics(unittest.TestCase):
     """Tests for the cancellation-set mechanism in unreal_socket_server."""
 
     def setUp(self):
         # Import fresh module state for each test
         import unreal_socket_server as uss
+
         self.uss = uss
         # Reset shared state between tests
         uss.command_queue.clear()
         uss.response_dict.clear()
+        uss.command_status.clear()
         with uss._cancel_lock:
             uss.cancelled_ids.clear()
 
@@ -92,7 +99,9 @@ class TestTimeoutCancelSemantics(unittest.TestCase):
         uss.command_queue.append((command_id, command))
 
         expected = {"success": True, "message": "ok"}
-        with patch.object(uss.dispatcher, "dispatch", return_value=expected) as mock_dispatch:
+        with patch.object(
+            uss.dispatcher, "dispatch", return_value=expected
+        ) as mock_dispatch:
             uss.process_commands()
             mock_dispatch.assert_called_once_with(command)
 
@@ -113,6 +122,55 @@ class TestTimeoutCancelSemantics(unittest.TestCase):
         with uss._cancel_lock:
             self.assertNotIn(command_id, uss.cancelled_ids)
 
+    def test_running_command_waits_for_completion_instead_of_cancelling(self):
+        """A started command must finish instead of returning a retry-inducing timeout."""
+        uss = self.uss
+        command_id = 123
+        expected = {"success": True, "message": "done"}
+
+        uss._set_command_status(command_id, uss.COMMAND_STATUS_RUNNING)
+
+        def complete_later():
+            time.sleep(0.02)
+            uss._store_response(command_id, expected)
+
+        worker = _real_thread(target=complete_later)
+        worker.start()
+        response = uss._await_command_response(
+            command_id,
+            queue_timeout=0.0,
+            poll_interval=0.005,
+            running_timeout=0.2,
+        )
+        worker.join()
+
+        self.assertEqual(response, expected)
+        with uss._cancel_lock:
+            self.assertNotIn(command_id, uss.cancelled_ids)
+        self.assertIsNone(uss._get_command_status(command_id))
+
+    def test_pending_command_timeout_is_cancelled(self):
+        """A command that never starts should still time out and be cancelled."""
+        uss = self.uss
+        command_id = 456
+
+        uss._set_command_status(command_id, uss.COMMAND_STATUS_PENDING)
+
+        response = uss._await_command_response(
+            command_id,
+            queue_timeout=0.0,
+            poll_interval=0.0,
+            running_timeout=0.0,
+        )
+
+        self.assertFalse(response["success"])
+        self.assertIn("timed out before execution started", response["error"])
+        with uss._cancel_lock:
+            self.assertIn(command_id, uss.cancelled_ids)
+        self.assertEqual(
+            uss._get_command_status(command_id), uss.COMMAND_STATUS_CANCELLED
+        )
+
 
 # ---------------------------------------------------------------------------
 # P0-4 Tests: Reload-Safe Registry
@@ -131,6 +189,7 @@ class TestReloadSafeRegistry(unittest.TestCase):
     def _make_handler(self, name="handler"):
         def handler(cmd):
             return {"success": True}
+
         handler.__name__ = name
         return handler
 
@@ -179,6 +238,69 @@ class TestReloadSafeRegistry(unittest.TestCase):
         table = self.registry.build_dispatch_table()
         self.assertIs(table["cmd"], new_handler)
         self.assertIsNot(table["cmd"], old_handler)
+
+    def test_snapshot_restore_recovers_previous_registry_state(self):
+        """snapshot()/restore() must roll the registry back to the previous command surface."""
+        foo_handler = self._make_handler("foo")
+        bar_handler = self._make_handler("bar")
+        self.registry.command("foo", aliases=["f"])(foo_handler)
+        snapshot = self.registry.snapshot()
+
+        self.registry.clear()
+        self.registry.command("bar")(bar_handler)
+        self.registry.restore(snapshot)
+
+        self.assertIn("foo", self.registry._commands)
+        self.assertIn("f", self.registry._aliases)
+        self.assertNotIn("bar", self.registry._commands)
+        self.assertIs(self.registry.get("foo").handler, foo_handler)
+
+
+class TestReloadRollback(unittest.TestCase):
+    """Tests for transactional reload behavior in CommandDispatcher."""
+
+    def setUp(self):
+        import unreal_socket_server as uss
+
+        self.uss = uss
+        with uss._response_lock:
+            uss.command_status.clear()
+            uss.response_dict.clear()
+        with uss._cancel_lock:
+            uss.cancelled_ids.clear()
+
+    def test_reload_failure_restores_previous_registry_and_handlers(self):
+        """A failed module reload must restore the prior registry and dispatch table."""
+        uss = self.uss
+        dispatcher = uss.CommandDispatcher()
+        previous_handlers = dict(dispatcher.handlers)
+        previous_snapshot = uss.registry.snapshot()
+
+        def fail_on_second(mod):
+            if mod is dispatcher.HANDLER_MODULES[1]:
+                raise RuntimeError("boom")
+            return mod
+
+        with patch.object(uss.importlib, "reload", side_effect=fail_on_second):
+            response = dispatcher._handle_reload({})
+
+        self.assertFalse(response["success"])
+        self.assertEqual(dispatcher.handlers, previous_handlers)
+        self.assertEqual(uss.registry.snapshot(), previous_snapshot)
+
+    def test_reload_validation_rolls_back_when_commands_disappear(self):
+        """A reload that silently shrinks the command surface must be rejected and rolled back."""
+        uss = self.uss
+        dispatcher = uss.CommandDispatcher()
+        previous_handlers = dict(dispatcher.handlers)
+        previous_snapshot = uss.registry.snapshot()
+
+        with patch.object(uss.importlib, "reload", side_effect=lambda mod: mod):
+            response = dispatcher._handle_reload({})
+
+        self.assertFalse(response["success"])
+        self.assertEqual(dispatcher.handlers, previous_handlers)
+        self.assertEqual(uss.registry.snapshot(), previous_snapshot)
 
 
 if __name__ == "__main__":

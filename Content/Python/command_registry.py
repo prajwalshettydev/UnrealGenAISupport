@@ -29,6 +29,7 @@ from typing import Any, Callable, Dict, List, Optional
 @dataclass
 class ParamDef:
     """Definition of a command parameter."""
+
     type: str = "str"
     required: bool = False
     default: Any = None
@@ -38,6 +39,7 @@ class ParamDef:
 @dataclass
 class CommandDef:
     """Single command definition — the contract for one socket command."""
+
     name: str
     handler: Callable
     category: str
@@ -77,6 +79,7 @@ class CommandRegistry:
         description: str = "",
     ):
         """Decorator that registers a handler function as a command."""
+
         def decorator(func: Callable) -> Callable:
             cmd = CommandDef(
                 name=name,
@@ -91,6 +94,7 @@ class CommandRegistry:
             )
             self._register(cmd)
             return func
+
         return decorator
 
     def _register(self, cmd: CommandDef):
@@ -103,6 +107,30 @@ class CommandRegistry:
                     f"Alias '{alias}' conflicts with existing command or alias"
                 )
             self._aliases[alias] = cmd.name
+
+    def clear(self):
+        """Reset all registered commands and aliases.
+
+        Called by CommandDispatcher._handle_reload() before importlib.reload()
+        so that handler modules can re-register their commands without hitting
+        the duplicate-name check in _register(). The live dispatch table
+        (self.handlers on the dispatcher) is NOT affected until
+        _build_handler_map() is explicitly called.
+        """
+        self._commands = {}
+        self._aliases = {}
+
+    def snapshot(self) -> Dict[str, Dict[str, Any]]:
+        """Capture the current registry state for transactional reloads."""
+        return {
+            "commands": dict(self._commands),
+            "aliases": dict(self._aliases),
+        }
+
+    def restore(self, snapshot: Dict[str, Dict[str, Any]]):
+        """Restore a previously captured registry snapshot."""
+        self._commands = dict(snapshot.get("commands", {}))
+        self._aliases = dict(snapshot.get("aliases", {}))
 
     # ------------------------------------------------------------------
     # Dispatch table generation
@@ -130,6 +158,10 @@ class CommandRegistry:
         """Return all registered commands."""
         return list(self._commands.values())
 
+    def command_names(self) -> set[str]:
+        """Return the canonical command names currently registered."""
+        return set(self._commands.keys())
+
     def by_category(self, category: str) -> List[CommandDef]:
         """Return commands in a given category."""
         return [c for c in self._commands.values() if c.category == category]
@@ -142,7 +174,11 @@ class CommandRegistry:
     # Startup validation
     # ------------------------------------------------------------------
 
-    def validate(self, expected_count: Optional[int] = None):
+    def validate(
+        self,
+        expected_count: Optional[int] = None,
+        expected_names: Optional[set[str]] = None,
+    ):
         """Run startup checks. Call after all modules are imported.
 
         Raises ValueError if any check fails.
@@ -160,6 +196,14 @@ class CommandRegistry:
                 f"Expected {expected_count} commands, found {self.count}. "
                 f"A handler module may not have been imported."
             )
+
+        if expected_names is not None:
+            missing_names = sorted(expected_names - self.command_names())
+            if missing_names:
+                errors.append(
+                    "Reload lost previously available commands: "
+                    + ", ".join(missing_names)
+                )
 
         if errors:
             raise ValueError(
