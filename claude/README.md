@@ -79,6 +79,11 @@ Safe to run multiple times (idempotent). Use `--force` to overwrite diverged ski
 
 ## MCP Tool Reference
 
+> [!IMPORTANT]
+> In `RPPilot/SmellyCat`, the Blueprint write path is currently `supervised-use only`.
+> Use it for controlled edits with compile, diff, and QA evidence.
+> Do not position it yet as the default path for large-scale Blueprint production.
+
 ### Available Tools (12)
 
 | Tool | Purpose |
@@ -99,15 +104,19 @@ Safe to run multiple times (idempotent). Use `--force` to overwrite diverged ski
 ### Core Workflow
 
 ```
-1. describe_blueprint(path, "standard")          # understand current state
-2. describe_blueprint(path, "full")               # get pin names for patching
-3. apply_blueprint_patch(path, "EventGraph", {    # apply all changes in one call
+0. python Scripts/export_cpp_bp_api.py --project-root . --check-freshness
+1. search_blueprint_nodes(query, blueprint_path)  # shortlist candidate nodes
+2. inspect_blueprint_node(canonical_name)         # exact pins + patch hint
+3. describe_blueprint(path, "standard")           # understand local graph state
+4. preflight_blueprint_patch(path, patch_json)    # validate before mutating
+5. apply_blueprint_patch(path, "EventGraph", {    # apply all changes in one call
      "add_nodes": [...],
      "add_connections": [...],
      "set_pin_values": [...]
    })
-4. compile_blueprint_with_errors(path)            # verify compilation
-5. auto_layout_graph(path)                        # clean up visual layout
+6. compile_blueprint_with_errors(path)            # verify compilation
+7. auto_layout_graph(path)                        # clean up visual layout
+8. diff_blueprint(before, after)                  # confirm the mutation
 ```
 
 ### Patch Format
@@ -133,10 +142,11 @@ Safe to run multiple times (idempotent). Use `--force` to overwrite diverged ski
 }
 ```
 
-**Node reference resolution** — `from`/`to`/`node` fields accept:
+**Node reference resolution** - `from`/`to`/`node` fields accept:
 - `ref_id` from `add_nodes` in the same patch (e.g. `"MyNode.then"`)
 - GUID from `describe_blueprint` output
-- Node title (e.g. `"Event BeginPlay.then"`) — resolved automatically
+- Canonical or instance identifiers from the inspection flow
+- Node title is legacy compatibility only and should not be the primary reference strategy
 
 **Execution order:** remove_nodes → add_nodes → remove_connections → add_connections → set_pin_values → compile
 
@@ -151,7 +161,7 @@ Safe to run multiple times (idempotent). Use `--force` to overwrite diverged ski
 ## Known Issues & Quirks
 
 - **`handshake_test` thread warning** — Expected. The handshake runs on the socket thread, not the game thread. All other commands are properly queued.
-- **`undo_last_operation` broken** — UE5 Python undo API is unavailable. Workaround: Ctrl+Z in Editor, or apply a corrective patch.
+- **`undo_last_operation` limited** - use transactional `apply_blueprint_patch` as the primary safety path. In rare rollback edge cases, ghost-node cleanup may still require manual inspection.
 - **`get_blueprint_variables` misses unused variables** — Only shows variables referenced by graph nodes. UE5 Python does not expose `Blueprint.NewVariables`.
 - **Node titles follow Editor locale** — `打印字符串` = PrintString, `事件开始运行` = Event BeginPlay. Semantic classification works for both languages.
 - **Delay nodes** — `add_node(node_type="Delay")` creates `K2Node_CallFunction` calling `KismetSystemLibrary::Delay`. Use `then` pin, not `Completed`.

@@ -37,6 +37,20 @@ Before editing, one of these must be true:
 
 If none are true → redirect to `blueprint-plan`.
 
+## Freshness Gate
+
+Before editing, validate that the generated C++ Blueprint API snapshot is fresh.
+
+1. Run:
+   `python Scripts/export_cpp_bp_api.py --project-root . --check-freshness`
+2. If the result is `missing` or `stale`, stop and tell the user to rerun the supported build + refresh path before editing Blueprint nodes that depend on latest C++ usage.
+3. Do not build or patch against speculative "latest" C++ Blueprint APIs when
+   the freshness gate is failing.
+4. Treat the snapshot as project-C++ candidate knowledge only; live MCP node inspection remains authoritative for plugin-exposed capabilities.
+5. If readiness kill-switch conditions are active (freshness red or rollback suite red), suspend write-path usage and stop at planning/inspection.
+6. Supported refresh path after a successful C++ build:
+   `powershell -ExecutionPolicy Bypass -File Scripts/post_build_refresh_bp_api.ps1 -ProjectRoot . -TargetName RPSceneEditor`
+
 ## Connection Check
 
 If any MCP tool returns `[WinError 10061]` or socket connection error → UE Editor is not running or plugin is not enabled. Print troubleshooting steps (see blueprint-plan Step 1.5) and STOP. Do not retry.
@@ -77,8 +91,9 @@ result = preflight_blueprint_patch(path, function_id, patch_json)
 
 ### Step 3: Apply
 
-`apply_blueprint_patch` now uses **transactions** — failures auto-rollback (no dirty graphs).
+`apply_blueprint_patch` now uses **transactions** - failures auto-rollback (no dirty graphs).
 If response has `rolled_back: true`: analyze error, rebuild patch, retry (max 2 retries).
+If response has `rollback_status` and it is not `complete`: stop the write workflow, treat the graph as requiring manual inspection, and do not proceed to the next automated patch.
 
 **For modifications:**
 ```
@@ -111,6 +126,8 @@ After successful edit, `blueprint-qa` should run. If it finds issues, it will re
 
 - ONE patch call per change set
 - Use `ref_id` for new nodes, `canonical_id`/`instance_id` or GUID for existing (NOT display titles)
+- Treat `.claude/bp_cpp_api_index.json` and `15_cpp_bp_api.generated.md` as
+  candidate guides only; live MCP node inspection remains authoritative.
 - **Cross-BP edits**: When the spec involves replicating an existing behavior across multiple BPs, verify the pattern trace output exists in the spec before generating patches. If missing, redirect to blueprint-plan.
 - Always preflight before applying
 - Always diff after applying

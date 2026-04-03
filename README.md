@@ -249,6 +249,16 @@ For test builds you can call the `GenSecureKey::SetGenAIApiKeyRuntime` either in
 > [!NOTE]  
 > If your project only uses the LLM APIs and not the MCP, you can skip this section.
 
+> [!IMPORTANT]
+> In `RPPilot/SmellyCat`, the Blueprint MCP write path should currently be treated as **supervised-use only**.
+> Use it for controlled edits with preflight, compile, diff, and QA evidence.
+> Do not treat it yet as the default path for large-scale Blueprint development.
+> Canonical repo workflow:
+> `search_blueprint_nodes -> inspect_blueprint_node -> preflight_blueprint_patch -> apply_blueprint_patch -> compile_blueprint_with_errors -> diff_blueprint -> blueprint-qa`
+> If freshness is red or rollback/readiness checks are red, suspend write-path usage and fall back to read-only planning/inspection.
+> Recommended write path:
+> `search_blueprint_nodes -> inspect_blueprint_node -> preflight_blueprint_patch -> apply_blueprint_patch -> compile_blueprint_with_errors -> diff/QA`
+
 > [!CAUTION]  
 > Discalimer: If you are using the MCP feature of the plugin, it will directly let the Claude Desktop App control your Unreal Engine project.
 > Make sure you are aware of the security risks and only use it in a controlled environment.
@@ -631,7 +641,7 @@ python <your_project_directoy>/Plugins/GenerativeAISupport/Content/Python/mcp_se
 
 ## Known Issues:
 - Nodes fail to connect properly with MCP
-- No undo redo support for MCP
+- Manual undo tooling is limited; transactional patch apply exists, but rollback can still report partial cleanup in edge cases
 - No streaming support for Deepseek reasoning model
 - No complex material generation support for the create material tool
 - Issues with running some llm generated valid python scripts

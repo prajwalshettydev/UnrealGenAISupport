@@ -21,7 +21,6 @@ allowed-tools:
   - mcp__unreal-handshake__find_scene_objects
   - mcp__unreal-handshake__compile_blueprint_with_errors
   - mcp__unreal-handshake__get_files_in_folder
-  - mcp__unreal-handshake__execute_python_script
 ---
 
 # Blueprint Plan — Default Entry Point
@@ -93,6 +92,67 @@ $ARGUMENTS is free-form. Classify intent:
 | QA / quality check | Redirect to `blueprint-qa` skill |
 | MCP tool development | Redirect to `blueprint-mcp-dev` skill |
 | Ambiguous | Ask ONE clarifying question |
+
+## Step 1.2: C++ Blueprint API Freshness Gate
+
+Before loading knowledge or inspecting any Blueprint, validate that the generated
+C++ Blueprint API snapshot is still fresh.
+
+1. Run:
+   `python Scripts/export_cpp_bp_api.py --project-root . --check-freshness`
+2. Interpret the result:
+   - `fresh` -> continue
+   - `missing` -> stop and tell the user to compile the C++ project first, then run the supported refresh path
+   - `stale` -> stop and tell the user the snapshot is outdated and they must rerun the supported build + refresh path
+3. If `.claude/bp_cpp_api_index.json`, `.claude/bp_cpp_api_manifest.json`, or
+   `.claude/bp_cpp_api_build_stamp.json` is missing, treat it as `missing`.
+4. **Do NOT** continue with "latest C++ Blueprint usage" reasoning while the
+   freshness gate is failing.
+5. Treat the generated snapshot as **project-C++ candidate knowledge only**.
+   Plugin MCP capabilities remain live-MCP-authoritative unless a separate generated artifact exists.
+6. If freshness is red, the Blueprint write path is temporarily suspended; continue only with read-mostly planning/inspection.
+7. Supported refresh path after a successful C++ build:
+   `powershell -ExecutionPolicy Bypass -File Scripts/post_build_refresh_bp_api.ps1 -ProjectRoot . -TargetName RPSceneEditor`
+
+## Step 1.3: Knowledge Loading
+
+Before any MCP calls or blueprint inspection, load relevant knowledge.
+Runtime routing source of truth: `docs/blueprint_knowledge/00_index.md`
+
+**Layer 1 — Always Load (every /bp call):**
+```
+Read docs/blueprint_knowledge/13_bp_agent_guidance.md   # MCP SOP, capability matrix, error→fix table
+Read docs/blueprint_knowledge/14_glossary.md            # canonical terminology, exact pin names
+Read docs/blueprint_knowledge/12_project_conventions.md # project paths, naming, asset ownership rules
+Read docs/blueprint_knowledge/16_readiness_status.md    # rollout posture, kill switch, canonical write path
+```
+
+**Layer 2 — Dynamic Load (max 3 files, based on request keywords):**
+
+Normalize user terms first: UI=Widget=UMG=界面=HUD, 输入=Input=按键=Key=KeyBinding, NPC=AI(contextual)
+
+| Matched keyword | Load file |
+|-----------------|-----------|
+| NPC / AI / stimulus / blackboard / 行为树 | `11_ai_npc_patterns.md` |
+| UI / Widget / UMG / HUD / 界面 | `04_ui_umg_mvvm.md` |
+| 输入 / Input / 按键 / KeyBinding / key | `03_input.md` |
+| 异步 / Async / Delay / Timer / Latent / 延迟 | `05_async_timers.md` |
+| 状态 / State / GameMode / 流程 / 状态机 | `06_state_and_gameplay_patterns.md` |
+| DataTable / DataAsset / 数据驱动 | `07_data_driven.md` |
+| Cast / Interface / Dispatcher / 通信 / 接口 | `02_communication.md` |
+| 性能 / Tick / 优化 / Performance | `09_performance.md` |
+| 调试 / Debug / 编译错误 / 崩溃 | `10_debugging_and_review.md` |
+| C++ / API / UFunction / BlueprintCallable / custom function / component method / RPNPCClient / RPActionPlanComponent / RPActionHelpers | `15_cpp_bp_api.generated.md` |
+
+If >3 files match, prioritize: project conventions > C++ API > communication > NPC > other.
+If 0 files match, Layer 1 is sufficient.
+
+**Fail-open:** If any Layer 2 file is missing or unreadable, log a warning and continue. Do not block the skill on a missing KB file.
+
+**Output constraint:** For each KEY architectural decision in the planning output,
+add one sentence citing the specific file. Example:
+> "Using Interface instead of Cast (02_communication.md §2.3)"
+Only required for decisions that could have gone multiple ways — not every node.
 
 ## Step 1.5: Verify UE Editor Connection
 
@@ -174,7 +234,11 @@ Check if `docs/blueprint_specs/<BPName>.md` exists.
 
 If the user's request references an existing behavior ("like E key", "same as the interact flow"):
 
-1. **Search ALL blueprints** for references to the existing behavior using `execute_python_script` to scan node titles
+1. **Search ALL blueprints** for references to the existing behavior:
+   a. Call `search_blueprint_nodes(query="<node_title_or_function_name>")` to find blueprints containing matching nodes
+   b. From results, extract the unique blueprint paths that contain matches
+   c. For each candidate blueprint (typically 1-3): call `describe_blueprint(path, max_depth="pseudocode", compact=True, subgraph_filter="<event_name>")` to read only the relevant flow
+   d. Extract entry point, exec chain, and target node from the pseudocode output
 2. **Trace the complete call chain** across all involved blueprints:
    - Entry point (which BP, which event node, what type)
    - Middle layers (GetAllActorsOfClass? Direct reference? Interface call?)
@@ -195,6 +259,8 @@ Pattern Trace: <existing behavior name>
 
 ## Step 4: Plan Changes
 
+- Resolve candidate C++ Blueprint APIs from `.claude/bp_cpp_api_index.json` and
+  `15_cpp_bp_api.generated.md` before asking MCP to confirm a node.
 - If unsure about a node type: `search_node_type("keyword")`
 - **Do NOT call `describe_blueprint(full)` for the entire graph.** It dumps all pins for all nodes and wastes thousands of tokens.
 - If you need pin names for specific nodes: call `get_node_details(path, "EventGraph", "<GUID>")` for ONLY the 2-3 nodes you plan to connect to. This is ~90% cheaper than full-depth describe.
@@ -324,6 +390,8 @@ When outputting a change spec that will be executed by blueprint-edit:
 - **NEVER** call `apply_blueprint_patch`, `create_blueprint_from_template`, or any write MCP tool
 - Only read and analyze
 - Be specific: cite node titles, subgraph names, pin names
+- Latest C++ usage requires a passing freshness gate. Missing or stale generated
+  artifacts are a hard stop, not a soft warning.
 - If analysis-only (no edit needed), just output the analysis and stop
 - **Scoped tracing**: When tracing a pattern, ONLY trace the specific chain referenced by the user. Do NOT describe/explore all blueprints. "Like E key add U key" → trace E-key chain only (2 BPs, 3 nodes). Do NOT map the entire interaction architecture unless explicitly asked.
 - **Local-first read**: When modifying a single flow, use `subgraph_filter` to read only that flow. Do NOT describe the entire graph to understand one flow. Example: `describe_blueprint(path, max_depth="pseudocode", compact=true, subgraph_filter="OnPressU")`.
