@@ -13,6 +13,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "Engine/UserDefinedStruct.h" // Required for struct properties
 #include "JsonObjectConverter.h"      // For JSON responses
+#include "Misc/StringOutputDevice.h"
 
 // Include specific widget headers if needed for property access, though reflection should handle most cases
 #include "WidgetBlueprint.h"

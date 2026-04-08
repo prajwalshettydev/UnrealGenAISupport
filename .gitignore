@@ -74,3 +74,5 @@ Plugins/*/Intermediate/*
 DerivedDataCache/*
 __pycache__/
 *.pyc
+.omc/
+.pytest_cache/

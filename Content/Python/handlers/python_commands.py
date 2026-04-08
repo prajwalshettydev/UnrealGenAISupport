@@ -1,3 +1,4 @@
+import re
 import textwrap
 
 import unreal
@@ -98,6 +99,7 @@ def handle_execute_python(command: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Response dictionary with success/failure status and output if successful
     """
+    script_file = output_file = error_file = status_file = None
     try:
         script = command.get("script")
         force = command.get("force", False)
@@ -111,7 +113,7 @@ def handle_execute_python(command: Dict[str, Any]) -> Dict[str, Any]:
         # Get log line count before execution
         log_start_line = get_log_line_count()
 
-        is_destructive = any(keyword in script for keyword in DESTRUCTIVE_SCRIPT_PATTERNS)
+        is_destructive = any(re.search(pattern, script) for pattern in DESTRUCTIVE_SCRIPT_PATTERNS)
 
         if is_destructive and not force:
             log.log_warning("Potentially destructive script detected")
@@ -188,10 +190,10 @@ def handle_execute_python(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
     finally:
         for file in [script_file, output_file, error_file, status_file]:
-            if os.path.exists(file):
+            if file is not None and os.path.exists(file):
                 try:
                     os.remove(file)
-                except:
+                except Exception:
                     pass
 
 

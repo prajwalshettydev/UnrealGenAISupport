@@ -35,9 +35,6 @@ public:
 	static FString GetAllNodesInGraph(const FString& BlueprintPath, const FString& FunctionGuid);
 	
 	UFUNCTION(BlueprintCallable, Category = "Blueprint")
-	static UEdGraph* FindGraphByGuid(UBlueprint* Blueprint, const FGuid& GraphGuid);
-	
-	UFUNCTION(BlueprintCallable, Category = "Blueprint")
 	static FString GetNodeSuggestions(const FString& NodeType);
 
 	// Move a node to a new position in the graph
@@ -191,5 +188,10 @@ private:
 
 	// Bind a function by name to a K2Node_CallFunction by searching common libraries
 	static bool BindFunctionByName(UK2Node_CallFunction* FuncNode, const FString& FunctionName);
+
+	// Unified pin-value setter: handles PC_Class/SoftClass/Object/SoftObject via DefaultObject,
+	// falls back to Schema->TrySetDefaultValue (or Pin->DefaultValue if no schema).
+	// Does NOT call ReconstructNode, PinDefaultValueChanged, or MarkBlueprintAsModified — caller's responsibility.
+	static void ApplyPinValue(UEdGraphPin* Pin, const FString& Value, UBlueprint* Blueprint);
 
 };

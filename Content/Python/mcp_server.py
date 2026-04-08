@@ -1,25 +1,49 @@
-import socket
 import json
 import sys
 import os
 import time
-from collections import OrderedDict
 from fastmcp import FastMCP
 from fastmcp.utilities.types import Image
 import re
 import mss
-import base64
 import tempfile # For creating a secure temporary file
-from io import BytesIO
 from constants import DESTRUCTIVE_SCRIPT_PATTERNS, DESTRUCTIVE_COMMAND_KEYWORDS
-from layout_engine import (
-    build_occupancy as _build_occupancy,
-    find_free_slot as _find_free_slot,
-    classify_node_role as _classify_node_role,
-    extract_layout_intent as _extract_layout_intent,
-    AUTO_PAD_X, AUTO_PAD_Y,
-)
+from layout_engine import AUTO_PAD_X, AUTO_PAD_Y
 from pathlib import Path
+
+# --- Re-exports from tools/ modules (single implementation lives there) ---
+from tools.transport import send_to_unreal
+from tools.envelope import (
+    _strip_empty, _compact_keys, _COMPACT_KEY_MAP,
+    _SEMANTIC_KEYS, _DIR_VALUES, _to_semantic, _compact_response,
+    _VALID_SCHEMA_MODES, _normalize_schema_mode,
+    _make_envelope, _json_out,
+    _DescribeCache, _describe_cache, _describe_legend_seen,
+    _node_details_cache, _NODE_DETAILS_CACHE_MAX,
+    _evict_bp_caches, _node_details_cache_evict,
+    _postprocess_describe, _compute_fingerprint,
+    _LOCALE_ALIASES,
+    _DESCRIBE_CACHE_MAX, _DESCRIBE_CACHE_TTL,
+)
+from tools.describe import (
+    _NODE_TYPE_MAP, _classify_node, _classify_function_call,
+    _is_pure_node, _build_data_expression,
+    _normalize_graph, _apply_node_filter, _apply_subgraph_filter,
+    _graph_fetch_nodes, _graph_build_nodes_and_edges,
+    _graph_build_subgraphs, _graph_assemble_result,
+    _build_graph_description, _to_pseudocode_only,
+    _resolve_neighborhood_node_ref, _bfs_neighborhood,
+)
+from tools.patch import (
+    _patch_looks_like_guid, _patch_classify_error, _patch_extract_ref,
+    _patch_validate, _patch_resolve_refs, _patch_mutate, _patch_finalize,
+)
+from tools.inspect_tools import (
+    get_node_details as _impl_get_node_details,
+    search_blueprint_nodes as _impl_search_blueprint_nodes,
+    inspect_blueprint_node as _impl_inspect_blueprint_node,
+    preflight_blueprint_patch as _impl_preflight_blueprint_patch,
+)
 
 
 # THIS FILE WILL RUN OUTSIDE THE UNREAL ENGINE SCOPE, 
@@ -62,340 +86,70 @@ if pid_file:
 # Create an MCP server
 mcp = FastMCP("UnrealHandshake")
 
+# ---------------------------------------------------------------------------
+# Tool Exposure Profile System
+#
+# Controls which tools are registered with MCP based on MCP_TOOL_PROFILE.
+# Default: "core"  — daily Blueprint editing tools only (~22 tools, ~5K tokens)
+# Supported profiles: core, analysis, scaffold, admin, full
+# Supports combinations: MCP_TOOL_PROFILE=core,analysis
+#
+# In .mcp.json env block:
+#   "MCP_TOOL_PROFILE": "core"           # daily /bp work
+#   "MCP_TOOL_PROFILE": "core,analysis"  # diagnostics enabled
+#   "MCP_TOOL_PROFILE": "full"           # all tools (dev/ops)
+# ---------------------------------------------------------------------------
 
-# Function to send a message to Unreal Engine via socket
-def send_to_unreal(command):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        try:
-            unreal_port = int(os.environ.get("UNREAL_PORT", "9877"))
-            s.connect(('localhost', unreal_port))
+_VALID_GROUPS = {"core", "analysis", "scaffold", "admin", "full"}
+_DEFAULT_PROFILE = "core"
 
-            # Ensure proper JSON encoding
-            json_str = json.dumps(command)
-            s.sendall(json_str.encode('utf-8'))
 
-            # Implement robust response handling
-            buffer_size = 8192  # Increased buffer size
-            response_data = b""
+def _resolve_active_groups() -> frozenset:
+    """Parse MCP_TOOL_PROFILE into a set of active groups."""
+    raw = os.getenv("MCP_TOOL_PROFILE", _DEFAULT_PROFILE).strip()
+    if raw == "full":
+        return frozenset(_VALID_GROUPS)
+    groups = {g.strip() for g in raw.split(",") if g.strip()}
+    unknown = groups - _VALID_GROUPS
+    if unknown:
+        print(
+            f"[MCP] WARNING: Unknown profile group(s): {unknown}. Valid: {sorted(_VALID_GROUPS)}",
+            file=sys.stderr,
+        )
+        if "MCP_TOOL_PROFILE" in os.environ:
+            raise ValueError(f"Unknown MCP_TOOL_PROFILE group(s): {unknown}")
+    return frozenset(groups)
 
-            # Keep receiving data until we have complete JSON
-            while True:
-                chunk = s.recv(buffer_size)
-                if not chunk:
-                    break
 
-                response_data += chunk
+_ACTIVE_GROUPS: frozenset = _resolve_active_groups()
+_REGISTERED_TOOLS: list = []
 
-                # Check if we have complete JSON
-                try:
-                    json.loads(response_data.decode('utf-8'))
-                    # If we get here, we have valid JSON
-                    break
-                except json.JSONDecodeError:
-                    # Need more data, continue receiving
-                    continue
 
-            # Parse the complete response
-            if response_data:
-                return json.loads(response_data.decode('utf-8'))
-            else:
-                return {"success": False, "error": "No response received"}
+def exposed_tool(group: str = "core"):
+    """Conditionally register a function as an MCP tool based on active profile.
 
-        except Exception as e:
-            print(f"Error sending to Unreal: {e}", file=sys.stderr)
-            return {"success": False, "error": str(e)}
+    Usage:
+        @exposed_tool(group="core")
+        def my_tool(...): ...
+    """
+    def decorator(fn):
+        if group in _ACTIVE_GROUPS:
+            _REGISTERED_TOOLS.append(fn.__name__)
+            return mcp.tool()(fn)
+        return fn  # function still callable internally, just not exposed via MCP
+    return decorator
+
+
+# send_to_unreal is imported from tools.transport (see top-level imports)
 
 
 # ---------------------------------------------------------------------------
-# Token optimization: compact JSON output helpers
+# Envelope, caching, compact JSON, and fingerprint helpers
+# are now in tools/envelope.py — imported at top of this file.
 # ---------------------------------------------------------------------------
 
-def _strip_empty(obj):
-    """Recursively remove keys with None, empty string, empty list, or empty dict values.
 
-    Preserves False and 0 — only removes structurally absent values.
-    """
-    if isinstance(obj, dict):
-        return {k: _strip_empty(v) for k, v in obj.items()
-                if v is not None and not (isinstance(v, str) and v == "")
-                and not (isinstance(v, (list, dict)) and len(v) == 0)}
-    elif isinstance(obj, list):
-        return [_strip_empty(item) for item in obj]
-    return obj
-
-
-_COMPACT_KEY_MAP = {
-    "title": "t",
-    "node_type": "nt",
-    "role": "r",
-    "tags": "tg",
-    "semantic": "sem",
-    "execution_semantics": "xs",
-    "exec_edges": "ex",
-    "data_edges": "da",
-    "from_node": "fn",
-    "to_node": "tn",
-    "from_pin": "fp",
-    "to_pin": "tp",
-    "edge_type": "et",
-    "data_type": "dt",
-    "condition": "cond",
-    "pseudocode": "pc",
-    "execution_trace": "tr",
-    "subgraph_id": "sg_id",
-    "entry_nodes": "entry",
-    "summary": "sum",
-    "symbol_table": "sym",
-    "data_expressions": "dex",
-    "blueprint_id": "bp_id",
-    "blueprint_name": "bp_name",
-    "node_count": "nc",
-    "default_value": "dv",
-    "direction": "dir",
-    "position": "pos",
-}
-
-
-def _compact_keys(obj):
-    """Recursively rename keys using _COMPACT_KEY_MAP."""
-    if isinstance(obj, dict):
-        return {_COMPACT_KEY_MAP.get(k, k): _compact_keys(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [_compact_keys(item) for item in obj]
-    return obj
-
-
-# --- bp_json_v2 semantic compact: readable short keys for LLM consumption ---
-_SEMANTIC_KEYS = {
-    # node object
-    "node_guid": "guid", "node_type": "type", "node_title": "title",
-    "canonical_id": "cid", "instance_id": "inst", "position": "pos",
-    # pin object
-    "direction": "dir", "default_value": "val", "default_object": "ref",
-    "default_class": "cls", "is_connected": None,  # delete entirely
-    "connected_to": "links", "required": "req",
-    "pin_name": "pin",  # inside links array
-    # search candidate
-    "canonical_name": "cname", "display_name": "label", "node_kind": "kind",
-    "spawn_strategy": "spawn", "category": "cat", "keywords": "kw",
-    "relevance_score": "score", "is_latent": "latent", "is_pure": "pure",
-    # inspect
-    "patch_hint": "hint", "context_requirements": "ctx",
-    "needs_world_context": "req_world", "needs_latent_support": "req_latent",
-    # preflight
-    "predicted_nodes": "predicted", "resolved_type": "resolved",
-    "severity": "sev", "message": "msg", "suggestion": "fix", "index": "idx",
-}
-_DIR_VALUES = {"input": "in", "output": "out"}
-
-
-def _to_semantic(obj):
-    """Recursively apply semantic key compression (bp_json_v2)."""
-    if isinstance(obj, dict):
-        result = {}
-        for k, v in obj.items():
-            new_key = _SEMANTIC_KEYS.get(k, k)
-            if new_key is None:  # marked for deletion (is_connected)
-                continue
-            new_val = _to_semantic(v)
-            if new_key == "dir" and isinstance(new_val, str):
-                new_val = _DIR_VALUES.get(new_val, new_val)
-            # pin "type" → "ptype" (only inside pin objects that have "name" key)
-            if k == "type" and "name" in obj:
-                new_key = "ptype"
-            result[new_key] = new_val
-        return result
-    if isinstance(obj, list):
-        return [_to_semantic(i) for i in obj]
-    return obj
-
-
-def _compact_response(obj):
-    """Strip empties + apply semantic keys.
-
-    If the response contains the sentinel key `_semantic: true` (injected by C++ when
-    schema_mode=semantic is active), skip _to_semantic transformation — C++ already
-    output bp_json_v2 keys directly. The sentinel is stripped before returning.
-
-    Falls back to heuristic detection (presence of 'guid'/'cname' at top level) for
-    responses that predate the sentinel marker.
-
-    NOTE: `_semantic` is an internal marker only. It is always consumed (popped) here
-    and NEVER appears in the final MCP response returned to the caller.
-    """
-    if isinstance(obj, dict):
-        has_sentinel = obj.pop("_semantic", False)
-        has_heuristic = "guid" in obj or "cname" in obj
-        if has_sentinel or has_heuristic:
-            return _strip_empty(obj)  # already semantic — only strip empties
-    return _to_semantic(_strip_empty(obj))
-
-
-_VALID_SCHEMA_MODES = {"semantic", "verbose"}
-
-
-def _normalize_schema_mode(mode: str) -> str:
-    """Normalize and validate schema_mode. Raises ValueError on invalid input."""
-    normalized = mode.lower().strip()
-    if normalized not in _VALID_SCHEMA_MODES:
-        raise ValueError(f"Invalid schema_mode: {mode!r}. Must be one of: {_VALID_SCHEMA_MODES}")
-    return normalized
-
-
-def _make_envelope(tool_name: str, ok: bool, result: dict,
-                   summary: str = "", warnings: list | None = None,
-                   diagnostics: list | None = None,
-                   job_id: str | None = None) -> dict:
-    """Build the unified response envelope for MCP tool responses.
-
-    {ok, request_id, tool, summary, warnings, diagnostics, result, job_id}
-    """
-    import uuid
-    return {
-        "ok": ok,
-        "request_id": str(uuid.uuid4())[:8],
-        "tool": tool_name,
-        "summary": summary or ("OK" if ok else result.get("error", "failed")),
-        "warnings": warnings or [],
-        "diagnostics": diagnostics or [],
-        "result": result,
-        "job_id": job_id,
-    }
-
-
-def _json_out(obj, compact=False):
-    """Serialize to JSON, optionally compact (short keys, no indent, no empties)."""
-    if compact:
-        obj = _strip_empty(obj)
-        obj = _compact_keys(obj)
-        return json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
-    return json.dumps(obj, indent=2, ensure_ascii=False)
-
-
-# ---------------------------------------------------------------------------
-# Token optimization: describe_blueprint response caching (LRU, fingerprint-based)
-# ---------------------------------------------------------------------------
-
-_DESCRIBE_CACHE_MAX = 20
-_DESCRIBE_CACHE_TTL = 120  # seconds
-
-
-class _DescribeCache:
-    """LRU cache for describe_blueprint results, keyed by (path, graph, depth)."""
-
-    def __init__(self, max_size=_DESCRIBE_CACHE_MAX):
-        self._store = OrderedDict()  # key -> {fingerprint, result_json, timestamp}
-        self._max = max_size
-
-    def get(self, key, fingerprint):
-        """Return cached result_json if fingerprint matches and TTL valid, else None."""
-        entry = self._store.get(key)
-        if not entry:
-            return None
-        # Check fingerprint first (cheap string compare) before TTL syscall
-        if entry["fingerprint"] != fingerprint:
-            del self._store[key]
-            return None
-        if time.monotonic() - entry["timestamp"] > _DESCRIBE_CACHE_TTL:
-            del self._store[key]
-            return None
-        self._store.move_to_end(key)
-        return entry["result_json"]
-
-    def put(self, key, fingerprint, result_json):
-        if key in self._store:
-            self._store.move_to_end(key)
-        self._store[key] = {
-            "fingerprint": fingerprint,
-            "result_json": result_json,
-            "timestamp": time.monotonic(),
-        }
-        while len(self._store) > self._max:
-            self._store.popitem(last=False)
-
-    def invalidate(self, blueprint_path):
-        """Remove all entries for a given blueprint path."""
-        keys_to_del = [k for k in self._store if k[0] == blueprint_path]
-        for k in keys_to_del:
-            del self._store[k]
-
-
-_describe_cache = _DescribeCache()
-_describe_legend_seen = set()  # non-empty = legend already sent this MCP session
-_node_details_cache = {}  # (bp_path, func_id, guid) → details dict, max 100 entries
-_NODE_DETAILS_CACHE_MAX = 100
-
-
-def _node_details_cache_evict(blueprint_path: str):
-    """Remove all cached node details for a given blueprint path."""
-    keys_to_remove = [k for k in _node_details_cache if k[0] == blueprint_path]
-    for k in keys_to_remove:
-        del _node_details_cache[k]
-
-
-def _postprocess_describe(result_json, compact, max_depth, blueprint_path):
-    """Post-process describe output: strip legend on repeat, strip redundant graph fields.
-    Operates on a parsed copy — never mutates cached data."""
-    import copy as _copy
-    try:
-        result = json.loads(result_json)
-    except (json.JSONDecodeError, TypeError):
-        return result_json
-
-    result = _copy.deepcopy(result)
-    bp_obj = result.get("blueprint", result)
-
-    # Strip graph-level bp_id/bp_name if same as parent (pseudocode+compact only)
-    if compact and max_depth == "pseudocode":
-        parent_bp_id = bp_obj.get("blueprint_id", bp_obj.get("bp_id", ""))
-        parent_bp_name = bp_obj.get("blueprint_name", bp_obj.get("bp_name", ""))
-        for graph in bp_obj.get("graphs", []):
-            if graph.get("bp_id") == parent_bp_id:
-                graph.pop("bp_id", None)
-            if graph.get("bp_name") == parent_bp_name:
-                graph.pop("bp_name", None)
-
-    # Strip _legend on subsequent calls (session-level auto-omit)
-    if _describe_legend_seen and "_legend" in result:
-        del result["_legend"]
-    elif "_legend" in result:
-        _describe_legend_seen.add(True)
-
-    out_json = json.dumps(result, separators=(",", ":"), ensure_ascii=False) if compact else json.dumps(result, indent=2, ensure_ascii=False)
-
-    # Compression log
-    before_len = len(result_json)
-    after_len = len(out_json)
-    if before_len > 0:
-        pct = 100 * (before_len - after_len) // before_len
-        print(f"[DESCRIBE_COMPRESS] {blueprint_path} {max_depth} {before_len}→{after_len} (-{pct}%)",
-              file=sys.stderr)
-
-    return out_json
-
-
-def _compute_fingerprint(blueprint_path, graph_name, send_fn=None, graphs=None):
-    """Lightweight fingerprint from list_graphs node counts (no heavy node fetch).
-
-    Pass `graphs` (already-fetched list) to avoid an extra socket round-trip.
-    Pass `send_fn` to fetch graphs on demand (used for pre-describe cache check).
-    """
-    if graphs is None:
-        if send_fn is None:
-            return None
-        resp = send_fn({"type": "list_graphs", "blueprint_path": blueprint_path})
-        if not resp.get("success"):
-            return None
-        graphs = resp.get("graphs", [])
-    if isinstance(graphs, str):
-        graphs = json.loads(graphs)
-    if graph_name:
-        graphs = [g for g in graphs if g["graph_name"] == graph_name]
-    parts = [f"{g.get('graph_name', '?')}:{g.get('node_count', '?')}" for g in graphs]
-    return "|".join(sorted(parts))
-
-
-@mcp.tool()
+@exposed_tool(group="core")
 def how_to_use() -> str:
     """Hey LLM, this grabs the how_to_use.md from knowledge_base—it's your cheat sheet for running Unreal with this MCP. Fetch it at the start of a new chat session to get the lowdown on quirks and how shit works."""
     try:
@@ -414,7 +168,7 @@ def how_to_use() -> str:
 
 # Define basic tools for Claude to call
 
-@mcp.tool()
+@exposed_tool(group="core")
 def handshake_test(message: str) -> str:
     """Send a handshake message to Unreal Engine"""
     try:
@@ -431,7 +185,7 @@ def handshake_test(message: str) -> str:
         return f"Error communicating with Unreal: {str(e)}"
 
 
-@mcp.tool()
+@exposed_tool(group="admin")
 def execute_python_script(script: str) -> str:
     """
     Execute a Python script within Unreal Engine's Python interpreter.
@@ -473,7 +227,7 @@ def execute_python_script(script: str) -> str:
         return f"Error sending script to Unreal: {str(e)}"
 
 
-@mcp.tool()
+@exposed_tool(group="admin")
 def execute_unreal_command(command: str) -> str:
     """
     Execute an Unreal Engine command-line (CMD) command.
@@ -521,7 +275,7 @@ def execute_unreal_command(command: str) -> str:
 # Basic Object Commands
 #
 
-@mcp.tool()
+@exposed_tool(group="scaffold")
 def spawn_object(actor_class: str, location: list = [0, 0, 0], rotation: list = [0, 0, 0],
                  scale: list = [1, 1, 1], actor_label: str = None) -> str:
     """
@@ -559,7 +313,7 @@ def spawn_object(actor_class: str, location: list = [0, 0, 0], rotation: list = 
         return f"Failed to spawn object: {error}"
 
 
-@mcp.tool()
+@exposed_tool(group="scaffold")
 def edit_component_property(blueprint_path: str, component_name: str, property_name: str, value: str,
                             is_scene_actor: bool = False, actor_name: str = "") -> str:
     """
@@ -621,7 +375,7 @@ def edit_component_property(blueprint_path: str, component_name: str, property_n
         return f"Error: {str(e)}\nRaw response: {response}"
 
 
-@mcp.tool()
+@exposed_tool(group="scaffold")
 def create_material(material_name: str, color: list) -> str:
     """
     Create a new material with the specified color
@@ -650,7 +404,7 @@ def create_material(material_name: str, color: list) -> str:
 # Blueprint Commands
 #
 
-@mcp.tool()
+@exposed_tool(group="scaffold")
 def create_blueprint(blueprint_name: str, parent_class: str = "Actor", save_path: str = "/Game/Blueprints") -> str:
     """
     Create a new Blueprint class
@@ -676,7 +430,7 @@ def create_blueprint(blueprint_name: str, parent_class: str = "Actor", save_path
     else:
         return f"Failed to create Blueprint: {response.get('error', 'Unknown error')}"
 
-@mcp.tool()
+@exposed_tool(group="scaffold")
 def take_editor_screenshot() -> Image:
     """
     Takes a screenshot of the primary monitor using a vendored OS-level library.
@@ -715,7 +469,7 @@ def take_editor_screenshot() -> Image:
             os.remove(temp_path)
 
 
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def add_component_to_blueprint(blueprint_path: str, component_class: str, component_name: str = None) -> str:
     """
     Add a component to a Blueprint
@@ -742,7 +496,7 @@ def add_component_to_blueprint(blueprint_path: str, component_class: str, compon
         return f"Failed to add component: {response.get('error', 'Unknown error')}"
 
 
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def add_variable_to_blueprint(blueprint_path: str, variable_name: str, variable_type: str,
                               default_value: str = None, category: str = "Default") -> str:
     """
@@ -778,7 +532,7 @@ def add_variable_to_blueprint(blueprint_path: str, variable_name: str, variable_
         return f"Failed to add variable: {response.get('error', 'Unknown error')}"
 
 
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def add_function_to_blueprint(blueprint_path: str, function_name: str,
                               inputs: list = None, outputs: list = None) -> str:
     """
@@ -813,7 +567,7 @@ def add_function_to_blueprint(blueprint_path: str, function_name: str,
         return f"Failed to add function: {response.get('error', 'Unknown error')}"
 
 
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def add_node_to_blueprint(blueprint_path: str, function_id: str, node_type: str,
                           node_position: list = [0, 0], node_properties: dict = None) -> str:
     """
@@ -840,9 +594,13 @@ def add_node_to_blueprint(blueprint_path: str, function_id: str, node_type: str,
         On failure: A response containing "SUGGESTIONS:" followed by alternative node types to try
     
     Note:
-        Function libraries like KismetMathLibrary, KismetSystemLibrary, and KismetStringLibrary 
-        contain most common Blueprint functions. If a simple node name doesn't work, try the 
+        Function libraries like KismetMathLibrary, KismetSystemLibrary, and KismetStringLibrary
+        contain most common Blueprint functions. If a simple node name doesn't work, try the
         full function name, e.g., "Multiply_FloatFloat" instead of just "Multiply".
+
+        This is a low-level tool that bypasses the preflight validation performed by
+        apply_blueprint_patch. For validated node creation with pin connection and compile checks,
+        prefer apply_blueprint_patch with a single-node add_nodes entry instead.
     """
     if node_properties is None:
         node_properties = {}
@@ -863,7 +621,7 @@ def add_node_to_blueprint(blueprint_path: str, function_id: str, node_type: str,
         return f"Failed to add node: {response.get('error', 'Unknown error')}"
 
 
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def get_node_suggestions(node_type: str) -> str:
     """
     Get suggestions for a node type in Unreal Blueprints
@@ -891,7 +649,7 @@ def get_node_suggestions(node_type: str) -> str:
         return f"Failed to get suggestions for '{node_type}': {error}"
 
 
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def delete_node_from_blueprint(blueprint_path: str, function_id: str, node_id: str) -> str:
     """
     Delete a node from a Blueprint graph. All connections to/from this node are
@@ -921,7 +679,7 @@ def delete_node_from_blueprint(blueprint_path: str, function_id: str, node_id: s
         return f"Failed to delete node: {response.get('error', 'Unknown error')}"
 
 
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def get_all_nodes_in_graph(blueprint_path: str, function_id: str) -> str:
     """
     Get a summary of all nodes in a Blueprint graph: GUIDs, types, and positions.
@@ -949,7 +707,7 @@ def get_all_nodes_in_graph(blueprint_path: str, function_id: str) -> str:
         return f"Failed to get nodes: {response.get('error', 'Unknown error')}"
 
 
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def connect_blueprint_nodes(blueprint_path: str, function_id: str,
                             source_node_id: str, source_pin: str,
                             target_node_id: str, target_pin: str) -> str:
@@ -994,7 +752,7 @@ def connect_blueprint_nodes(blueprint_path: str, function_id: str,
         return f"Failed to connect nodes: {error}"
 
 
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def compile_blueprint(blueprint_path: str) -> str:
     """
     Compile a Blueprint
@@ -1017,7 +775,7 @@ def compile_blueprint(blueprint_path: str) -> str:
         return f"Failed to compile Blueprint: {response.get('error', 'Unknown error')}"
 
 
-@mcp.tool()
+@exposed_tool(group="scaffold")
 def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
                           rotation: list = [0, 0, 0], scale: list = [1, 1, 1],
                           actor_label: str = None) -> str:
@@ -1051,68 +809,7 @@ def spawn_blueprint_actor(blueprint_path: str, location: list = [0, 0, 0],
         return f"Failed to spawn Blueprint: {response.get('error', 'Unknown error')}"
 
 
-# @mcp.tool()
-# def add_nodes_to_blueprint_bulk(blueprint_path: str, function_id: str, nodes: list) -> str:
-#     """
-#     Add multiple nodes to a Blueprint graph in a single operation
-# 
-#     Args:
-#         blueprint_path: Path to the Blueprint asset
-#         function_id: ID of the function to add the nodes to
-#         nodes: Array of node definitions, each containing:
-#             - id: ID for referencing the node (string) - this is important for creating connections later
-#             - node_type: Type of node to add (see add_node_to_blueprint for supported types)
-#             - node_position: Position of the node in the graph [X, Y]
-#             - node_properties: Properties to set on the node (optional)
-# 
-#     Returns:
-#         On success: Dictionary mapping your node IDs to the actual node GUIDs created in Unreal
-#         On partial success: Dictionary with successful nodes and suggestions for failed nodes
-#         On failure: Error message with suggestions
-# 
-#     Example success response:
-#         {
-#           "success": true,
-#           "nodes": {
-#             "function_entry": "425E7A3949D7420A461175A4733BBA5C",
-#             "multiply_node": "70354A7E444BB68EEF31718DC50CF89C",
-#             "return_node": "6436796645ED674F3C64A8A94CBA416C"
-#           }
-#         }
-# 
-#     Example partial success with suggestions:
-#         {
-#           "success": true,
-#           "partial_success": true,
-#           "nodes": {
-#             "function_entry": "425E7A3949D7420A461175A4733BBA5C",
-#             "return_node": "6436796645ED674F3C64A8A94CBA416C"
-#           },
-#           "suggestions": {
-#             "multiply_node": {
-#               "requested_type": "Multiply_Float",
-#               "suggestions": ["KismetMathLibrary.Multiply_FloatFloat", "KismetMathLibrary.MultiplyByFloat"]
-#             }
-#           }
-#         }
-# 
-#     When you receive suggestions, you can retry adding those nodes using the suggested node types.
-#     """
-#     command = {
-#         "type": "add_nodes_bulk",
-#         "blueprint_path": blueprint_path,
-#         "function_id": function_id,
-#         "nodes": nodes
-#     }
-# 
-#     response = send_to_unreal(command)
-#     if response.get("success"):
-#         node_mapping = response.get("nodes", {})
-#         return f"Successfully added {len(node_mapping)} nodes to function {function_id} in Blueprint at {blueprint_path}\nNode mapping: {json.dumps(node_mapping, indent=2)}"
-#     else:
-#         return f"Failed to add nodes: {response.get('error', 'Unknown error')}"
-
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def add_component_with_events(blueprint_path: str, component_name: str, component_class: str) -> str:
     """
     Add a component to a Blueprint with overlap events if applicable.
@@ -1147,7 +844,7 @@ def add_component_with_events(blueprint_path: str, component_name: str, componen
         return f"Error parsing response: {str(e)}\nRaw response: {response}"
 
 
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def connect_blueprint_nodes_bulk(blueprint_path: str, function_id: str, connections: list) -> str:
     """
     Connect multiple pairs of nodes in a Blueprint graph
@@ -1201,7 +898,7 @@ def connect_blueprint_nodes_bulk(blueprint_path: str, function_id: str, connecti
             return f"Failed to connect nodes: {error_message}"
 
 
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def get_blueprint_node_guid(blueprint_path: str, graph_type: str = "EventGraph", node_name: str = None,
                             function_id: str = None) -> str:
     """
@@ -1236,57 +933,16 @@ def get_blueprint_node_guid(blueprint_path: str, graph_type: str = "EventGraph",
 # Node CRUD Tools (Complete set for blueprint node manipulation)
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="core")
 def get_node_details(blueprint_path: str, function_id: str, node_guid: str,
                      schema_mode: str = "semantic") -> str:
-    """
-    Get detailed information about a specific Blueprint node including all its pins,
-    connections, default values, and display title.
-
-    Use this BEFORE connecting nodes — you need to know the exact pin names.
-    Use this AFTER adding a node — to verify it was created correctly.
-    Use this to inspect an existing node you want to modify.
-
-    Args:
-        blueprint_path: Path to the Blueprint (e.g., "/Game/Blueprints/BP_MyActor")
-        function_id: Graph identifier — use "EventGraph" for the main event graph,
-                     or a function GUID from list_blueprint_graphs for function graphs
-        node_guid: The GUID of the node (from get_all_nodes_in_graph or add_node_to_blueprint)
-        schema_mode: Output format — "semantic" (default, bp_json_v2, ~40% fewer tokens)
-                     or "verbose" (full field names, for debugging)
-
-    Returns:
-        JSON with node_guid, node_type, node_title, position, and pins array.
-        Each pin has: name, direction (input/output), type, default_value,
-        is_connected, and connected_to list [{node_guid, pin_name}].
-    """
-    schema_mode = _normalize_schema_mode(schema_mode)
-    # LRU cache for node details (invalidated alongside _describe_cache)
-    cache_key = (blueprint_path, function_id, node_guid, schema_mode)
-    if cache_key in _node_details_cache:
-        return json.dumps(_node_details_cache[cache_key], indent=2)
-
-    command = {
-        "type": "get_node_details",
-        "blueprint_path": blueprint_path,
-        "function_id": function_id,
-        "node_guid": node_guid,
-        "schema_mode": schema_mode,
-    }
-    response = send_to_unreal(command)
-    if response.get("success"):
-        details = response.get("details", {})
-        if len(_node_details_cache) >= _NODE_DETAILS_CACHE_MAX:
-            # Evict oldest entry (FIFO)
-            oldest_key = next(iter(_node_details_cache))
-            del _node_details_cache[oldest_key]
-        _node_details_cache[cache_key] = details
-        return json.dumps(_compact_response(details), separators=(",", ":"), ensure_ascii=False)
-    else:
-        return f"Failed: {response.get('error', 'Unknown error')}"
+    """Get detailed information about a specific Blueprint node including all its pins,
+    connections, default values, and display title."""
+    return _impl_get_node_details(blueprint_path, function_id, node_guid,
+                                  schema_mode=schema_mode, send_fn=send_to_unreal)
 
 
-@mcp.tool()
+@exposed_tool(group="core")
 def list_blueprint_graphs(blueprint_path: str) -> str:
     """
     List all graphs (EventGraph, Functions, Macros) in a Blueprint with their GUIDs and node counts.
@@ -1311,7 +967,7 @@ def list_blueprint_graphs(blueprint_path: str) -> str:
         return f"Failed: {response.get('error', 'Unknown error')}"
 
 
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def move_blueprint_node(blueprint_path: str, function_id: str, node_guid: str,
                         new_x: float, new_y: float) -> str:
     """
@@ -1345,7 +1001,7 @@ def move_blueprint_node(blueprint_path: str, function_id: str, node_guid: str,
         return f"Failed: {response.get('error', 'Unknown error')}"
 
 
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def set_node_pin_value(blueprint_path: str, function_id: str, node_guid: str,
                        pin_name: str, value: str) -> str:
     """
@@ -1380,7 +1036,7 @@ def set_node_pin_value(blueprint_path: str, function_id: str, node_guid: str,
         return f"Failed: {response.get('error', 'Unknown error')}"
 
 
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def disconnect_blueprint_nodes(blueprint_path: str, function_id: str,
                                source_node_id: str, source_pin: str,
                                target_node_id: str, target_pin: str) -> str:
@@ -1430,7 +1086,7 @@ def is_potentially_destructive(script: str) -> bool:
 
 
 # Scene Control
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def get_all_scene_objects() -> str:
     """
     Retrieve all actors in the current Unreal Engine level.
@@ -1444,7 +1100,7 @@ def get_all_scene_objects() -> str:
 
 
 # Project Control
-@mcp.tool()
+@exposed_tool(group="scaffold")
 def create_project_folder(folder_path: str) -> str:
     """
     Create a new folder in the Unreal project content directory.
@@ -1457,7 +1113,7 @@ def create_project_folder(folder_path: str) -> str:
     return response.get("message", f"Failed: {response.get('error', 'Unknown error')}")
 
 
-@mcp.tool()
+@exposed_tool(group="scaffold")
 def get_files_in_folder(folder_path: str) -> str:
     """
     List all files in a specified project folder.
@@ -1470,7 +1126,7 @@ def get_files_in_folder(folder_path: str) -> str:
     return json.dumps(response.get("files", [])) if response.get("success") else f"Failed: {response.get('error')}"
 
 
-@mcp.tool()
+@exposed_tool(group="scaffold")
 def create_game_mode(game_mode_path: str, pawn_blueprint_path: str, base_class: str = "GameModeBase") -> str:
     """Create a game mode Blueprint, set its default pawn, and assign it as the current scene’s default game mode.
     Args:
@@ -1492,7 +1148,7 @@ def create_game_mode(game_mode_path: str, pawn_blueprint_path: str, base_class: 
         return f"Error creating game mode: {str(e)}"
 
 
-@mcp.tool()
+@exposed_tool(group="scaffold")
 def add_widget_to_user_widget(user_widget_path: str, widget_type: str, widget_name: str,
                               parent_widget_name: str = "") -> str:
     """
@@ -1534,7 +1190,7 @@ def add_widget_to_user_widget(user_widget_path: str, widget_type: str, widget_na
         return f"An unexpected error occurred: {str(e)} Response: {response_str}"
 
 
-@mcp.tool()
+@exposed_tool(group="scaffold")
 def edit_widget_property(user_widget_path: str, widget_name: str, property_name: str, value: str) -> str:
     """
     Edits a property of a specific widget within a User Widget Blueprint.
@@ -1586,7 +1242,7 @@ def edit_widget_property(user_widget_path: str, widget_name: str, property_name:
 
 
 # Input
-@mcp.tool()
+@exposed_tool(group="scaffold")
 def add_input_binding(action_name: str, key: str) -> str:
     """
     Add an input action binding to Project Settings.
@@ -1653,7 +1309,7 @@ def _validate_source_path(relative_path: str) -> Path:
     return resolved
 
 
-@mcp.tool()
+@exposed_tool(group="admin")
 def read_source_file(relative_path: str, start_line: int = 1, end_line: int = 0) -> str:
     """
     Read a source-code or config file inside the Unreal project.
@@ -1701,7 +1357,7 @@ def read_source_file(relative_path: str, start_line: int = 1, end_line: int = 0)
     return header + "".join(selected)
 
 
-@mcp.tool()
+@exposed_tool(group="admin")
 def write_source_file(relative_path: str, content: str) -> str:
     """
     Write (overwrite or create) a source-code or config file inside the Unreal project.
@@ -1749,7 +1405,7 @@ def write_source_file(relative_path: str, content: str) -> str:
     )
 
 
-@mcp.tool()
+@exposed_tool(group="admin")
 def patch_source_file(relative_path: str, old_text: str, new_text: str) -> str:
     """
     Replace an exact substring in a source file (surgical edit, no full overwrite).
@@ -1819,785 +1475,14 @@ def patch_source_file(relative_path: str, old_text: str, new_text: str) -> str:
     )
 
 
+
 # ---------------------------------------------------------------------------
-# describe_blueprint v2 — LLM-friendly graph representation
+# describe_blueprint v2 helpers (classify, build graph, pseudocode, etc.)
+# are now in tools/describe.py — imported at top of this file.
 # ---------------------------------------------------------------------------
 
-# Map UE node class names to (abstract_type, base_tags, role)
-_NODE_TYPE_MAP = {
-    "K2Node_Event":             ("Event",        ["entry"],       "entry"),
-    "K2Node_CustomEvent":       ("CustomEvent",  ["entry"],       "entry"),
-    "K2Node_InputAction":       ("InputEvent",   ["entry"],       "entry"),
-    "K2Node_ComponentBoundEvent": ("ComponentEvent", ["entry"],   "entry"),
-    "K2Node_InputKey":          ("InputKey",     ["entry"],       "entry"),
-    "K2Node_EnhancedInputAction": ("EnhancedInput", ["entry"],   "entry"),
-    "K2Node_AsyncAction":       ("AsyncAction",  ["latent"],      "call"),
-    "K2Node_AIMoveTo":          ("AIMoveTo",     ["latent"],      "latent"),
-    "K2Node_CallFunction":      ("FunctionCall", [],              "call"),
-    "K2Node_CallArrayFunction": ("ArrayOp",      [],              "call"),
-    "K2Node_IfThenElse":        ("Branch",       [],              "control"),
-    "K2Node_ExecutionSequence": ("Sequence",     [],              "control"),
-    "K2Node_ForEachElementInEnum": ("Loop",      [],              "control"),
-    "K2Node_ForEachLoop":       ("Loop",         [],              "control"),
-    "K2Node_WhileLoop":         ("Loop",         [],              "control"),
-    "K2Node_MakeStruct":        ("MakeStruct",   ["struct"],      "pure"),
-    "K2Node_BreakStruct":       ("BreakStruct",  ["struct"],      "pure"),
-    "K2Node_MakeArray":         ("MakeArray",    [],              "pure"),
-    "K2Node_VariableGet":       ("VariableGet",  ["state_read"],  "pure"),
-    "K2Node_VariableSet":       ("VariableSet",  ["state_write"], "state"),
-    "K2Node_MacroInstance":     ("MacroCall",    [],              "call"),
-    "K2Node_Knot":              ("Reroute",      [],              "pure"),
-    "K2Node_FunctionEntry":     ("FunctionEntry",["entry"],       "entry"),
-    "K2Node_FunctionResult":    ("FunctionReturn",["exit"],       "call"),
-    "K2Node_Self":              ("Self",         [],              "pure"),
-    "K2Node_Cast":              ("Cast",         [],              "call"),
-    "K2Node_DynamicCast":       ("Cast",         [],              "call"),
-    "K2Node_Select":            ("Select",       [],              "pure"),
-    "K2Node_SwitchEnum":        ("Switch",       [],              "control"),
-    "K2Node_SwitchInteger":     ("Switch",       [],              "control"),
-    "K2Node_SwitchString":      ("Switch",       [],              "control"),
-    "K2Node_CommutativeAssociativeBinaryOperator": ("Math", [],   "pure"),
-    "K2Node_PromotableOperator": ("Math",        [],              "pure"),
-    "K2Node_SpawnActor":        ("SpawnActor",   ["external_call"],"call"),
-    "K2Node_SpawnActorFromClass": ("SpawnActor",  ["external_call"],"call"),
-    "K2Node_SetFieldsInStruct":  ("SetStructFields", ["struct"],  "call"),
-    "K2Node_GetArrayItem":       ("ArrayOp",     [],              "pure"),
-    "K2Node_Timeline":           ("Timeline",    ["latent"],      "latent"),
-    "K2Node_Delay":              ("Delay",       ["latent"],      "latent"),
-    "K2Node_RetriggerableDelay": ("Delay",       ["latent"],      "latent"),
-}
 
-
-def _classify_node(node_type_str: str):
-    """Return (abstract_type, base_tags, role) for a UE node class name."""
-    if node_type_str in _NODE_TYPE_MAP:
-        return _NODE_TYPE_MAP[node_type_str]
-    for prefix, val in _NODE_TYPE_MAP.items():
-        if node_type_str.startswith(prefix):
-            return val
-    return ("Unknown", [], "call")
-
-
-def _classify_function_call(title: str, node_det=None):
-    """Two-level semantic classification for FunctionCall nodes.
-    Supports both English and Chinese UE titles."""
-    t = title.lower()
-    semantic = {"type": "FunctionCall", "intent": "unknown", "side_effect": False}
-
-    # Check for latent node by detecting LatentInfo pin (works regardless of language)
-    if node_det:
-        for p in node_det.get("pins", []):
-            if p.get("name") == "LatentInfo" or "LatentActionInfo" in p.get("type", ""):
-                semantic.update(intent="async", side_effect=True)
-                return semantic
-
-    # English + Chinese keyword matching
-    if t.startswith("set ") or "设置" in t or "设定" in t:
-        semantic.update(intent="state_write", side_effect=True)
-    elif t.startswith("get ") or "获取" in t or "取得" in t:
-        semantic.update(intent="state_read")
-    elif "spawn" in t or "生成" in t:
-        semantic.update(intent="spawn", side_effect=True)
-    elif "destroy" in t or "销毁" in t or "摧毁" in t:
-        semantic.update(intent="destroy", side_effect=True)
-    elif "print" in t or "log" in t or "打印" in t or "输出日志" in t:
-        semantic.update(intent="debug", side_effect=True)
-    elif "delay" in t or "timer" in t or "延迟" in t or "定时" in t:
-        semantic.update(intent="async", side_effect=True)
-    elif ("play" in t or "播放" in t) and ("anim" in t or "montage" in t or "sound" in t or "动画" in t or "声音" in t):
-        semantic.update(intent="play_media", side_effect=True)
-    elif ("add" in t and "component" in t) or ("添加" in t and "组件" in t):
-        semantic.update(intent="add_component", side_effect=True)
-    elif "bind" in t or "delegate" in t or "绑定" in t:
-        semantic.update(intent="bind_event", side_effect=True)
-    elif "save" in t or "保存" in t:
-        semantic.update(intent="save", side_effect=True)
-    elif "load" in t or "加载" in t:
-        semantic.update(intent="load")
-    elif "cast" in t or "convert" in t or "转换" in t:
-        semantic.update(intent="cast")
-    elif "移动" in t or "move" in t:
-        semantic.update(intent="movement", side_effect=True)
-    return semantic
-
-
-def _is_pure_node(node_det):
-    """Check if a node has no exec pins (pure node)."""
-    for p in node_det.get("pins", []):
-        if p.get("type") == "exec":
-            return False
-    return True
-
-
-def _build_data_expression(node_guid, pin_name, details_map, visited=None):
-    """Recursively build a human-readable expression for a data input pin."""
-    if visited is None:
-        visited = set()
-    if node_guid in visited:
-        return "..."  # cycle guard
-    visited.add(node_guid)
-
-    det = details_map.get(node_guid)
-    if not det:
-        return "?"
-
-    title = det.get("node_title", "?")
-    ue_type = det.get("node_type", "")
-    abstract, _, role = _classify_node(ue_type)
-
-    # Leaf cases
-    if abstract == "VariableGet":
-        var_name = title.replace("Get ", "")
-        return f"@{var_name}"
-    if abstract == "Self":
-        return "Self"
-
-    # If this is a pure node (no exec pins), inline it as function(args).
-    # B2 fix: also check _is_pure_node for FunctionCall math nodes created via
-    # CreateMathFunctionNode — they have role "call" but no exec pins.
-    is_actually_pure = (role == "pure") or _is_pure_node(det)
-    if is_actually_pure and abstract not in ("Reroute",):
-        args = []
-        for p in det.get("pins", []):
-            if p["direction"] != "input" or p.get("type") == "exec":
-                continue
-            if p.get("connected_to"):
-                conn = p["connected_to"][0]
-                arg_expr = _build_data_expression(
-                    conn["node_guid"], conn["pin_name"], details_map, visited)
-                args.append(arg_expr)
-            elif p.get("default_value"):
-                args.append(p["default_value"])
-        # Detect math operations (both K2Node_Math and FunctionCall math nodes)
-        _MATH_OPS = {
-            "+": ["+", "add", "加", "整数+整数", "float+float"],
-            "-": ["-", "subtract", "减", "整数-整数", "float-float"],
-            "*": ["*", "multiply", "乘", "整数*整数", "float*float"],
-            "/": ["/", "divide", "除", "整数/整数", "float/float"],
-        }
-        math_op = None
-        title_lower = title.lower().replace(" ", "")
-        for op_sym, keywords in _MATH_OPS.items():
-            if any(k in title_lower for k in keywords):
-                math_op = op_sym
-                break
-        if abstract == "Math" or math_op:
-            op = math_op or title.replace(" ", "")
-            if len(args) == 2:
-                return f"({args[0]} {op} {args[1]})"
-            return f"{op}({', '.join(args)})" if args else title
-        if abstract in ("MakeStruct", "MakeArray", "SetStructFields"):
-            return f"{title}({', '.join(args)})" if args else title
-        return f"{title}({', '.join(args)})" if args else title
-
-    # Reroute: pass through
-    if abstract == "Reroute":
-        for p in det.get("pins", []):
-            if p["direction"] == "input" and p.get("connected_to"):
-                conn = p["connected_to"][0]
-                return _build_data_expression(
-                    conn["node_guid"], conn["pin_name"], details_map, visited)
-        return "?"
-
-    # Impure node output: reference by name
-    return f"@{title}.{pin_name}" if pin_name else f"@{title}"
-
-
-def _normalize_graph(nodes, exec_edges, data_edges):
-    """Remove reroute nodes and merge trivial exec chains."""
-    reroute_guids = {n["id"] for n in nodes if n.get("node_type") == "Reroute"}
-    if not reroute_guids:
-        return nodes, exec_edges, data_edges
-
-    # Rebuild data edges through reroutes
-    new_data = []
-    for e in data_edges:
-        if e["from_node"] in reroute_guids:
-            continue  # expression builder already handles reroutes
-        if e["to_node"] in reroute_guids:
-            continue
-        new_data.append(e)
-
-    # Rebuild exec edges through reroutes (shouldn't have exec, but just in case)
-    new_exec = [e for e in exec_edges
-                if e["from_node"] not in reroute_guids and e["to_node"] not in reroute_guids]
-
-    new_nodes = [n for n in nodes if n["id"] not in reroute_guids]
-    return new_nodes, new_exec, new_data
-
-
-def _apply_node_filter(nodes, exec_edges, data_edges, node_filter="", node_ids=""):
-    """Filter nodes by title regex or GUID list. Returns filtered (nodes, exec_edges, data_edges)."""
-    if not node_filter and not node_ids:
-        return nodes, exec_edges, data_edges
-
-    keep_ids = set()
-
-    if node_ids:
-        # Exact GUID match
-        id_list = [g.strip() for g in node_ids.split(",") if g.strip()]
-        keep_ids.update(id_list)
-
-    if node_filter:
-        # Regex match on title or node_type
-        patterns = [p.strip() for p in node_filter.split(",") if p.strip()]
-        for n in nodes:
-            for pat in patterns:
-                try:
-                    if (re.search(pat, n.get("title", ""), re.IGNORECASE) or
-                            re.search(pat, n.get("node_type", ""), re.IGNORECASE)):
-                        keep_ids.add(n["id"])
-                        break
-                except re.error:
-                    # Treat as literal substring match on regex error
-                    if (pat.lower() in n.get("title", "").lower() or
-                            pat.lower() in n.get("node_type", "").lower()):
-                        keep_ids.add(n["id"])
-                        break
-
-    filtered_nodes = [n for n in nodes if n["id"] in keep_ids]
-
-    # Keep edges where both endpoints are in the filtered set
-    # For boundary edges (one endpoint outside), include a stub
-    filtered_exec = []
-    for e in exec_edges:
-        if e["from_node"] in keep_ids and e["to_node"] in keep_ids:
-            filtered_exec.append(e)
-        elif e["from_node"] in keep_ids or e["to_node"] in keep_ids:
-            # Boundary edge — mark it
-            stub = dict(e)
-            stub["boundary"] = True
-            filtered_exec.append(stub)
-
-    filtered_data = []
-    for e in data_edges:
-        if e["from_node"] in keep_ids and e["to_node"] in keep_ids:
-            filtered_data.append(e)
-        elif e["from_node"] in keep_ids or e["to_node"] in keep_ids:
-            stub = dict(e)
-            stub["boundary"] = True
-            filtered_data.append(stub)
-
-    return filtered_nodes, filtered_exec, filtered_data
-
-
-def _apply_subgraph_filter(subgraphs_event, subgraph_filter):
-    """Filter event flow subgraphs by name."""
-    if not subgraph_filter:
-        return subgraphs_event
-    names = [n.strip().lower() for n in subgraph_filter.split(",") if n.strip()]
-    return [sg for sg in subgraphs_event if sg.get("name", "").lower() in names]
-
-
-def _build_graph_description(blueprint_path, graph_info, depth, include_pseudo, send_fn,
-                              node_filter="", node_ids="", subgraph_filter=""):
-    """Build the LLM-friendly JSON for one graph (v2)."""
-    graph_name = graph_info["graph_name"]
-    graph_type = graph_info.get("graph_type", "EventGraph")
-    function_id = graph_name if graph_type == "EventGraph" else graph_info["graph_guid"]
-
-    # 1. Get all nodes with details in ONE call (fixes Issue 7: N+1 performance)
-    batch_resp = send_fn({
-        "type": "get_all_nodes_with_details",
-        "blueprint_path": blueprint_path,
-        "function_id": function_id,
-    })
-
-    if not batch_resp.get("success"):
-        # Fallback to N+1 if batch endpoint not available
-        all_nodes_resp = send_fn({
-            "type": "get_all_nodes",
-            "blueprint_path": blueprint_path,
-            "function_id": function_id,
-        })
-        if not all_nodes_resp.get("success"):
-            return {"error": all_nodes_resp.get("error", "Failed to get nodes")}
-        raw_nodes = all_nodes_resp.get("nodes", [])
-        if isinstance(raw_nodes, str):
-            raw_nodes = json.loads(raw_nodes)
-        all_details = []
-        for n in raw_nodes:
-            resp = send_fn({
-                "type": "get_node_details",
-                "blueprint_path": blueprint_path,
-                "function_id": function_id,
-                "node_guid": n["node_guid"],
-            })
-            if resp.get("success"):
-                all_details.append(resp.get("details", {}))
-    else:
-        all_details = batch_resp.get("nodes", [])
-        if isinstance(all_details, str):
-            all_details = json.loads(all_details)
-
-    # 2. Index by GUID
-    details_by_guid = {}
-    for det in all_details:
-        # C++ may return individual elements as JSON-encoded strings; deserialize if needed
-        if isinstance(det, str):
-            try:
-                det = json.loads(det)
-            except (json.JSONDecodeError, TypeError):
-                continue
-        if isinstance(det, dict):
-            details_by_guid[det.get("node_guid", "")] = det
-
-    # 3. Build node list, edges, symbol table (v2: with roles, semantics, expressions)
-    nodes_out = []
-    exec_edges = []
-    data_edges = []
-    symbol_vars = {}
-    symbol_events = {}
-    symbol_structs = set()
-    has_latent = False
-
-    for guid, det in details_by_guid.items():
-        ue_type = det.get("node_type", "")
-        title = det.get("node_title", ue_type)
-        abstract_type, base_tags, role = _classify_node(ue_type)
-        tags = list(base_tags)
-
-        # Issue 4: Two-level semantic classification for FunctionCall
-        semantic = None
-        if abstract_type == "FunctionCall":
-            semantic = _classify_function_call(title, det)
-            if semantic.get("side_effect"):
-                tags.append("side_effect")
-            if semantic["intent"] != "unknown":
-                tags.append(semantic["intent"])
-            # B4 fix: Detect latent FunctionCall nodes (Delay created via CreateMathFunctionNode)
-            if semantic["intent"] == "async":
-                role = "latent"
-                tags.append("latent")
-
-        # Issue 6: Detect latent/async nodes
-        exec_semantics = None
-        if role == "latent":
-            has_latent = True
-            # Find the resume pin (usually "Completed" or "then")
-            resume_pin = "Completed"
-            for p in det.get("pins", []):
-                if p["direction"] == "output" and p.get("type") == "exec" and p["name"] != "then":
-                    resume_pin = p["name"]
-                    break
-            exec_semantics = {"type": "latent", "suspends_at": "execute", "resumes_at": resume_pin}
-            tags.append("latent")
-
-        # Collect symbols
-        if abstract_type in ("Event", "CustomEvent", "InputEvent"):
-            symbol_events[guid] = {"id": f"EV_{title.replace(' ', '_')}", "name": title}
-        elif abstract_type in ("VariableGet", "VariableSet"):
-            var_name = title.replace("Get ", "").replace("Set ", "")
-            if var_name not in symbol_vars:
-                pin_type = ""
-                for p in det.get("pins", []):
-                    if p["name"] != "execute" and p["name"] != "then" and p["direction"] == "output":
-                        pin_type = p.get("type", "")
-                        break
-                symbol_vars[var_name] = {"id": f"VAR_{var_name}", "name": var_name, "type": pin_type}
-        elif abstract_type in ("MakeStruct", "BreakStruct", "SetStructFields"):
-            for keyword in ("Make ", "Break ", "Set members in "):
-                if title.startswith(keyword):
-                    symbol_structs.add(title[len(keyword):].strip())
-
-        # Build node entry
-        node_entry = {
-            "id": guid,
-            "title": title,
-            "node_type": abstract_type,
-            "role": role,
-            "tags": tags,
-        }
-        # Propagate canonical_id and instance_id for stable references
-        canonical_id = det.get("canonical_id", "")
-        if canonical_id:
-            node_entry["canonical_id"] = canonical_id
-        instance_id = det.get("instance_id", "")
-        if instance_id:
-            node_entry["instance_id"] = instance_id
-        if semantic:
-            node_entry["semantic"] = semantic
-        if exec_semantics:
-            node_entry["execution_semantics"] = exec_semantics
-
-        if depth == "full":
-            node_entry["class"] = ue_type
-            node_entry["position"] = det.get("position", [0, 0])
-            node_entry["pins"] = []
-            for p in det.get("pins", []):
-                node_entry["pins"].append({
-                    "pin_id": f"{guid}.{p['name']}",
-                    "name": p["name"],
-                    "direction": p["direction"],
-                    "kind": "exec" if p.get("type") == "exec" else "data",
-                    "data_type": p.get("type", "") if p.get("type") != "exec" else None,
-                    "default_value": p.get("default_value", ""),
-                    "connected_to": p.get("connected_to", []),
-                })
-
-        nodes_out.append(node_entry)
-
-        # Extract edges from output pins
-        for p in det.get("pins", []):
-            if p["direction"] != "output" or not p.get("connected_to"):
-                continue
-            for conn in p.get("connected_to", []):
-                edge = {
-                    "from_node": guid,
-                    "from_pin": f"{guid}.{p['name']}",
-                    "to_node": conn["node_guid"],
-                    "to_pin": f"{conn['node_guid']}.{conn['pin_name']}",
-                }
-                if p.get("type") == "exec":
-                    edge["edge_type"] = "exec"
-                    if p["name"] not in ("then", "execute", "exec_out", "Completed"):
-                        edge["condition"] = p["name"]
-                    exec_edges.append(edge)
-                else:
-                    edge["edge_type"] = "data"
-                    edge["data_type"] = p.get("type", "")
-                    data_edges.append(edge)
-
-    # Bonus: Graph normalization — remove reroutes
-    nodes_out, exec_edges, data_edges = _normalize_graph(nodes_out, exec_edges, data_edges)
-
-    # Apply node filtering if requested
-    _filtering_active = bool(node_filter or node_ids)
-    if _filtering_active:
-        nodes_out, exec_edges, data_edges = _apply_node_filter(
-            nodes_out, exec_edges, data_edges, node_filter, node_ids)
-
-    # 4. Build exec adjacency (Issue 1: handle cycles via DFS with back-edge detection)
-    exec_adj = {}
-    exec_adj_with_cond = {}  # guid -> [(target_guid, condition_or_None)]
-    for e in exec_edges:
-        exec_adj.setdefault(e["from_node"], []).append(e["to_node"])
-        exec_adj_with_cond.setdefault(e["from_node"], []).append(
-            (e["to_node"], e.get("condition")))
-
-    entry_guids = [n["id"] for n in nodes_out if "entry" in n.get("tags", [])]
-    node_map = {n["id"]: n for n in nodes_out}
-
-    # Issue 3: Three-layer subgraph detection
-    # Phase A: DFS from each entry, track which entries reach which nodes
-    entry_reach = {}  # guid -> set of entry_guids that reach it
-    for entry in entry_guids:
-        visited_set = set()
-        stack = [entry]
-        while stack:
-            cur = stack.pop()
-            if cur in visited_set:
-                continue
-            visited_set.add(cur)
-            entry_reach.setdefault(cur, set()).add(entry)
-            for nxt in exec_adj.get(cur, []):
-                stack.append(nxt)
-
-    # Phase B: Classify nodes
-    shared_node_ids = {g for g, entries in entry_reach.items() if len(entries) > 1}
-    event_flow_nodes = {}  # entry_guid -> [guid]
-    for entry in entry_guids:
-        flow = []
-        stack = [entry]
-        visited_set = set()
-        while stack:
-            cur = stack.pop()
-            if cur in visited_set:
-                continue
-            visited_set.add(cur)
-            if cur not in shared_node_ids or cur == entry:
-                flow.append(cur)
-            for nxt in exec_adj.get(cur, []):
-                stack.append(nxt)
-        event_flow_nodes[entry] = flow
-
-    # Phase C: Include pure data-source nodes in their consumer's subgraph
-    all_exec_assigned = set()
-    for guids in event_flow_nodes.values():
-        all_exec_assigned.update(guids)
-    all_exec_assigned.update(shared_node_ids)
-
-    # Issue 5 + Issue 2: Build execution trace with expressions and two-layer pseudocode
-    def _build_trace_and_pseudo(entry_guid, flow_guids):
-        """DFS-based linearized trace with control flow markers and inline expressions."""
-        trace = []
-        pseudo = []
-        visited_trace = set()
-
-        def _dfs(guid, indent=0):
-            if guid in visited_trace:
-                nd = node_map.get(guid)
-                label = nd["title"] if nd else guid
-                trace.append(("  " * indent) + f"Loop → {label}")
-                pseudo.append(("  " * indent) + f"Loop → {label}")
-                return
-            visited_trace.add(guid)
-
-            nd = node_map.get(guid)
-            if not nd:
-                return
-
-            nt = nd["node_type"]
-            title = nd["title"]
-            prefix = "  " * indent
-
-            # Issue 2: Build inline data expressions for impure node inputs.
-            # Only include connected pins and non-default literal values to keep
-            # pseudocode concise. Skip infrastructure pins (self, WorldContextObject)
-            # and common UE defaults (true/false bools, zero vectors, "None" names).
-            _SKIP_PINS = {"self", "WorldContextObject", "LatentInfo"}
-            _BORING_DEFAULTS = {
-                "", "0", "0.0", "0.000000", "None", "true", "false",
-                "(R=0.000000,G=0.000000,B=0.000000,A=0.000000)",
-                "(R=0.000000,G=0.660000,B=1.000000,A=1.000000)",  # UE default PrintString blue
-                "(Linkage=-1,UUID=-1,ExecutionFunction=\"\",CallbackTarget=None)",
-            }
-            det = details_by_guid.get(guid, {})
-            input_exprs = {}
-            for p in det.get("pins", []):
-                if p["direction"] != "input" or p.get("type") == "exec":
-                    continue
-                if p["name"] in _SKIP_PINS:
-                    continue
-                if p.get("connected_to"):
-                    conn = p["connected_to"][0]
-                    expr = _build_data_expression(
-                        conn["node_guid"], conn["pin_name"], details_by_guid)
-                    if expr != "?":
-                        input_exprs[p["name"]] = expr
-                elif p.get("default_value") and p["default_value"] not in _BORING_DEFAULTS:
-                    input_exprs[p["name"]] = p["default_value"]
-
-            args_str = ", ".join(f"{k}={v}" for k, v in input_exprs.items()) if input_exprs else ""
-
-            # Generate trace line based on node type
-            if nt in ("Event", "CustomEvent", "InputEvent", "FunctionEntry"):
-                trace.append(f"{prefix}On {title}")
-                pseudo.append(f"{prefix}On {title}")
-            elif nt == "Branch":
-                cond = input_exprs.get("Condition", "?")
-                trace.append(f"{prefix}Branch ({cond}):")
-                pseudo.append(f"{prefix}If {cond}:")
-                # Follow True and False branches
-                for target, condition in exec_adj_with_cond.get(guid, []):
-                    if condition == "True":
-                        trace.append(f"{prefix}  True →")
-                        pseudo.append(f"{prefix}  True →")
-                        _dfs(target, indent + 2)
-                    elif condition == "False":
-                        trace.append(f"{prefix}  False →")
-                        pseudo.append(f"{prefix}  False →")
-                        _dfs(target, indent + 2)
-                    else:
-                        _dfs(target, indent + 1)
-                return  # Don't follow children again below
-            elif nt == "Loop":
-                trace.append(f"{prefix}Loop {title}:")
-                pseudo.append(f"{prefix}Loop {title}:")
-            elif nt == "Sequence":
-                trace.append(f"{prefix}Sequence:")
-                pseudo.append(f"{prefix}Sequence:")
-            elif nt == "VariableSet":
-                var = title.replace("Set ", "")
-                val = input_exprs.get(var, args_str)
-                trace.append(f"{prefix}Set {var} = {val}")
-                pseudo.append(f"{prefix}Set {var} = {val}")
-            elif nt == "FunctionCall":
-                sem = nd.get("semantic", {})
-                intent = sem.get("intent", "")
-                if nd.get("execution_semantics"):
-                    trace.append(f"{prefix}[async] {title}({args_str})")
-                    pseudo.append(f"{prefix}[async] {title}({args_str})")
-                else:
-                    trace.append(f"{prefix}Call {title}({args_str})")
-                    pseudo.append(f"{prefix}Call {title}({args_str})")
-            elif nt == "FunctionReturn":
-                trace.append(f"{prefix}Return")
-                pseudo.append(f"{prefix}Return")
-            elif nt in ("VariableGet", "Self"):
-                pass  # pure, shown in expressions
-            elif role == "latent":
-                trace.append(f"{prefix}[async] {title}({args_str})")
-                pseudo.append(f"{prefix}[async] {title}({args_str})")
-            else:
-                trace.append(f"{prefix}{title}({args_str})" if args_str else f"{prefix}{title}")
-                pseudo.append(f"{prefix}{title}({args_str})" if args_str else f"{prefix}{title}")
-
-            # Follow exec children (except Branch which is handled above)
-            # B5 fix: exec chains stay at same indent, only control flow increases indent
-            children = exec_adj_with_cond.get(guid, [])
-            if nt in ("Sequence",):
-                # Sequence children get indent+1
-                for target, condition in children:
-                    _dfs(target, indent + 1)
-            elif len(children) == 1:
-                # Linear chain: same indent level
-                _dfs(children[0][0], indent)
-            else:
-                # Multiple outputs (not Branch — handled above): indent each
-                for target, condition in children:
-                    _dfs(target, indent + 1)
-
-        _dfs(entry_guid)
-        return trace, pseudo
-
-    # Build subgraphs
-    subgraphs_event = []
-    for entry in entry_guids:
-        flow = event_flow_nodes.get(entry, [])
-        entry_title = node_map[entry]["title"] if entry in node_map else "Unknown"
-        sg_id = f"SG_{entry_title.replace(' ', '_').replace('/', '_')}"
-
-        flow_set = set(flow)
-        # Include pure data sources
-        data_sources = set()
-        for e in data_edges:
-            if e["to_node"] in flow_set and e["from_node"] not in all_exec_assigned:
-                data_sources.add(e["from_node"])
-
-        sg_node_ids = flow_set | data_sources
-        sg_nodes = [n for n in nodes_out if n["id"] in sg_node_ids] if depth != "minimal" else []
-        sg_exec = [e for e in exec_edges if e["from_node"] in flow_set and e["to_node"] in flow_set] if depth != "minimal" else []
-        sg_data = [e for e in data_edges if e["to_node"] in flow_set and e["from_node"] in sg_node_ids] if depth != "minimal" else []
-
-        # Issue 5: Two-layer output
-        trace_lines, pseudo_lines = [], []
-        summary_text = f"Flow starting from {entry_title}"
-        if include_pseudo and not _filtering_active:
-            trace_lines, pseudo_lines = _build_trace_and_pseudo(entry, flow)
-            # Build high-level summary from key actions
-            key_actions = [n["title"] for n in nodes_out
-                           if n["id"] in flow_set and n.get("role") == "call"
-                           and n.get("semantic", {}).get("side_effect")]
-            if key_actions:
-                summary_text = f"On {entry_title}: {', '.join(key_actions[:5])}"
-
-        sg = {
-            "subgraph_id": sg_id,
-            "name": entry_title,
-            "summary": summary_text,
-            "entry_nodes": [entry],
-            "nodes": sg_nodes,
-            "exec_edges": sg_exec,
-            "data_edges": sg_data,
-            "execution_trace": trace_lines,
-            "pseudocode": pseudo_lines,
-        }
-        subgraphs_event.append(sg)
-
-    # Apply subgraph filter if requested
-    if subgraph_filter:
-        subgraphs_event = _apply_subgraph_filter(subgraphs_event, subgraph_filter)
-
-    # Shared nodes subgraph
-    subgraphs_shared = []
-    if shared_node_ids:
-        shared_nodes = [n for n in nodes_out if n["id"] in shared_node_ids] if depth != "minimal" else []
-        subgraphs_shared.append({
-            "subgraph_id": "SG_Shared",
-            "name": "Shared Logic",
-            "summary": "Nodes reachable from multiple entry events",
-            "entry_nodes": [],
-            "nodes": shared_nodes,
-            "exec_edges": [e for e in exec_edges if e["from_node"] in shared_node_ids] if depth != "minimal" else [],
-            "data_edges": [e for e in data_edges if e["from_node"] in shared_node_ids or e["to_node"] in shared_node_ids] if depth != "minimal" else [],
-            "execution_trace": [],
-            "pseudocode": [],
-        })
-
-    # Unassigned pure nodes
-    all_assigned = all_exec_assigned | {n["id"] for sg in subgraphs_event for n in sg.get("nodes", [])}
-    unassigned = [n for n in nodes_out if n["id"] not in all_assigned]
-
-    # Issue 2: Build data_expressions for the graph
-    data_expressions = []
-    if depth in ("standard", "full"):
-        for guid, det in details_by_guid.items():
-            nd = node_map.get(guid)
-            if not nd or nd.get("role") == "pure":
-                continue
-            for p in det.get("pins", []):
-                if p["direction"] != "input" or p.get("type") == "exec":
-                    continue
-                if p.get("connected_to"):
-                    conn = p["connected_to"][0]
-                    src_node = node_map.get(conn["node_guid"])
-                    src_det = details_by_guid.get(conn["node_guid"], {})
-                    if src_node and (src_node.get("role") == "pure" or _is_pure_node(src_det)):
-                        expr = _build_data_expression(
-                            conn["node_guid"], conn["pin_name"], details_by_guid)
-                        if expr != "?" and expr != f"@{nd['title']}.{p['name']}":
-                            data_expressions.append({
-                                "target": f"{nd['title']}.{p['name']}",
-                                "expr": expr
-                            })
-
-    # 5. Symbol table
-    symbol_table = {}
-    if depth in ("standard", "full"):
-        symbol_table = {
-            "variables": list(symbol_vars.values()),
-            "events": list(symbol_events.values()),
-            "structs": [{"name": s} for s in sorted(symbol_structs)],
-        }
-
-    # 6. Assemble
-    bp_name = blueprint_path.rsplit("/", 1)[-1] if "/" in blueprint_path else blueprint_path
-    total_nodes = len(nodes_out)
-    sg_names = [sg["name"] for sg in subgraphs_event]
-
-    return {
-        "blueprint_id": blueprint_path,
-        "blueprint_name": bp_name,
-        "graph_name": graph_name,
-        "graph_type": graph_type,
-        "summary": f"{bp_name} — {graph_name} ({total_nodes} nodes, {len(sg_names)} flows: {', '.join(sg_names)})",
-        "execution_model": {
-            "type": "flow_graph",
-            "may_have_cycles": any(n.get("node_type") in ("Loop",) for n in nodes_out),
-            "has_latent_nodes": has_latent,
-        },
-        "metadata": {"node_count": total_nodes, **({"filter_applied": True} if _filtering_active or subgraph_filter else {})},
-        "symbol_table": symbol_table,
-        "data_expressions": data_expressions if depth != "minimal" else [],
-        "subgraphs": {
-            "event_flows": subgraphs_event,
-            "shared_functions": subgraphs_shared,
-        },
-        "cross_subgraph_edges": [],
-    }
-
-
-def _to_pseudocode_only(graph_desc):
-    """Strip a standard-depth graph description down to pseudocode-only output."""
-    flows = []
-    for sg in graph_desc.get("subgraphs", {}).get("event_flows", []):
-        pseudo_lines = sg.get("pseudocode", [])
-        flows.append({
-            "name": sg.get("name", ""),
-            "summary": sg.get("summary", ""),
-            "pseudocode": "\n".join(pseudo_lines) if pseudo_lines else "",
-        })
-    for sg in graph_desc.get("subgraphs", {}).get("shared_functions", []):
-        pseudo_lines = sg.get("pseudocode", [])
-        if pseudo_lines:
-            flows.append({
-                "name": sg.get("name", ""),
-                "summary": sg.get("summary", ""),
-                "pseudocode": "\n".join(pseudo_lines) if pseudo_lines else "",
-            })
-    return {
-        "blueprint_id": graph_desc.get("blueprint_id", ""),
-        "blueprint_name": graph_desc.get("blueprint_name", ""),
-        "graph_name": graph_desc.get("graph_name", ""),
-        "summary": graph_desc.get("summary", ""),
-        "node_count": graph_desc.get("metadata", {}).get("node_count", 0),
-        "symbol_table": graph_desc.get("symbol_table", {}),
-        "flows": flows,
-    }
-
-
-@mcp.tool()
+@exposed_tool(group="core")
 def describe_blueprint(
     blueprint_path: str,
     graph_name: str = "",
@@ -2727,10 +1612,16 @@ def describe_blueprint(
 
 
 # ---------------------------------------------------------------------------
-# apply_blueprint_patch — batch blueprint modifications from compact JSON
+# Patch helpers (_patch_validate, _patch_resolve_refs, _patch_mutate, _patch_finalize)
+# are now in tools/patch.py — imported at top of this file.
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+
+# ---------------------------------------------------------------------------
+# apply_blueprint_patch — orchestrator (delegates to phase helpers above)
+# ---------------------------------------------------------------------------
+
+@exposed_tool(group="core")
 def apply_blueprint_patch(
     blueprint_path: str,
     function_id: str,
@@ -2781,7 +1672,7 @@ def apply_blueprint_patch(
     Returns:
         JSON with results: created node GUIDs, connection results, errors.
     """
-    # dry_run: validate via preflight and return predicted changes without applying
+    # --- dry_run: validate via preflight without applying ---
     if dry_run:
         pf_resp = send_to_unreal({
             "type": "preflight_blueprint_patch",
@@ -2801,10 +1692,10 @@ def apply_blueprint_patch(
         )
         return json.dumps(envelope, separators=(",", ":"), ensure_ascii=False)
 
-    try:
-        patch = json.loads(patch_json)
-    except json.JSONDecodeError as e:
-        return json.dumps({"success": False, "error": f"Invalid patch JSON: {e}"})
+    # --- Phase 1: Validate ---
+    patch, err = _patch_validate(patch_json, blueprint_path, function_id, send_to_unreal)
+    if err:
+        return err
 
     # --- Structured patch log for observability ---
     patch_log = {
@@ -2818,711 +1709,30 @@ def apply_blueprint_patch(
         "error_categories": [],
     }
 
-    def _looks_like_guid(s: str) -> bool:
-        """Return True if s looks like a UUID/GUID (32+ hex chars, optional hyphens)."""
-        import re as _re
-        return bool(_re.match(r'^[0-9A-Fa-f]{8}[-]?([0-9A-Fa-f]{4}[-]?){3}[0-9A-Fa-f]{12}$', s))
+    # --- Phase 2: Resolve refs ---
+    ctx = _patch_resolve_refs(patch, blueprint_path, function_id, send_to_unreal)
 
-    def _classify_error(error_msg: str) -> str:
-        """Classify an error message into a failure taxonomy category."""
-        msg = error_msg.lower()
-        if "pin" in msg and ("not found" in msg or "available" in msg):
-            return "PIN_NOT_FOUND"
-        if "type" in msg and ("mismatch" in msg or "incompatible" in msg):
-            return "TYPE_MISMATCH"
-        if "node" in msg and ("not found" in msg or "cannot resolve" in msg or "cannot find" in msg):
-            return "NODE_NOT_FOUND"
-        if "function" in msg and ("not found" in msg or "could not" in msg or "bind" in msg):
-            return "FUNCTION_BIND_FAILED"
-        if "compile" in msg or "compilation" in msg:
-            return "COMPILE_ERROR"
-        return "UNKNOWN"
+    # Handle preflight rejection
+    if ctx["preflight_reject"]:
+        for k, v in ctx["patch_log_updates"].items():
+            patch_log["phases"][k] = v
+        patch_log["total_errors"] = ctx["patch_log_updates"].get("auto_preflight", {}).get("issues", 0)
+        patch_log["error_categories"].append("PREFLIGHT_REJECTED")
+        print(f"[PATCH_LOG] {json.dumps(patch_log, separators=(',', ':'), ensure_ascii=False)}",
+              file=sys.stderr)
+        return ctx["preflight_reject"]
 
-    results = {
-        "success": True,
-        "created_nodes": {},
-        "removed_nodes": [],
-        "connections_made": 0,
-        "connections_removed": 0,
-        "pin_values_set": 0,
-        "errors": [],
-    }
+    # --- Phase 3: Mutate ---
+    results = _patch_mutate(patch, blueprint_path, function_id, ctx, send_to_unreal, patch_log)
 
-    # Map ref_id and title -> GUID for connection resolution
-    ref_to_guid = {}
-
-    # Build title, canonical_id, and instance_id -> GUID maps from existing nodes
-    # Use bulk call instead of N+1 individual get_node_details calls
-    title_to_guid = {}
-    canonical_to_guid = {}   # template-level: first match wins
-    instance_to_guid = {}    # instance-level: unique per node
-    bulk_resp = send_to_unreal({
-        "type": "get_all_nodes_with_details",
-        "blueprint_path": blueprint_path,
-        "function_id": function_id,
-    })
-    # Single pass over existing nodes: build title/canonical/instance maps + collect positions.
-    _existing_xs: list[float] = []
-    _existing_ys: list[float] = []
-    _guid_to_pos: dict[str, list[float]] = {}  # built here, reused in Phase 2
-
-    if bulk_resp.get("success"):
-        raw = bulk_resp.get("nodes", [])
-        if isinstance(raw, str):
-            raw = json.loads(raw)
-        for det in raw:
-            guid = det.get("node_guid", "")
-            if not guid:
-                continue
-            title = det.get("node_title", "")
-            if title:
-                title_to_guid[title] = guid
-            canonical = det.get("canonical_id", "")
-            if canonical and canonical not in canonical_to_guid:
-                canonical_to_guid[canonical] = guid
-            instance = det.get("instance_id", "")
-            if instance:
-                instance_to_guid[instance] = guid
-            pos = det.get("position", [])
-            if isinstance(pos, list) and len(pos) >= 2:
-                xf, yf = float(pos[0]), float(pos[1])
-                _existing_xs.append(xf)
-                _existing_ys.append(yf)
-                _guid_to_pos[guid] = [xf, yf]
-
-    # guid_drift_log collects all GUID drift events for the response
-    guid_drift_log: list[dict] = []
-
-    def _fname_lookup(fname: str) -> str:
-        """Look up a node's current GUID via its FName. Returns GUID or ''."""
-        fb_resp = send_to_unreal({
-            "type": "get_node_guid_by_fname",
-            "blueprint_path": blueprint_path,
-            "graph_id": function_id,
-            "node_fname": fname,
-            "node_class_filter": "",
-        })
-        if isinstance(fb_resp, dict) and fb_resp.get("success"):
-            return fb_resp.get("node_guid", "")
-        return ""
-
-    def resolve_node_id(ref: str, *, late: bool = False) -> str:
-        """Resolve a ref_id, fname:, instance_id, canonical_id, GUID, or title to a GUID.
-
-        Resolution order:
-          1. ref_to_guid   — same-patch new nodes (ref_id), always immediate
-          2. fname:        — explicit FName prefix (new)
-          3. GUID          — passthrough if looks like hex GUID
-          4. instance_to_guid / canonical_to_guid / title_to_guid (exec-chain)
-          5. FName fallback: NodeType#N → NodeType_N
-          6. Implicit FName passthrough (deprecated — emits warning)
-
-        Args:
-            late: if True, this is a late-resolve call during add_connections
-                  execution. GUID miss triggers defensive cache invalidation.
-        """
-        # 1. ref_id — same-patch new nodes, always immediate
-        if ref in ref_to_guid:
-            return ref_to_guid[ref]
-
-        # 2. Explicit fname: prefix
-        if ref.startswith("fname:"):
-            fname = ref[6:]
-            guid = _fname_lookup(fname)
-            if guid:
-                guid_drift_log.append({
-                    "fname": fname, "old_guid": None, "new_guid": guid,
-                    "reason": "explicit fname", "phase": "resolve",
-                })
-                return guid
-            if late:
-                _describe_cache.invalidate(blueprint_path)
-            raise ValueError(f"FName '{fname}' not found in graph")
-
-        # 3. GUID passthrough (if it looks like a hex GUID)
-        if _looks_like_guid(ref):
-            return ref
-
-        # 4. Exec-chain maps
-        if ref in instance_to_guid:
-            return instance_to_guid[ref]
-        if ref in canonical_to_guid:
-            return canonical_to_guid[ref]
-        if ref in title_to_guid:
-            return title_to_guid[ref]
-
-        # 5. FName fallback: instance_id "NodeType#N" → FName "NodeType_N"
-        if "#" in ref:
-            node_type, _, idx = ref.partition("#")
-            fname_guess = f"{node_type}_{idx}"
-            guid = _fname_lookup(fname_guess)
-            if guid:
-                instance_to_guid[ref] = guid
-                return guid
-
-        # 6. Implicit FName passthrough (plain FName like K2Node_CallFunction_24)
-        if "_" in ref and " " not in ref and "#" not in ref:
-            guid = _fname_lookup(ref)
-            if guid:
-                instance_to_guid[ref] = guid
-                return guid
-
-        # Defensive cache invalidation on GUID miss during late resolve
-        if late:
-            _describe_cache.invalidate(blueprint_path)
-            _node_details_cache_evict(blueprint_path)
-
-        # Unresolvable — return as-is (will fail at connect time)
-        return ref
-
-    def resolve_endpoint(endpoint: str, *, late: bool = False):
-        """Parse 'NodeRef::PinName' or 'NodeRef.PinName' into (guid, pin_name).
-
-        The '::' separator is preferred because pin names can contain dots
-        (e.g. struct sub-pins like 'ReturnValue.Location'). The '.' separator
-        is kept as a fallback for backwards compatibility.
-        """
-        if "::" in endpoint:
-            parts = endpoint.split("::", 1)
-        else:
-            parts = endpoint.rsplit(".", 1)
-        if len(parts) != 2:
-            return None, None
-        node_ref, pin_name = parts
-        return resolve_node_id(node_ref, late=late), pin_name
-
-    # --- Auto-preflight: catch obvious issues before mutating the graph ---
-    # Only run if patch has add_nodes or add_connections (skip for remove-only patches)
-    has_adds = patch.get("add_nodes") or patch.get("add_connections")
-    if has_adds:
-        preflight_resp = send_to_unreal({
-            "type": "preflight_blueprint_patch",
-            "blueprint_path": blueprint_path,
-            "function_id": function_id,
-            "patch_json": patch_json,
-        })
-        if preflight_resp.get("success") and not preflight_resp.get("valid", True):
-            issues = preflight_resp.get("issues", [])
-            patch_log["phases"]["auto_preflight"] = {"success": False, "issues": len(issues)}
-            patch_log["total_errors"] = len(issues)
-            patch_log["error_categories"].append("PREFLIGHT_REJECTED")
-            print(f"[PATCH_LOG] {json.dumps(patch_log, separators=(',', ':'), ensure_ascii=False)}",
-                  file=sys.stderr)
-            return json.dumps({
-                "success": False,
-                "preflight_failed": True,
-                "issues": issues,
-                "errors": [f"Preflight rejected: {i.get('message', '')}" for i in issues],
-            }, separators=(",", ":"), ensure_ascii=False)
-
-    # Record node count before mutation (best-effort, for graph_state diagnostic)
-    try:
-        _before_dr = send_to_unreal({
-            "type": "list_graphs",
-            "blueprint_path": blueprint_path,
-        })
-        _before_nc = -1
-        if isinstance(_before_dr, dict) and _before_dr.get("success"):
-            for _g in _before_dr.get("graphs", []):
-                if _g.get("graph_name", "") == function_id or _g.get("graph_type") == "EventGraph":
-                    _v = _g.get("node_count", -1)
-                    if isinstance(_v, int) and _v >= 0:
-                        _before_nc = _v
-                        break
-        results["_node_count_before"] = _before_nc
-    except Exception:
-        results["_node_count_before"] = -1
-
-    # --- Begin transaction for atomic rollback ---
-    bp_short = blueprint_path.rsplit("/", 1)[-1] if "/" in blueprint_path else blueprint_path
-    txn_resp = send_to_unreal({
-        "type": "begin_transaction",
-        "transaction_name": f"ApplyPatch_{bp_short}",
-    })
-    txn_started = txn_resp.get("success", False)
-
-    # --- Phase 1: Remove nodes ---
-    for guid in patch.get("remove_nodes", []):
-        resp = send_to_unreal({
-            "type": "delete_node",
-            "blueprint_path": blueprint_path,
-            "function_id": function_id,
-            "node_id": guid,
-        })
-        if resp.get("success"):
-            results["removed_nodes"].append(guid)
-        else:
-            err_msg = f"remove_node {guid}: {resp.get('error')}"
-            results["errors"].append(err_msg)
-            patch_log["error_categories"].append(_classify_error(err_msg))
-    patch_log["phases"]["remove_nodes"] = {
-        "success": len(results["removed_nodes"]) == len(patch.get("remove_nodes", [])),
-        "count": len(results["removed_nodes"]),
-    }
-
-    # --- Phase 2: Add nodes ---
-    # P0–P2: Safe auto-placement via layout_engine.
-    _max_existing_x = max(_existing_xs) if _existing_xs else 0
-    _sorted_ys = sorted(_existing_ys)
-    _median_y = _sorted_ys[len(_sorted_ys) // 2] if _sorted_ys else 0
-
-    # Build title→pos map from already-collected _guid_to_pos (no second pass over raw)
-    _full_pos_map = dict(_guid_to_pos)
-    for t, g in title_to_guid.items():
-        if g in _guid_to_pos:
-            _full_pos_map[t] = _guid_to_pos[g]
-
-    # Extract anchor and placement_mode from patch connections
-    _intent = _extract_layout_intent(patch, title_to_guid, _full_pos_map)
-    _anchor_pos = _intent["anchor_pos"]
-    _placement_mode = _intent["placement_mode"]
-
-    if _anchor_pos is not None:
-        auto_x = _anchor_pos[0]
-        auto_y_base = _anchor_pos[1]
-    else:
-        auto_x = _max_existing_x
-        auto_y_base = _median_y
-
-    _occupied = _build_occupancy(_existing_xs, _existing_ys)
-
-    _placed_new: dict[str, list[float]] = {}  # positions of newly added nodes in this batch
-
-    # Pre-build upstream map once: O(M), then O(1) per node (same logic as layout_engine.py)
-    _upstream_map: dict[str, str] = {}
-    for _conn in patch.get("add_connections", []):
-        _s = _conn.get("from", "")
-        _t = _conn.get("to", "")
-        _s = _s.split("::", 1)[0] if "::" in _s else _s.rsplit(".", 1)[0]
-        _t = _t.split("::", 1)[0] if "::" in _t else _t.rsplit(".", 1)[0]
-        if _s and _t:
-            _upstream_map.setdefault(_t, _s)
-
-    for node_spec in patch.get("add_nodes", []):
-        ref_id = node_spec.get("ref_id", f"node_{auto_x}")
-        node_type = node_spec.get("node_type", "K2Node_CallFunction")
-
-        if "position" not in node_spec:
-            role = _classify_node_role(node_spec, patch)
-            _src = _upstream_map.get(ref_id)
-            local_anchor = _placed_new.get(_src) if _src else None
-            anchor = local_anchor if local_anchor is not None else (
-                _anchor_pos if _anchor_pos is not None else [auto_x, auto_y_base]
-            )
-            pos = _find_free_slot(anchor, _occupied, role, _placement_mode)
-        else:
-            pos = node_spec["position"]
-
-        _placed_new[ref_id] = pos
-        auto_x = max(auto_x, pos[0])
-
-        # B7 fix: For K2Node_CallFunction ONLY, use function_name as node_type
-        # because C++ AddNode resolves function names via TryCreateNodeFromLibraries.
-        # For other node types (CustomEvent, VariableGet, MakeStruct), keep original node_type.
-        effective_type = node_type
-        if "function_name" in node_spec and node_type == "K2Node_CallFunction":
-            fn = node_spec["function_name"]
-            # Strip "Class." prefix — C++ fuzzy match works on bare function names
-            if "." in fn:
-                fn = fn.split(".")[-1]
-            effective_type = fn
-
-        # Merge pin_values INTO node_properties so C++ sets them in the same
-        # add_node call (avoids separate socket round-trips which have timing issues).
-        props = {}
-        # Always pass function_name in properties — C++ resolver fallback needs it
-        # for component methods and BP class members that TryCreateNodeFromLibraries can't find.
-        if "function_name" in node_spec:
-            props["function_name"] = node_spec["function_name"]
-        for k, v in node_spec.items():
-            if k not in ("ref_id", "node_type", "function_name", "position", "pin_values"):
-                props[k] = v
-        for pin_name, pin_val in node_spec.get("pin_values", {}).items():
-            props[pin_name] = str(pin_val)
-
-        resp = send_to_unreal({
-            "type": "add_node",
-            "blueprint_path": blueprint_path,
-            "function_id": function_id,
-            "node_type": effective_type,
-            "node_position": pos,
-            "node_properties": props,
-        })
-        if resp.get("success"):
-            new_guid = resp.get("node_id", "")
-            ref_to_guid[ref_id] = new_guid
-            results["created_nodes"][ref_id] = new_guid
-            results["pin_values_set"] += len(node_spec.get("pin_values", {}))
-        else:
-            err = resp.get("error", "Unknown")
-            suggestions = resp.get("suggestions", "")
-            err_msg = f"add_node {ref_id} ({node_type}): {err}"
-            results["errors"].append(err_msg)
-            patch_log["error_categories"].append(_classify_error(err_msg))
-            if suggestions:
-                results["errors"].append(f"  suggestions: {suggestions}")
-    patch_log["phases"]["add_nodes"] = {
-        "success": len(results["created_nodes"]) == len(patch.get("add_nodes", [])),
-        "count": len(results["created_nodes"]),
-    }
-    patch_log["total_created"] = len(results["created_nodes"])
-
-    # --- Phase 2b: Refresh title/canonical/instance cache for newly created nodes ---
-    # Without this, connections by title/canonical to nodes created in Phase 2 would fail
-    # because maps were built before Phase 2 ran.
-    for ref_id, new_guid in ref_to_guid.items():
-        det_resp = send_to_unreal({
-            "type": "get_node_details",
-            "blueprint_path": blueprint_path,
-            "function_id": function_id,
-            "node_guid": new_guid,
-        })
-        if det_resp.get("success"):
-            det = det_resp.get("details", {})
-            title = det.get("node_title", "")
-            if title:
-                title_to_guid[title] = new_guid
-            canonical = det.get("canonical_id", "")
-            if canonical and canonical not in canonical_to_guid:
-                canonical_to_guid[canonical] = new_guid
-            instance = det.get("instance_id", "")
-            if instance:
-                instance_to_guid[instance] = new_guid
-
-    # --- Phase 3: Remove connections ---
-    for conn in patch.get("remove_connections", []):
-        src_guid, src_pin = resolve_endpoint(conn.get("from", ""))
-        tgt_guid, tgt_pin = resolve_endpoint(conn.get("to", ""))
-        if not src_guid or not tgt_guid:
-            results["errors"].append(f"disconnect: cannot resolve {conn}")
-            continue
-        resp = send_to_unreal({
-            "type": "disconnect_nodes",
-            "blueprint_path": blueprint_path,
-            "function_id": function_id,
-            "source_node_id": src_guid,
-            "source_pin": src_pin,
-            "target_node_id": tgt_guid,
-            "target_pin": tgt_pin,
-        })
-        if resp.get("success"):
-            results["connections_removed"] += 1
-        else:
-            err_msg = f"disconnect {conn}: {resp.get('error')}"
-            results["errors"].append(err_msg)
-            patch_log["error_categories"].append(_classify_error(err_msg))
-    patch_log["phases"]["remove_connections"] = {
-        "success": results["connections_removed"] == len(patch.get("remove_connections", [])),
-        "count": results["connections_removed"],
-    }
-
-    # --- Phase 4: Add connections (bulk) ---
-    # Late resolve: pre-existing node refs are resolved here (not earlier)
-    # so that GUID changes from Phase 2/3 (add_nodes, add_switch_case) are
-    # captured. Same-patch ref_ids are still resolved immediately via ref_to_guid.
-    bulk_conns = []
-    for conn in patch.get("add_connections", []):
-        src_guid, src_pin = resolve_endpoint(conn.get("from", ""), late=True)
-        tgt_guid, tgt_pin = resolve_endpoint(conn.get("to", ""), late=True)
-        if not src_guid or not tgt_guid:
-            results["errors"].append(f"connect: cannot resolve {conn}")
-            continue
-        # Store original ref strings for FName fallback later
-        def _extract_ref(endpoint: str) -> str:
-            if "::" in endpoint:
-                return endpoint.split("::", 1)[0]
-            return endpoint.rsplit(".", 1)[0] if "." in endpoint else endpoint
-        bulk_conns.append({
-            "source_node_id": src_guid,
-            "source_pin": src_pin,
-            "target_node_id": tgt_guid,
-            "target_pin": tgt_pin,
-            "_src_ref": _extract_ref(conn.get("from", "")),
-            "_tgt_ref": _extract_ref(conn.get("to", "")),
-        })
-
-    if bulk_conns:
-        resp = send_to_unreal({
-            "type": "connect_nodes_bulk",
-            "blueprint_path": blueprint_path,
-            "function_id": function_id,
-            "connections": [{k: v for k, v in c.items() if not k.startswith("_")}
-                            for c in bulk_conns],
-        })
-        if resp.get("success"):
-            results["connections_made"] = resp.get("successful_connections", len(bulk_conns))
-            for fc in resp.get("failed_connections", []):
-                err_msg = f"connect failed: {fc}"
-                results["errors"].append(err_msg)
-                patch_log["error_categories"].append(_classify_error(str(fc)))
-        else:
-            raw_err = resp.get("error")
-            err_msg = f"connect_bulk: {raw_err}"
-            results["errors"].append(err_msg)
-            patch_log["error_categories"].append(_classify_error(err_msg))
-
-            # ── Diagnostic probe ────────────────────────────────────────────
-            # Surface actual available pin names when C++ returned no detail.
-            diag_result = {"src_pins": None, "tgt_pins": None}
-            if bulk_conns:
-                probe = bulk_conns[0]
-                diag_resp = send_to_unreal({
-                    "type": "connect_nodes",
-                    "blueprint_path": blueprint_path,
-                    "function_guid": function_id,
-                    "source_node_guid": probe["source_node_id"],
-                    "source_pin_name": probe["source_pin"],
-                    "target_node_guid": probe["target_node_id"],
-                    "target_pin_name": probe["target_pin"],
-                })
-                if not diag_resp.get("success"):
-                    src_avail = [p.get("name") for p in diag_resp.get("source_available_pins", [])[:6]]
-                    tgt_avail = [p.get("name") for p in diag_resp.get("target_available_pins", [])[:6]]
-                    diag_result = {"src_pins": src_avail, "tgt_pins": tgt_avail}
-                    results["errors"].append(
-                        f"connect_diagnostic:   {probe['source_pin']}→{probe['target_pin']}: "
-                        f"src_pins={src_avail} tgt_pins={tgt_avail}"
-                    )
-
-            # ── Automatic FName fallback ────────────────────────────────────
-            # Triggered when: GUID path failed AND diagnostic shows node-not-found
-            # (src_pins=[] or tgt_pins=[] means GUID drift, not pin-name issue)
-            _node_not_found = (
-                diag_result["src_pins"] == [] or
-                diag_result["tgt_pins"] == [] or
-                raw_err is None
-            )
-            if _node_not_found:
-                def _ref_to_fname(ref: str) -> str:
-                    """Convert node ref to FName, verify it exists in the graph.
-                    Handles: instance_id (K2Node_SwitchString#0 → K2Node_SwitchString_0)
-                             plain FName (K2Node_CallFunction_24 — already an FName)
-                    """
-                    if _looks_like_guid(ref):
-                        return ""  # GUID refs cannot be converted to FName here
-                    fname_guess = None
-                    if "#" in ref:
-                        node_type, _, idx = ref.partition("#")
-                        fname_guess = f"{node_type}_{idx}"
-                    elif "_" in ref:
-                        # Already looks like an FName (e.g. K2Node_CallFunction_24)
-                        fname_guess = ref
-                    if fname_guess:
-                        verify = send_to_unreal({
-                            "type": "get_node_guid_by_fname",
-                            "blueprint_path": blueprint_path,
-                            "graph_id": function_id,
-                            "node_fname": fname_guess,
-                            "node_class_filter": "",
-                        })
-                        if isinstance(verify, dict) and verify.get("success"):
-                            return fname_guess
-                    return ""
-
-                fname_successes = 0
-                fname_errors = []
-                for ci in bulk_conns:
-                    src_fname = _ref_to_fname(ci.get("_src_ref", ""))
-                    tgt_fname = _ref_to_fname(ci.get("_tgt_ref", ""))
-                    if src_fname and tgt_fname:
-                        fb = send_to_unreal({
-                            "type": "connect_nodes_by_fname",
-                            "blueprint_path": blueprint_path,
-                            "graph_id": function_id,
-                            "src_fname": src_fname, "src_pin": ci["source_pin"],
-                            "tgt_fname": tgt_fname, "tgt_pin": ci["target_pin"],
-                        })
-                        if isinstance(fb, dict) and fb.get("success"):
-                            fname_successes += 1
-                        else:
-                            fname_errors.append(
-                                f"{src_fname}.{ci['source_pin']}→"
-                                f"{tgt_fname}.{ci['target_pin']}: "
-                                f"{fb.get('error') if isinstance(fb, dict) else 'no response'}"
-                            )
-                    else:
-                        fname_errors.append(
-                            f"cannot resolve FName for "
-                            f"'{ci.get('_src_ref','')}' or '{ci.get('_tgt_ref','')}'"
-                        )
-
-                # Record drift for all connections that needed FName fallback
-                for ci in bulk_conns:
-                    for role, ref_key, guid_key in [
-                        ("src", "_src_ref", "source_node_id"),
-                        ("tgt", "_tgt_ref", "target_node_id"),
-                    ]:
-                        orig_ref = ci.get(ref_key, "")
-                        orig_guid = ci.get(guid_key, "")
-                        fname_val = _ref_to_fname(orig_ref) if orig_ref else ""
-                        if fname_val and orig_guid and not _looks_like_guid(orig_ref):
-                            new_guid = _fname_lookup(fname_val)
-                            if new_guid and new_guid != orig_guid:
-                                guid_drift_log.append({
-                                    "fname": fname_val,
-                                    "old_guid": orig_guid,
-                                    "new_guid": new_guid,
-                                    "reason": "FName-fallback after GUID miss",
-                                    "phase": "add_connections",
-                                })
-
-                if fname_successes == len(bulk_conns):
-                    # All connections succeeded via FName fallback
-                    results["errors"] = [e for e in results["errors"]
-                                         if "connect_bulk" not in e]
-                    results["connections_made"] = fname_successes
-                    results["connection_method"] = "FName-fallback"
-                    patch_log["error_categories"] = [c for c in patch_log["error_categories"]
-                                                     if c != _classify_error(err_msg)]
-                elif fname_successes > 0:
-                    results["errors"].append(
-                        f"partial FName fallback: {fname_successes}/{len(bulk_conns)} succeeded"
-                    )
-                    results["errors"].extend(fname_errors)
-                else:
-                    results["errors"].extend(fname_errors)
-            # ───────────────────────────────────────────────────────────────
-    patch_log["phases"]["add_connections"] = {
-        "success": results["connections_made"] == len(patch.get("add_connections", [])),
-        "count": results["connections_made"],
-        "attempted": len(bulk_conns),
-    }
-    patch_log["total_connected"] = results["connections_made"]
-
-    # --- Phase 5: Set pin values on existing nodes ---
-    for pv in patch.get("set_pin_values", []):
-        node_guid = resolve_node_id(pv.get("node", ""))
-        resp = send_to_unreal({
-            "type": "set_node_pin_value",
-            "blueprint_path": blueprint_path,
-            "function_id": function_id,
-            "node_guid": node_guid,
-            "pin_name": pv.get("pin", ""),
-            "value": str(pv.get("value", "")),
-        })
-        if resp.get("success"):
-            results["pin_values_set"] += 1
-        else:
-            err_msg = f"set_pin {pv.get('node')}.{pv.get('pin')}: {resp.get('error')}"
-            results["errors"].append(err_msg)
-            patch_log["error_categories"].append(_classify_error(err_msg))
-    patch_log["phases"]["set_pin_values"] = {
-        "success": results["pin_values_set"] == len(patch.get("set_pin_values", [])) + len(
-            [n for n in patch.get("add_nodes", []) if n.get("pin_values")]),
-        "count": results["pin_values_set"],
-    }
-
-    # --- Phase 6: Auto-compile ---
-    if patch.get("auto_compile", True):
-        comp_resp = send_to_unreal({
-            "type": "compile_blueprint",
-            "blueprint_path": blueprint_path,
-        })
-        results["compiled"] = comp_resp.get("success", False)
-        if not comp_resp.get("success"):
-            err_msg = f"compile: {comp_resp.get('error', 'failed')}"
-            results["errors"].append(err_msg)
-            patch_log["error_categories"].append("COMPILE_ERROR")
-        patch_log["phases"]["compile"] = {"success": comp_resp.get("success", False)}
-
-    results["success"] = len(results["errors"]) == 0
-
-    # --- Commit or rollback transaction ---
-    if txn_started:
-        if results["errors"]:
-            cancel_resp = send_to_unreal({"type": "cancel_transaction"})
-            if cancel_resp.get("success"):
-                results["rolled_back"] = True
-                results["created_nodes"] = {}  # Nodes no longer exist after rollback
-                ref_to_guid.clear()
-                patch_log["rollback"] = True
-            # UE5 Python CancelTransaction does not reliably remove nodes added via Python API.
-            # Always run remove_unused_nodes as a hard cleanup guard after any rollback attempt.
-            cleanup_resp = send_to_unreal({
-                "type": "remove_unused_nodes",
-                "blueprint_path": blueprint_path,
-            })
-            results["cleanup_ran"] = cleanup_resp.get("success", False)
-        else:
-            send_to_unreal({"type": "end_transaction"})
-            results["committed"] = True
-
-    # --- Finalize structured patch log ---
-    patch_log["total_errors"] = len(results["errors"])
-    patch_log["success"] = results["success"]
-    # Deduplicate error categories
-    patch_log["error_categories"] = list(dict.fromkeys(patch_log["error_categories"]))
-    # Emit to stderr for structured observability (visible in MCP server logs)
-    print(f"[PATCH_LOG] {json.dumps(patch_log, separators=(',', ':'), ensure_ascii=False)}",
-          file=sys.stderr)
-
-    # --- graph_state: best-effort node count (diagnostic only, never blocks patch) ---
-    def _get_node_count_lightweight() -> int:
-        try:
-            raw = send_to_unreal({
-                "type": "list_graphs",
-                "blueprint_path": blueprint_path,
-            })
-            # list_graphs returns {"success": true, "graphs": [{"graph_name": ..., "node_count": N}, ...]}
-            if isinstance(raw, dict) and raw.get("success"):
-                for g in raw.get("graphs", []):
-                    if g.get("graph_name", "") == function_id or g.get("graph_type") == "EventGraph":
-                        nc = g.get("node_count", -1)
-                        if isinstance(nc, int) and nc >= 0:
-                            return nc
-        except Exception:
-            pass
-        return -1
-
-    results["graph_state"] = {
-        "node_count_before": results.pop("_node_count_before", -1),
-        "node_count_after": _get_node_count_lightweight(),
-    }
-
-    # Invalidate describe cache for this blueprint
-    _describe_cache.invalidate(blueprint_path)
-    # Also invalidate node details cache for this blueprint
-    keys_to_remove = [k for k in _node_details_cache if k[0] == blueprint_path]
-    for k in keys_to_remove:
-        del _node_details_cache[k]
-
-    # --- Phase 7: Optional inline verification ---
-    if verify and results["created_nodes"]:
-        affected_guids = ",".join(results["created_nodes"].values())
-        list_resp = send_to_unreal({"type": "list_graphs", "blueprint_path": blueprint_path})
-        if list_resp.get("success"):
-            all_graphs = list_resp.get("graphs", [])
-            if isinstance(all_graphs, str):
-                all_graphs = json.loads(all_graphs)
-            target_graphs = [g for g in all_graphs
-                             if g["graph_name"] == function_id or g.get("graph_guid") == function_id]
-            if not target_graphs:
-                target_graphs = all_graphs[:1]
-            if target_graphs:
-                verify_desc = _build_graph_description(
-                    blueprint_path, target_graphs[0], "standard", False, send_to_unreal,
-                    node_ids=affected_guids)
-                # Strip to compact verification: only affected nodes with their connections
-                v_nodes = []
-                for sg in verify_desc.get("subgraphs", {}).get("event_flows", []):
-                    v_nodes.extend(sg.get("nodes", []))
-                for sg in verify_desc.get("subgraphs", {}).get("shared_functions", []):
-                    v_nodes.extend(sg.get("nodes", []))
-                results["verification"] = {
-                    "affected_nodes": [{
-                        "id": n["id"],
-                        "title": n.get("title", ""),
-                        "connections": sum(1 for e in verify_desc.get("subgraphs", {}).get("event_flows", [{}])[0].get("exec_edges", [])
-                                          if e.get("from_node") == n["id"] or e.get("to_node") == n["id"])
-                    } for n in v_nodes],
-                    "total_graph_nodes": verify_desc.get("metadata", {}).get("node_count", 0),
-                }
+    # --- Phase 4: Finalize ---
+    results = _patch_finalize(blueprint_path, function_id, results, patch_log, send_to_unreal, verify)
 
     # --- Attach GUID drift log ---
-    if guid_drift_log:
-        results["guid_drift"] = guid_drift_log
+    if ctx["guid_drift_log"]:
+        results["guid_drift"] = ctx["guid_drift_log"]
 
-    # Wrap in unified envelope
+    # --- Wrap in unified envelope ---
     ok = results.get("success", False)
     errs = results.get("errors", [])
     created = results.get("created_nodes", {})
@@ -3544,45 +1754,22 @@ def apply_blueprint_patch(
 # preflight_blueprint_patch — validate patch without mutating
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="core")
 def preflight_blueprint_patch(
     blueprint_path: str,
     patch_json: str,
     function_id: str = "EventGraph",
 ) -> str:
-    """
-    Validate a blueprint patch WITHOUT applying it.
-
-    Returns predicted pin schemas for each add_nodes entry and a list of issues
-    (wrong pin names, unresolvable functions, missing nodes). Call this BEFORE
-    apply_blueprint_patch to catch errors before they dirty the graph.
-
-    Args:
-        blueprint_path: Path to the Blueprint (e.g., "/Game/Blueprints/BP_MyActor")
-        patch_json: Same JSON format as apply_blueprint_patch
-        function_id: "EventGraph" or function GUID (default "EventGraph")
-
-    Returns:
-        JSON with: valid (bool), issues (array), predicted_nodes (array with pin schemas).
-    """
-    command = {
-        "type": "preflight_blueprint_patch",
-        "blueprint_path": blueprint_path,
-        "function_id": function_id,
-        "patch_json": patch_json,
-    }
-    response = send_to_unreal(command)
-    if response.get("success"):
-        data = {k: v for k, v in response.items() if k != "success"}
-        return json.dumps(_compact_response(data), separators=(",", ":"), ensure_ascii=False)
-    return json.dumps(response, separators=(",", ":"), ensure_ascii=False)
+    """Validate a blueprint patch WITHOUT applying it."""
+    return _impl_preflight_blueprint_patch(blueprint_path, patch_json,
+                                           function_id=function_id, send_fn=send_to_unreal)
 
 
 # ---------------------------------------------------------------------------
 # debug_blueprint — inspect, simulate, and trace blueprint execution
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="analysis")
 def debug_blueprint(
     blueprint_path: str,
     mode: str = "compile_check",
@@ -3818,7 +2005,7 @@ print(json.dumps(result, default=str))
 # P0: add_nodes_bulk — expose existing handler as MCP tool
 # ---------------------------------------------------------------------------
 
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def add_nodes_bulk(blueprint_path: str, function_id: str, nodes_json: str) -> str:
     """
     Add multiple nodes to a Blueprint graph in a single call.
@@ -3852,7 +2039,7 @@ def add_nodes_bulk(blueprint_path: str, function_id: str, nodes_json: str) -> st
 # P0: compile_blueprint_with_errors — detailed compilation diagnostics
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="core")
 def compile_blueprint_with_errors(blueprint_path: str) -> str:
     """
     Compile a Blueprint and return detailed error/warning information.
@@ -3963,7 +2150,7 @@ else:
 # P0: auto_layout_graph — automatic node arrangement
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="core")
 def auto_layout_graph(blueprint_path: str, function_id: str = "EventGraph") -> str:
     """
     Automatically arrange nodes in a Blueprint graph for readability.
@@ -4060,14 +2247,20 @@ def auto_layout_graph(blueprint_path: str, function_id: str = "EventGraph") -> s
             if resp.get("success"):
                 moved += 1
 
-    return json.dumps({"success": True, "nodes_moved": moved})
+    resp = {"success": True, "nodes_moved": moved}
+    resp["warning"] = (
+        "auto_layout_graph uses UE's built-in auto-arrange algorithm, which may overwrite "
+        "positions computed by apply_blueprint_patch's layout_engine.py. "
+        "Prefer omitting 'position' in add_nodes to use the patch engine's layout instead."
+    )
+    return json.dumps(resp)
 
 
 # ---------------------------------------------------------------------------
 # P1: find_scene_objects — filtered scene query
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="core")
 def find_scene_objects(
     class_filter: str = "",
     name_filter: str = "",
@@ -4130,7 +2323,7 @@ print(json.dumps(results, default=str))
 # P1: get_blueprint_variables — all variables in one call
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="core")
 def get_blueprint_variables(blueprint_path: str) -> str:
     """
     Get all Blueprint variables (name, type, default value, category) in one call.
@@ -4153,8 +2346,7 @@ def get_blueprint_variables(blueprint_path: str) -> str:
 # P1: create_blueprint_from_template — atomic full creation
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
-@mcp.tool()
+@exposed_tool(group="core")
 def apply_blueprint_spec(spec_json: str, dry_run: bool = False) -> str:
     """Apply a declarative Blueprint Spec in one shot.
 
@@ -4240,6 +2432,7 @@ def apply_blueprint_spec(spec_json: str, dry_run: bool = False) -> str:
     }, ensure_ascii=False)
 
 
+@exposed_tool(group="core")
 def create_blueprint_from_template(
     blueprint_name: str,
     parent_class: str = "Actor",
@@ -4295,7 +2488,7 @@ def create_blueprint_from_template(
 # P1: undo_last_operation — safety net
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="admin")
 def undo_last_operation() -> str:
     """
     Undo the last editor operation (safety net for blueprint/level modifications).
@@ -4313,7 +2506,7 @@ def undo_last_operation() -> str:
 # Blueprint Index — fuzzy discovery + change detection
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="admin")
 def build_blueprint_index() -> str:
     """
     Build or rebuild the project blueprint index for fuzzy search.
@@ -4447,7 +2640,7 @@ def build_blueprint_index() -> str:
 # P2: search_node_type — proactive fuzzy search
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="core")
 def search_node_type(query: str) -> str:
     """
     Search for Blueprint node types matching a query string.
@@ -4474,7 +2667,7 @@ def search_node_type(query: str) -> str:
 # P2: search_blueprint_nodes — full-engine node search (lightweight shortlist)
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="core")
 def search_blueprint_nodes(
     query: str,
     blueprint_path: str = "",
@@ -4482,84 +2675,33 @@ def search_blueprint_nodes(
     max_results: int = 5,
     schema_mode: str = "semantic",
 ) -> str:
-    """
-    Search ALL available Blueprint node types across the entire engine.
-
-    Returns a lightweight shortlist of matching nodes. Use inspect_blueprint_node
-    on any candidate to get full pin schema and patch_hint.
-
-    Covers thousands of functions (not just the 10 common libraries).
-
-    Args:
-        query: Natural language or function name fragment (e.g., "move to location", "AI navigate", "print")
-        blueprint_path: Optional BP path for context-aware scoring (e.g., "/Game/Blueprints/BP_MyNPC")
-        category_filter: Optional category filter (e.g., "AI|Navigation", "Math")
-        max_results: Number of results (default 5, max 10)
-        schema_mode: Output format — "semantic" (default) or "verbose" (for debugging)
-
-    Returns:
-        JSON with candidates array (canonical_name, display_name, node_kind, spawn_strategy, score).
-    """
-    schema_mode = _normalize_schema_mode(schema_mode)
-    command = {
-        "type": "search_blueprint_nodes",
-        "query": query,
-        "blueprint_path": blueprint_path,
-        "category_filter": category_filter,
-        "max_results": min(max_results, 10),
-        "schema_mode": schema_mode,
-    }
-    response = send_to_unreal(command)
-    if response.get("success"):
-        data = {k: v for k, v in response.items() if k != "success"}
-        return json.dumps(_compact_response(data), separators=(",", ":"), ensure_ascii=False)
-    return json.dumps(response, separators=(",", ":"), ensure_ascii=False)
+    """Search ALL available Blueprint node types across the entire engine."""
+    return _impl_search_blueprint_nodes(query, blueprint_path=blueprint_path,
+                                        category_filter=category_filter,
+                                        max_results=max_results,
+                                        schema_mode=schema_mode, send_fn=send_to_unreal)
 
 
 # ---------------------------------------------------------------------------
 # P2: inspect_blueprint_node — full pin schema for a specific node type
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="core")
 def inspect_blueprint_node(
     canonical_name: str,
     blueprint_path: str = "",
     schema_mode: str = "semantic",
 ) -> str:
-    """
-    Get full pin schema and patch_hint for a specific Blueprint node type.
-
-    Call search_blueprint_nodes first to find the canonical_name, then call this
-    to get exact pin names, types, and directions for building patches.
-
-    Args:
-        canonical_name: The canonical name from search results (e.g., "KismetSystemLibrary.PrintString")
-        blueprint_path: Optional BP path for context-aware inspection
-        schema_mode: Output format — "semantic" (default) or "verbose" (for debugging)
-
-    Returns:
-        JSON with: canonical_name, patch_hint (ready to copy into apply_blueprint_patch),
-        pins array (name, direction, type, required, default), context_requirements.
-    """
-    schema_mode = _normalize_schema_mode(schema_mode)
-    command = {
-        "type": "inspect_blueprint_node",
-        "canonical_name": canonical_name,
-        "blueprint_path": blueprint_path,
-        "schema_mode": schema_mode,
-    }
-    response = send_to_unreal(command)
-    if response.get("success"):
-        data = {k: v for k, v in response.items() if k != "success"}
-        return json.dumps(_compact_response(data), separators=(",", ":"), ensure_ascii=False)
-    return json.dumps(response, separators=(",", ":"), ensure_ascii=False)
+    """Get full pin schema and patch_hint for a specific Blueprint node type."""
+    return _impl_inspect_blueprint_node(canonical_name, blueprint_path=blueprint_path,
+                                        schema_mode=schema_mode, send_fn=send_to_unreal)
 
 
 # ---------------------------------------------------------------------------
 # P2: get_compilation_status — check without recompiling
 # ---------------------------------------------------------------------------
 
-# @mcp.tool()  # INTERNAL — use higher-level tools instead
+# @exposed_tool(group="core")  # INTERNAL — use higher-level tools instead
 def get_compilation_status(blueprint_path: str) -> str:
     """
     Check a Blueprint's current compilation status WITHOUT triggering a recompile.
@@ -4605,7 +2747,7 @@ else:
 # P2: diff_blueprint — compare two describe_blueprint snapshots
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="analysis")
 def diff_blueprint(before_json: str, after_json: str) -> str:
     """
     Compare two describe_blueprint snapshots and return the differences.
@@ -4668,7 +2810,146 @@ def diff_blueprint(before_json: str, after_json: str) -> str:
     return json.dumps(result, indent=2)
 
 
-@mcp.tool()
+# ---------------------------------------------------------------------------
+# get_node_neighborhood — BFS context query around a single Blueprint node
+# ---------------------------------------------------------------------------
+
+@exposed_tool(group="analysis")
+def get_node_neighborhood(
+    blueprint_path: str,
+    node_ref: str,
+    graph_name: str = "",
+    depth: int = 2,
+    direction: str = "exec",
+    compact: bool = True,
+) -> str:
+    """Return the N-hop neighborhood around a specific Blueprint node.
+
+    Useful for understanding local execution context without a full
+    describe_blueprint dump.  Works like 'grep with context': find a node
+    by name/GUID and see what feeds into it and follows from it.
+
+    Args:
+        blueprint_path: Path to the Blueprint (e.g. "/Game/Blueprints/BP_NPC")
+        node_ref: Node identifier — one of:
+                  • 32-char hex GUID
+                  • instance_id ("K2Node_CallFunction_3" or "K2Node_CallFunction#3")
+                  • title regex pattern ("PrintString", "BeginPlay", "On.*Ready")
+        graph_name: Specific graph to search. Empty = EventGraph.
+        depth: BFS hops from the center node (1–5, default 2).
+               1 = direct neighbors only.  5 is the maximum.
+        direction: Which edges to follow —
+                   "exec_out"  downstream exec flow
+                   "exec_in"   upstream exec flow
+                   "exec"      both exec directions (default)
+                   "data"      data pins both directions
+                   "all"       exec + data all directions
+        compact: Return compact JSON (default True, saves tokens).
+
+    Returns:
+        JSON: {
+          "center":    {guid, title, instance_id, node_type},
+          "neighbors": [{guid, title, instance_id, node_type,
+                         distance, direction, via_pin}, ...],
+          "edges":     [{from, to, type}, ...],
+          "total_nodes": int,
+          "warnings":  [...],
+        }
+
+        On error: {"error": "...", ...}
+    """
+    _VALID_DIRECTIONS = {"exec_out", "exec_in", "exec", "data", "all"}
+
+    # Validate inputs
+    if not (1 <= depth <= 5):
+        return json.dumps({"error": f"depth must be between 1 and 5, got {depth}"})
+    if direction not in _VALID_DIRECTIONS:
+        return json.dumps({
+            "error": f"Invalid direction '{direction}'. Must be one of: {sorted(_VALID_DIRECTIONS)}",
+        })
+
+    # Resolve graph
+    graphs_resp = send_to_unreal({"type": "list_graphs", "blueprint_path": blueprint_path})
+    if not graphs_resp.get("success"):
+        return json.dumps({"error": f"Failed to list graphs: {graphs_resp.get('error', 'unknown')}"})
+
+    all_graphs = graphs_resp.get("graphs", [])
+    target_graph = None
+    if graph_name:
+        for g in all_graphs:
+            if g.get("graph_name") == graph_name:
+                target_graph = g
+                break
+        if target_graph is None:
+            available = [g.get("graph_name") for g in all_graphs]
+            return json.dumps({"error": f"Graph '{graph_name}' not found", "available": available})
+    else:
+        for g in all_graphs:
+            if g.get("graph_type") == "EventGraph":
+                target_graph = g
+                break
+        if target_graph is None and all_graphs:
+            target_graph = all_graphs[0]
+
+    if target_graph is None:
+        return json.dumps({"error": "No graphs found in blueprint"})
+
+    resolved_graph_name = target_graph.get("graph_name", "EventGraph")
+
+    # Cache check
+    cache_tag = f"nbhd:{node_ref}:{depth}:{direction}"
+    cache_key = (blueprint_path, resolved_graph_name, cache_tag)
+    fingerprint = json.dumps(
+        {g.get("graph_name"): g.get("node_count", 0) for g in all_graphs},
+        sort_keys=True,
+    )
+    cached = _describe_cache.get(cache_key, fingerprint)
+    if cached:
+        return cached
+
+    # Batch fetch all nodes
+    details_by_guid, fetch_err = _graph_fetch_nodes(blueprint_path, target_graph, send_to_unreal)
+    if fetch_err:
+        return json.dumps({"error": f"Failed to fetch nodes: {fetch_err}"})
+
+    # Resolve node_ref
+    center_guid, warnings, candidates = _resolve_neighborhood_node_ref(node_ref, details_by_guid)
+    if center_guid is None:
+        result = {"error": warnings[0] if warnings else "Node not found", "node_ref": node_ref}
+        if candidates:
+            result["candidates"] = candidates
+        return json.dumps(result)
+
+    # BFS traversal
+    neighbors, edges = _bfs_neighborhood(center_guid, details_by_guid, depth, direction)
+
+    # Build center record
+    center_det = details_by_guid.get(center_guid, {})
+    center = {
+        "guid": center_guid,
+        "title": center_det.get("node_title", ""),
+        "instance_id": center_det.get("instance_id", ""),
+        "node_type": center_det.get("node_type", ""),
+    }
+
+    result = {
+        "center": center,
+        "neighbors": neighbors,
+        "edges": edges,
+        "total_nodes": 1 + len(neighbors),
+        "warnings": warnings,
+    }
+
+    output = (
+        json.dumps(result, separators=(",", ":"), ensure_ascii=False)
+        if compact
+        else json.dumps(result, indent=2, ensure_ascii=False)
+    )
+    _describe_cache.set(cache_key, fingerprint, output)
+    return output
+
+
+@exposed_tool(group="admin")
 def reload_handlers(include_utils: bool = False) -> str:
     """Hot-reload Python handler modules in the UE socket server.
     Use after editing handler code to pick up changes without restarting the Editor.
@@ -4781,7 +3062,7 @@ def _build_print_chain(params):
     return {"add_nodes": nodes, "add_connections": conns}
 
 
-@mcp.tool()
+@exposed_tool(group="admin")
 def list_subgraph_templates() -> str:
     """List available subgraph templates with descriptions and parameters.
     Templates let you create common Blueprint patterns in a single call,
@@ -4796,7 +3077,7 @@ def list_subgraph_templates() -> str:
     return json.dumps(out, indent=2, ensure_ascii=False)
 
 
-@mcp.tool()
+@exposed_tool(group="admin")
 def apply_subgraph_template(
     blueprint_path: str,
     function_id: str,
@@ -4846,7 +3127,7 @@ def apply_subgraph_template(
 # P0.2 Git / UE Safety Tools
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="core")
 def save_all_dirty_packages() -> str:
     """Save all unsaved (dirty) assets under /Game in the editor.
 
@@ -4863,7 +3144,7 @@ def save_all_dirty_packages() -> str:
     return json.dumps(resp)
 
 
-@mcp.tool()
+@exposed_tool(group="core")
 def get_node_guid_by_fname(
     blueprint_path: str,
     graph_id: str,
@@ -4903,7 +3184,7 @@ def get_node_guid_by_fname(
     return json.dumps(resp)
 
 
-@mcp.tool()
+@exposed_tool(group="core")
 def add_switch_case(
     blueprint_path: str,
     graph_id: str,
@@ -4948,17 +3229,14 @@ def add_switch_case(
     if not isinstance(resp, dict):
         return json.dumps({"success": False, "error": "No response from UE"})
 
-    # Structural mutation: invalidate describe cache (GUID may have drifted)
+    # Structural mutation: invalidate all caches (GUID may have drifted)
     if resp.get("success") and resp.get("method") != "already_exists":
-        _describe_cache.invalidate(blueprint_path)
-        keys_to_remove = [k for k in _node_details_cache if k[0] == blueprint_path]
-        for k in keys_to_remove:
-            del _node_details_cache[k]
+        _evict_bp_caches(blueprint_path)
 
     return json.dumps(resp)
 
 
-@mcp.tool()
+@exposed_tool(group="core")
 def check_ue_editor_running() -> str:
     """Check whether Unreal Editor is currently running.
 
@@ -4987,7 +3265,7 @@ def check_ue_editor_running() -> str:
     return json.dumps({"running": False, "pid": None, "warning": None})
 
 
-@mcp.tool()
+@exposed_tool(group="core")
 def safe_pull(remote: str = "origin", branch: str = "") -> str:
     """Run git pull after verifying Unreal Editor is closed and all assets are saved.
 
@@ -5054,7 +3332,7 @@ def safe_pull(remote: str = "origin", branch: str = "") -> str:
 # P0.4 Transaction Tools (explicit MCP exposure)
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="core")
 def begin_transaction(transaction_name: str = "MCPEdit") -> str:
     """Begin an atomic UE editor transaction.
 
@@ -5074,7 +3352,7 @@ def begin_transaction(transaction_name: str = "MCPEdit") -> str:
                        "error": resp.get("error") if not ok else None})
 
 
-@mcp.tool()
+@exposed_tool(group="core")
 def end_transaction() -> str:
     """Commit the current UE editor transaction.
 
@@ -5089,7 +3367,7 @@ def end_transaction() -> str:
     return json.dumps({"ok": ok, "error": resp.get("error") if not ok else None})
 
 
-@mcp.tool()
+@exposed_tool(group="core")
 def cancel_transaction() -> str:
     """Roll back the current UE editor transaction.
 
@@ -5108,7 +3386,7 @@ def cancel_transaction() -> str:
 # P0.1 Job Management Tools
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="analysis")
 def job_status(job_id: str) -> str:
     """Query the status of a long-running job (e.g. build_navigation, build_target).
 
@@ -5129,7 +3407,7 @@ def job_status(job_id: str) -> str:
     return json.dumps(get_job_status(job_id))
 
 
-@mcp.tool()
+@exposed_tool(group="analysis")
 def job_cancel(job_id: str) -> str:
     """Cancel a pending job before it runs.
 
@@ -5151,7 +3429,7 @@ def job_cancel(job_id: str) -> str:
     })
 
 
-@mcp.tool()
+@exposed_tool(group="analysis")
 def job_list(include_completed: bool = False) -> str:
     """List active (and optionally completed) jobs.
 
@@ -5169,7 +3447,7 @@ def job_list(include_completed: bool = False) -> str:
 # Blueprint Quality Analyzer
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@exposed_tool(group="core")
 def analyze_blueprint_quality(blueprint_path: str, mode: str = "full", graph_name: str = "") -> str:
     """Run static quality checks on a Blueprint.
 
@@ -5242,8 +3520,8 @@ def analyze_blueprint_quality(blueprint_path: str, mode: str = "full", graph_nam
             sym["variables"] = {v["name"]: v for v in raw_vars if isinstance(v, dict) and "name" in v}
             bp["symbol_table"] = sym
 
-    # compile
-    compile_resp = send_to_unreal({"type": "compile_blueprint", "blueprint_path": blueprint_path})
+    # compile — use compile_blueprint_with_errors so C6 gets structured errors array
+    compile_resp = json.loads(compile_blueprint_with_errors(blueprint_path))
 
     report = _qa_analyze(bp, compile_resp, mode=mode, blueprint_path=blueprint_path)
     return json.dumps(report, indent=2, ensure_ascii=False)
@@ -5251,6 +3529,12 @@ def analyze_blueprint_quality(blueprint_path: str, mode: str = "full", graph_nam
 
 if __name__ == "__main__":
     import traceback
+
+    # Print active tool profile summary at startup
+    _raw_profile = os.getenv("MCP_TOOL_PROFILE", _DEFAULT_PROFILE)
+    print(f"[MCP] Profile: {_raw_profile}", file=sys.stderr)
+    print(f"[MCP] Active groups: {sorted(_ACTIVE_GROUPS)}", file=sys.stderr)
+    print(f"[MCP] Registered tools ({len(_REGISTERED_TOOLS)}): {sorted(_REGISTERED_TOOLS)}", file=sys.stderr)
 
     try:
         print("Server starting...", file=sys.stderr)
