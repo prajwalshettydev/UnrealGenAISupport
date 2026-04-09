@@ -71,6 +71,26 @@ public:
 	static FString PreflightPatch(const FString& BlueprintPath, const FString& FunctionGuid,
 	                              const FString& PatchJson);
 
+	/** Check if two Blueprint pins can be connected. Uses UEdGraphSchema_K2::CanCreateConnection. */
+	UFUNCTION(BlueprintCallable, Category = "MCP")
+	static FString CheckPinCompatibility(
+	    const FString& BlueprintPath,
+	    const FString& FunctionId,
+	    const FString& FromNodeGuid,
+	    const FString& FromPinName,
+	    const FString& ToNodeGuid,
+	    const FString& ToPinName
+	);
+
+	/** Create a ComponentBoundEvent node bound to a specific component on the Blueprint. */
+	UFUNCTION(BlueprintCallable, Category = "MCP")
+	static FString BindComponentEvent(
+	    const FString& BlueprintPath,
+	    const FString& FunctionId,
+	    const FString& ComponentName,
+	    const FString& DelegateName
+	);
+
 	// --- Unified Callable Function Resolver ---
 
 	struct FResolvedFunction

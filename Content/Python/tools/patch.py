@@ -112,6 +112,54 @@ def resolve_node_type_alias(node_type: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Static Pin Type Compatibility (best-effort, preflight only)
+# ---------------------------------------------------------------------------
+_WILDCARD_TYPES = {"", "wildcard", "any", "object", "struct"}  # always pass-through
+
+# Known safe implicit conversions (UE performs these automatically)
+_SAFE_PIN_CONVERSIONS: set = {
+    ("int", "float"), ("float", "int"),
+    ("int64", "int"), ("int", "int64"),
+    ("byte", "int"), ("int", "byte"),
+    ("bool", "int"), ("int", "bool"),
+}
+
+# Known definitely-incompatible pairs (exec ↔ data)
+_INCOMPATIBLE_PIN_CATEGORIES = {("exec", "bool"), ("exec", "float"), ("exec", "int"),
+                                  ("exec", "string"), ("exec", "object"), ("exec", "struct")}
+
+
+def _check_static_pin_compat(from_type: str, to_type: str) -> tuple:
+    """Best-effort static pin compatibility check. Returns (ok, reason).
+
+    Always returns (True, ...) for wildcard types — runtime check needed.
+    Returns (True, ...) for same types and known-safe conversions.
+    Returns (False, reason) only for definitively incompatible pairs.
+    """
+    ft = from_type.lower().strip()
+    tt = to_type.lower().strip()
+
+    # Wildcard — cannot determine statically
+    if ft in _WILDCARD_TYPES or tt in _WILDCARD_TYPES:
+        return True, "wildcard — runtime check needed"
+
+    # Same type
+    if ft == tt:
+        return True, "same type"
+
+    # Exec ↔ data mismatch
+    if (ft == "exec") != (tt == "exec"):
+        return False, f"exec/data mismatch: cannot connect exec pin to {tt or ft}"
+
+    # Known safe conversions
+    if (ft, tt) in _SAFE_PIN_CONVERSIONS or (tt, ft) in _SAFE_PIN_CONVERSIONS:
+        return True, f"safe implicit conversion {ft}→{tt}"
+
+    # Unknown — cannot determine statically, treat as pass
+    return True, f"unknown types {ft}→{tt}, deferred to compile"
+
+
+# ---------------------------------------------------------------------------
 # P1-T5: Dry-Run Auto Guard — patch risk scoring
 # ---------------------------------------------------------------------------
 _HIGH_RISK_NODE_TYPES = {
@@ -287,16 +335,47 @@ def validate_patch_intent(
 def _patch_validate(patch_json, blueprint_path, function_id, send_fn):
     """Parse patch JSON. Handle dry_run early return.
 
-    Returns (patch_dict, error_response_str | None).
-    Exactly one of the two will be non-None:
+    Returns (patch_dict, error_response_str | None, static_pin_warnings).
+    Exactly one of the first two will be non-None:
       - patch_dict is set on success (normal path)
       - error_response_str is set on JSON decode failure
+    static_pin_warnings is always a list (empty on error or no issues).
     """
     try:
         patch = json.loads(patch_json)
     except json.JSONDecodeError as e:
-        return None, json.dumps({"success": False, "error": f"Invalid patch JSON: {e}"})
-    return patch, None
+        return None, json.dumps({"success": False, "error": f"Invalid patch JSON: {e}"}), []
+
+    # Static pin type compatibility warnings (best-effort, non-blocking)
+    _static_pin_warnings = []
+    _add_nodes_map = {n.get("ref_id", ""): n for n in patch.get("add_nodes", []) if n.get("ref_id")}
+    for _conn in patch.get("add_connections", []):
+        _from_ep = _conn.get("from", "")
+        _to_ep = _conn.get("to", "")
+        _from_ref = _patch_extract_ref(_from_ep)
+        _to_ref = _patch_extract_ref(_to_ep)
+        _from_pin = _from_ep.rsplit(".", 1)[-1] if "." in _from_ep else ""
+        _to_pin = _to_ep.rsplit(".", 1)[-1] if "." in _to_ep else ""
+
+        # Only check connections between nodes we're adding (we know their types)
+        _from_node = _add_nodes_map.get(_from_ref, {})
+        _to_node = _add_nodes_map.get(_to_ref, {})
+        if not _from_node or not _to_node:
+            continue
+
+        # Exec pin naming convention check
+        _exec_pins = {"execute", "then", "exec", "loop body", "completed", "else"}
+        _from_is_exec = _from_pin.lower() in _exec_pins
+        _to_is_exec = _to_pin.lower() in _exec_pins
+
+        if _from_is_exec != _to_is_exec:
+            _static_pin_warnings.append(
+                f"Possible exec/data mismatch: '{_from_ep}' → '{_to_ep}'. "
+                f"Pin '{_from_pin}' is {'exec' if _from_is_exec else 'data'} but "
+                f"'{_to_pin}' is {'exec' if _to_is_exec else 'data'}."
+            )
+
+    return patch, None, _static_pin_warnings
 
 
 # ---------------------------------------------------------------------------

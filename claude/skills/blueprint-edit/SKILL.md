@@ -26,13 +26,16 @@ allowed-tools:
   - mcp__unreal-handshake__describe_blueprint
   - mcp__unreal-handshake__list_blueprint_graphs
   - mcp__unreal-handshake__get_node_details
+  - mcp__unreal-handshake__get_node_guid_by_fname
   - mcp__unreal-handshake__compile_blueprint_with_errors
   - mcp__unreal-handshake__diff_blueprint
   - mcp__unreal-handshake__search_node_type
   - mcp__unreal-handshake__search_blueprint_nodes
   - mcp__unreal-handshake__inspect_blueprint_node
   - mcp__unreal-handshake__preflight_blueprint_patch
+  - mcp__unreal-handshake__check_pin_compatibility
   # 辅助
+  - mcp__unreal-handshake__bind_component_event
   - mcp__unreal-handshake__get_runtime_status
   - mcp__unreal-handshake__get_blueprint_working_set
   - mcp__unreal-handshake__validate_patch_intent
@@ -113,6 +116,23 @@ Only upgrade to `standard` + `subgraph_filter` when you need specific node GUIDs
 - Use `ref_id` for new nodes, `canonical_id` or `instance_id` for existing (not display titles)
 - Build ONE `patch_json` covering ALL changes
 
+#### Accessing ForEachLoop Body Nodes
+
+Nodes inside a ForEachLoop body are NOT reachable via `instance_id` syntax (the exec-chain traversal skips loop bodies). Use this workflow instead:
+
+1. `describe_blueprint(path, max_depth="standard")` — find the FName of the target node (e.g. `K2Node_PrintString_2`) in the loop body
+2. `get_node_guid_by_fname(blueprint_path, graph_name, "K2Node_PrintString_2")` — resolve the FName to a GUID
+3. Use the returned GUID directly in `add_connections` or `set_pin_values`
+
+```python
+# Wrong: instance_id traversal can't reach loop body
+{"from": "K2Node_PrintString#1.execute", "to": ...}  # May fail
+
+# Correct: FName → GUID lookup
+guid = get_node_guid_by_fname(path, "EventGraph", "K2Node_PrintString_2")
+{"from": f"{guid}.execute", "to": ...}  # Reliable
+```
+
 ### Step 2.5: Preflight (MANDATORY — 例外见下)
 
 **For L2/L3 patches (structural or dangerous tier per safety-rules.md)**, optionally run `validate_patch_intent` first to catch stale-context failures before the RBW guard fires:
@@ -180,6 +200,27 @@ Report any C1 (empty stub) or C2 (orphan node) issues found. Do NOT auto-fix —
 ### Step 5: Hand Off to QA
 
 After successful edit, `blueprint-qa` should run. If it finds issues, it will report them — do NOT auto-fix from QA results without user confirmation.
+
+## Timeline Node Workflow (Semi-Automated)
+
+Timeline track configuration is not supported via MCP patch (UE Python API limitation). Use this workflow:
+
+1. MCP creates the Timeline node and all other nodes/connections via `apply_blueprint_patch`
+2. MCP compiles and verifies the graph structure
+3. **Output this exact instruction block to the user:**
+
+```
+⚙️ Manual step required — Timeline track configuration:
+Please complete in UE Editor:
+1. Double-click the Timeline node "[node_title]" in the Blueprint graph
+2. Add a [track_type] track named "[track_name]"  
+3. Set keyframe at t=0 → value=[start_value]
+4. Set keyframe at t=[duration] → value=[end_value]
+5. Close the Timeline editor
+6. Tell me when done and I'll continue with remaining connections.
+```
+
+4. After user confirms, MCP continues with any remaining patch operations.
 
 ## Rules
 

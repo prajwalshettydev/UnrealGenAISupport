@@ -892,6 +892,18 @@ FString UGenBlueprintNodeCreator::ListGraphs(const FString& BlueprintPath)
 			Obj->SetStringField(TEXT("graph_name"), Graph->GetName());
 			Obj->SetStringField(TEXT("graph_type"), GraphType);
 			Obj->SetNumberField(TEXT("node_count"), Graph->Nodes.Num());
+			// P0-T2: Include node GUIDs for content-level fingerprinting.
+			// Python _compute_fingerprint() uses this to detect rewires/edits
+			// that don't change node_count (e.g. delete-one-add-one, rewire only).
+			TArray<TSharedPtr<FJsonValue>> NodeGuids;
+			for (UEdGraphNode* Node : Graph->Nodes)
+			{
+				if (Node)
+				{
+					NodeGuids.Add(MakeShareable(new FJsonValueString(Node->NodeGuid.ToString())));
+				}
+			}
+			Obj->SetArrayField(TEXT("node_guids"), NodeGuids);
 			GraphsArray.Add(MakeShareable(new FJsonValueObject(Obj)));
 		}
 	};
@@ -3161,5 +3173,136 @@ FString UGenBlueprintNodeCreator::InspectBlueprintNode(const FString& CanonicalN
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultJson);
 	FJsonSerializer::Serialize(Root.ToSharedRef(), Writer);
 	return ResultJson;
+}
+
+FString UGenBlueprintNodeCreator::BindComponentEvent(
+    const FString& BlueprintPath, const FString& FunctionId,
+    const FString& ComponentName, const FString& DelegateName)
+{
+    TSharedPtr<FJsonObject> ResultObj = MakeShared<FJsonObject>();
+
+    UBlueprint* Blueprint = Cast<UBlueprint>(
+        StaticLoadObject(UBlueprint::StaticClass(), nullptr, *BlueprintPath));
+    if (!Blueprint)
+    {
+        ResultObj->SetBoolField(TEXT("success"), false);
+        ResultObj->SetStringField(TEXT("error"), TEXT("Blueprint not found"));
+        FString Out; TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Out);
+        FJsonSerializer::Serialize(ResultObj.ToSharedRef(), W); return Out;
+    }
+
+    // Find the target graph
+    UEdGraph* Graph = nullptr;
+    for (UEdGraph* G : Blueprint->UbergraphPages)
+        if (G->GetName() == FunctionId || G->GraphGuid.ToString() == FunctionId) { Graph = G; break; }
+    if (!Graph)
+        for (UEdGraph* G : Blueprint->FunctionGraphs)
+            if (G->GetName() == FunctionId || G->GraphGuid.ToString() == FunctionId) { Graph = G; break; }
+    if (!Graph)
+    {
+        ResultObj->SetBoolField(TEXT("success"), false);
+        ResultObj->SetStringField(TEXT("error"), TEXT("Graph not found"));
+        FString Out; TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Out);
+        FJsonSerializer::Serialize(ResultObj.ToSharedRef(), W); return Out;
+    }
+
+    // Find the component property on the generated class
+    FObjectProperty* CompProp = FindFProperty<FObjectProperty>(
+        Blueprint->GeneratedClass, *ComponentName);
+    if (!CompProp)
+    {
+        ResultObj->SetBoolField(TEXT("success"), false);
+        ResultObj->SetStringField(TEXT("error"), FString::Printf(
+            TEXT("Component '%s' not found on Blueprint. Ensure the component exists before calling BindComponentEvent."), *ComponentName));
+        FString Out; TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Out);
+        FJsonSerializer::Serialize(ResultObj.ToSharedRef(), W); return Out;
+    }
+
+    // Create the ComponentBoundEvent node
+    UK2Node_ComponentBoundEvent* EventNode = NewObject<UK2Node_ComponentBoundEvent>(Graph);
+    EventNode->ComponentPropertyName = CompProp->GetFName();
+    EventNode->DelegatePropertyName = FName(*DelegateName);
+    EventNode->NodePosX = 0;
+    EventNode->NodePosY = 0;
+    Graph->AddNode(EventNode, true, false);
+    EventNode->CreateNewGuid();
+    EventNode->PostPlacedNewNode();
+    EventNode->AllocateDefaultPins();
+
+    FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+
+    ResultObj->SetBoolField(TEXT("success"), true);
+    ResultObj->SetStringField(TEXT("node_guid"), EventNode->NodeGuid.ToString());
+    ResultObj->SetStringField(TEXT("component_name"), ComponentName);
+    ResultObj->SetStringField(TEXT("delegate_name"), DelegateName);
+
+    FString Out; TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Out);
+    FJsonSerializer::Serialize(ResultObj.ToSharedRef(), W); return Out;
+}
+
+FString UGenBlueprintNodeCreator::CheckPinCompatibility(
+    const FString& BlueprintPath, const FString& FunctionId,
+    const FString& FromNodeGuid, const FString& FromPinName,
+    const FString& ToNodeGuid, const FString& ToPinName)
+{
+    TSharedPtr<FJsonObject> ResultObj = MakeShared<FJsonObject>();
+
+    UBlueprint* Blueprint = Cast<UBlueprint>(
+        StaticLoadObject(UBlueprint::StaticClass(), nullptr, *BlueprintPath));
+    if (!Blueprint)
+    {
+        ResultObj->SetBoolField(TEXT("compatible"), false);
+        ResultObj->SetStringField(TEXT("reason"), TEXT("Blueprint not found"));
+        FString Out; TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Out);
+        FJsonSerializer::Serialize(ResultObj.ToSharedRef(), W); return Out;
+    }
+
+    UEdGraph* Graph = nullptr;
+    for (UEdGraph* G : Blueprint->UbergraphPages)
+    {
+        if (G->GetName() == FunctionId || G->GraphGuid.ToString() == FunctionId) { Graph = G; break; }
+    }
+    if (!Graph)
+    {
+        for (UEdGraph* G : Blueprint->FunctionGraphs)
+        {
+            if (G->GetName() == FunctionId || G->GraphGuid.ToString() == FunctionId) { Graph = G; break; }
+        }
+    }
+    if (!Graph)
+    {
+        ResultObj->SetBoolField(TEXT("compatible"), false);
+        ResultObj->SetStringField(TEXT("reason"), TEXT("Graph not found"));
+        FString Out; TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Out);
+        FJsonSerializer::Serialize(ResultObj.ToSharedRef(), W); return Out;
+    }
+
+    UEdGraphPin* FromPin = nullptr;
+    UEdGraphPin* ToPin = nullptr;
+    for (UEdGraphNode* Node : Graph->Nodes)
+    {
+        if (Node->NodeGuid.ToString() == FromNodeGuid)
+            for (UEdGraphPin* Pin : Node->Pins)
+                if (Pin->PinName.ToString() == FromPinName) { FromPin = Pin; break; }
+        if (Node->NodeGuid.ToString() == ToNodeGuid)
+            for (UEdGraphPin* Pin : Node->Pins)
+                if (Pin->PinName.ToString() == ToPinName) { ToPin = Pin; break; }
+    }
+
+    if (!FromPin || !ToPin)
+    {
+        ResultObj->SetBoolField(TEXT("compatible"), false);
+        ResultObj->SetStringField(TEXT("reason"), TEXT("Pin not found"));
+        FString Out; TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Out);
+        FJsonSerializer::Serialize(ResultObj.ToSharedRef(), W); return Out;
+    }
+
+    const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
+    FPinConnectionResponse Response = Schema->CanCreateConnection(FromPin, ToPin);
+    ResultObj->SetBoolField(TEXT("compatible"), Response.Response == CONNECT_RESPONSE_MAKE || Response.Response == CONNECT_RESPONSE_MAKE_WITH_CONVERSION_NODE);
+    ResultObj->SetStringField(TEXT("reason"), Response.Message.ToString());
+
+    FString Out; TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Out);
+    FJsonSerializer::Serialize(ResultObj.ToSharedRef(), W); return Out;
 }
 

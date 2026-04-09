@@ -1706,6 +1706,11 @@ def apply_blueprint_patch(
     Returns:
         JSON with results: created node GUIDs, connection results, errors.
     """
+    # --- Phase 1: Validate (also computes static pin warnings) ---
+    patch, err, _static_pin_warnings = _patch_validate(patch_json, blueprint_path, function_id, send_to_unreal)
+    if err:
+        return err
+
     # --- dry_run: validate via preflight without applying ---
     if dry_run:
         pf_resp = send_to_unreal({
@@ -1720,16 +1725,12 @@ def apply_blueprint_patch(
         envelope = _make_envelope(
             "apply_blueprint_patch", True,
             {"dry_run": True, "valid": valid, "issues": issues,
-             "predicted_nodes": predicted},
+             "predicted_nodes": predicted,
+             "static_pin_warnings": _static_pin_warnings},
             summary=f"dry_run: {'valid' if valid else 'invalid'}, {len(issues)} issue(s)",
             diagnostics=[{"message": i.get("message", str(i))} for i in issues],
         )
         return json.dumps(envelope, separators=(",", ":"), ensure_ascii=False)
-
-    # --- Phase 1: Validate ---
-    patch, err = _patch_validate(patch_json, blueprint_path, function_id, send_to_unreal)
-    if err:
-        return err
 
     # --- P1-T2: Generate trace_id for full chain observability ---
     import uuid as _uuid
@@ -4458,6 +4459,29 @@ def get_runtime_status() -> str:
         result["error_code"] = "TRANSPORT_DISCONNECTED"
         result["hint"] = "UE Editor may not be running or socket server not started. Check auto_start_socket_server in plugin settings."
 
+    # C++ API freshness check
+    try:
+        import os as _os2
+        _plugin_dir = Path(__file__).resolve().parent.parent.parent  # 3 levels up from Content/Python/
+        _stamp_path = _plugin_dir / ".claude" / "bp_cpp_api_build_stamp.json"
+        if _stamp_path.exists():
+            _stamp = json.loads(_stamp_path.read_text(encoding="utf-8"))
+            _build_time = float(_stamp.get("build_time", 0))
+            _src_dir = _plugin_dir / "Source"
+            if _src_dir.exists():
+                _stale = any(
+                    p.stat().st_mtime > _build_time
+                    for p in _src_dir.rglob("*")
+                    if p.suffix in (".h", ".cpp")
+                )
+                result["cpp_api_freshness"] = "stale" if _stale else "fresh"
+            else:
+                result["cpp_api_freshness"] = "missing"
+        else:
+            result["cpp_api_freshness"] = "missing"
+    except Exception:
+        result["cpp_api_freshness"] = "unknown"
+
     return json.dumps(result, ensure_ascii=False)
 
 
@@ -4604,6 +4628,76 @@ def validate_patch_intent(
     from tools.patch import validate_patch_intent as _validate_patch_intent
     result = _validate_patch_intent(blueprint_path, function_id, patch_json, send_to_unreal)
     return json.dumps(result, ensure_ascii=False)
+
+
+@exposed_tool(group="core")
+def check_pin_compatibility(
+    blueprint_path: str,
+    function_id: str = "EventGraph",
+    from_node_guid: str = "",
+    from_pin_name: str = "",
+    to_node_guid: str = "",
+    to_pin_name: str = "",
+) -> str:
+    """Check if two Blueprint pins can be connected without modifying the graph.
+
+    Uses UEdGraphSchema_K2::CanCreateConnection() on the C++ side to get
+    the actual UE type-compatibility verdict. Falls back to static heuristic
+    if UE is not connected.
+
+    Returns: JSON with compatible (bool) and reason (str).
+    """
+    # Try live UE check first
+    resp = send_to_unreal({
+        "type": "check_pin_compatibility",
+        "blueprint_path": blueprint_path,
+        "function_id": function_id,
+        "from_node_guid": from_node_guid,
+        "from_pin_name": from_pin_name,
+        "to_node_guid": to_node_guid,
+        "to_pin_name": to_pin_name,
+    })
+    if isinstance(resp, dict) and "compatible" in resp:
+        return json.dumps(resp, ensure_ascii=False)
+    # Static fallback — cannot check without live UE
+    return json.dumps({
+        "compatible": None,
+        "reason": "UE Editor not connected — static pin compatibility check unavailable. Run preflight_blueprint_patch after connecting.",
+    }, ensure_ascii=False)
+
+
+@exposed_tool(group="core")
+def bind_component_event(
+    blueprint_path: str,
+    function_id: str = "EventGraph",
+    component_name: str = "",
+    delegate_name: str = "OnComponentBeginOverlap",
+) -> str:
+    """Create a ComponentBoundEvent node wired to a specific component instance.
+
+    Requires the component to already exist on the Blueprint (added via
+    add_component or manually in UE Editor). The node is created but not
+    connected — use apply_blueprint_patch to wire exec/data pins afterward.
+
+    Args:
+        blueprint_path: Asset path, e.g. "/Game/Blueprints/BP_NPC"
+        function_id: Graph name or GUID (default "EventGraph")
+        component_name: Name of the component property on the Blueprint class
+        delegate_name: Event delegate name (e.g. "OnComponentBeginOverlap")
+
+    Returns:
+        JSON with success, node_guid, component_name, delegate_name
+    """
+    return json.dumps(
+        send_to_unreal({
+            "type": "bind_component_event",
+            "blueprint_path": blueprint_path,
+            "function_id": function_id,
+            "component_name": component_name,
+            "delegate_name": delegate_name,
+        }),
+        ensure_ascii=False,
+    )
 
 
 if __name__ == "__main__":

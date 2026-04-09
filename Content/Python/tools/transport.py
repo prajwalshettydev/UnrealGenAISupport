@@ -19,6 +19,30 @@ _PROTOCOL_VERSION = os.environ.get("SOCKET_PROTOCOL_VERSION", "v1").strip().lowe
 _FRAME_MAGIC = b'\xab\xcd'
 _DEFAULT_TIMEOUT = float(os.environ.get("UNREAL_SOCKET_TIMEOUT", "10.0"))
 
+_negotiated_protocol: str = ""  # cached after first successful negotiation; "" = not yet negotiated
+
+
+def _negotiate_protocol(sock) -> str:
+    """Attempt v1/v2 protocol negotiation. Returns agreed version or 'v1' on failure."""
+    try:
+        probe = json.dumps({"type": "protocol_negotiate", "client_supports": ["v1", "v2"]})
+        sock.sendall((probe + "\n").encode("utf-8"))
+        sock.settimeout(3.0)
+        data = b""
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+            try:
+                resp = json.loads(data.decode("utf-8"))
+                return resp.get("agreed_version", "v1")
+            except json.JSONDecodeError:
+                continue
+    except Exception:
+        pass
+    return "v1"
+
 
 def _recv_exact(sock: socket.socket, n: int) -> bytes:
     """Read exactly n bytes from socket, raising on short read."""
@@ -47,6 +71,7 @@ def _recv_v2(sock: socket.socket) -> bytes:
 
 
 def send_to_unreal(command):
+    global _negotiated_protocol
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             unreal_port = int(os.environ.get("UNREAL_PORT", "9877"))
@@ -55,6 +80,8 @@ def send_to_unreal(command):
                 # P3-T1: framing + timeout
                 s.settimeout(_DEFAULT_TIMEOUT)
                 s.connect(('localhost', unreal_port))
+                if not _negotiated_protocol:
+                    _negotiated_protocol = _negotiate_protocol(s)
                 payload = json.dumps(command).encode('utf-8')
                 _send_v2(s, payload)
                 response_bytes = _recv_v2(s)
@@ -62,6 +89,8 @@ def send_to_unreal(command):
             else:
                 # v1: legacy raw JSON (default, backwards compatible)
                 s.connect(('localhost', unreal_port))
+                if not _negotiated_protocol:
+                    _negotiated_protocol = _negotiate_protocol(s)
                 json_str = json.dumps(command)
                 s.sendall(json_str.encode('utf-8'))
 
