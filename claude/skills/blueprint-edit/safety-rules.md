@@ -31,6 +31,20 @@ If an edit goes wrong:
 - **Never** call `describe_blueprint(full)` for an entire graph. Use `standard` depth + targeted `get_node_details` for the specific nodes you need pin info for.
 - If `add_node` creates a node with title "None" and empty pins, the function binding failed. Clean up the broken node immediately — do not try to set pins on it.
 
+## Patch Stratification
+
+All patch operations fall into one of three risk tiers. Apply the required safety level for each tier:
+
+| Tier | Operations | Required Safety |
+|------|-----------|-----------------|
+| **L1 — Safe** | Set pin values, lightweight connection adjustments, known node patterns | Dry-run recommended |
+| **L2 — Structural** | Add/remove nodes, add/remove connections, ReconstructNode, switch case changes | Dry-run + transaction strongly recommended |
+| **L3 — Dangerous** | Macro-sensitive edits, Timeline-sensitive edits, lifecycle-sensitive call sites, broad batch edits, cross-graph changes | `strict_mode=True` + preflight + transaction + compile + QA **required** |
+
+**How to determine tier**: consult `node_lifecycle_registry.get_node_lifecycle(node_type)` for node risk level. Any patch touching `MacroInstance`, `Timeline`, or `ComponentBoundEvent` is automatically L3.
+
+**L3 policy**: `apply_blueprint_patch` with `strict_mode=True` will block restricted node types and return `STRICT_MODE_BLOCKED`. Do not bypass. Fix the plan to use supported node types or break into smaller L2 steps.
+
 ## Forbidden Actions
 
 - Do NOT call `execute_python_script` to modify blueprints (bypass MCP safety)

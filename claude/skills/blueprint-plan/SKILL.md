@@ -11,6 +11,7 @@ allowed-tools:
   - Grep
   - Glob
   - Agent
+  - mcp__unreal-handshake__get_runtime_status
   - mcp__unreal-handshake__describe_blueprint
   - mcp__unreal-handshake__list_blueprint_graphs
   - mcp__unreal-handshake__get_node_details
@@ -21,6 +22,9 @@ allowed-tools:
   - mcp__unreal-handshake__find_scene_objects
   - mcp__unreal-handshake__compile_blueprint_with_errors
   - mcp__unreal-handshake__get_files_in_folder
+  - mcp__unreal-handshake__suggest_best_edit_tool
+  - mcp__unreal-handshake__get_trace_analytics
+  - mcp__unreal-handshake__get_blueprint_working_set
 ---
 
 # Blueprint Plan — Default Entry Point
@@ -154,10 +158,38 @@ add one sentence citing the specific file. Example:
 > "Using Interface instead of Cast (02_communication.md §2.3)"
 Only required for decisions that could have gone multiple ways — not every node.
 
+## Step 1.1: Task Classification
+
+Classify the incoming request before any MCP calls or file reads:
+
+| Classification | Description | Default Tool Strategy |
+|---------------|-------------|----------------------|
+| `understand` | Analyze/review only, no edits | describe_blueprint → output analysis, stop |
+| `structure_edit` | Insert/append/rewire exec-chain nodes | insert_exec_node_between / append_node_after_exec |
+| `conditional_wrap` | Add Branch/condition around existing logic | wrap_exec_chain_with_branch |
+| `reconnect_or_rewire` | Change connections between existing nodes | structure tool if possible, else patch with dry-run |
+| `build_new_flow` | Create a new event-driven flow from scratch | scaffold via apply_blueprint_spec + structure tools |
+| `repair_existing_flow` | Fix compile errors or broken logic | describe + compile_blueprint_with_errors + targeted patch |
+| `batch_mutation` | Many nodes/connections at once | apply_blueprint_spec or patch with strict_mode + dry-run |
+
+Output the classification explicitly:
+```
+Task Classification: <type>
+Execution Strategy: <tool or approach>
+```
+
+**If task is `repair_existing_flow` or the user mentions repeated failures:**
+Call `get_trace_analytics(blueprint_path=<path>, output_format="markdown")` to review failure history before planning.
+
 ## Step 1.5: Verify UE Editor Connection
 
-Before calling ANY `mcp__unreal-handshake__*` tool, verify the connection is alive.
-If a tool returns `[WinError 10061]` ("目标计算机积极拒绝") or any socket connection error:
+调用 `get_runtime_status()` 验证连接状态（比直接发工具请求更高效）：
+- `listener_alive: true` + `last_transport_error` 为空 → 继续
+- `listener_alive: false` 或 `error_code: TRANSPORT_DISCONNECTED` → 输出故障排查并 STOP
+- `last_transport_error: TRANSPORT_TIMEOUT` → 提示 UE 可能忙，等待后重试一次
+- `framing_mode` 字段显示当前协议版本（v1/v2）
+
+如果 `get_runtime_status` 本身返回 `[WinError 10061]` 或 socket 错误：
 
 1. **Do NOT retry** — the error means the UE Editor socket server is not reachable.
 2. **Tell the user exactly what to do:**
@@ -219,8 +251,19 @@ Input System Report:
 
 ## Step 3: Read Current State
 
+**Preferred (single call):**
 ```
-describe_blueprint(path, max_depth="pseudocode", compact=true)
+working_set = get_blueprint_working_set(
+    blueprint_path=path,
+    graph_name="EventGraph",
+    task_type=<classification from Step 1.1>  # optional
+)
+```
+This returns runtime_status, graph_guids, pseudocode description, variables, compile errors, and recommended tools in one bundle. Use it instead of separate calls.
+
+**Individual calls (only when you need targeted data not in the bundle):**
+```
+describe_blueprint(path, max_depth="pseudocode", compact=true, subgraph_filter="<target flow>")
 get_blueprint_variables(path)
 compile_blueprint_with_errors(path)
 ```
@@ -259,6 +302,8 @@ Pattern Trace: <existing behavior name>
 
 ## Step 4: Plan Changes
 
+Before building a patch or spec, check `${CLAUDE_SKILL_DIR}/task-recipes.md` for a recipe matching the request. Recipes provide the canonical tool sequence and example MCP sketches for common patterns (interaction chain, guard condition, trigger-response flow, decision pipeline, repair).
+
 - Resolve candidate C++ Blueprint APIs from `.claude/bp_cpp_api_index.json` and
   `15_cpp_bp_api.generated.md` before asking MCP to confirm a node.
 - If unsure about a node type: `search_node_type("keyword")`
@@ -268,11 +313,24 @@ Pattern Trace: <existing behavior name>
 
 ## Step 4.5: MCP Capability Check
 
-Before outputting the spec, verify for each planned node:
+**先判断是否可用高层结构工具（优先于 patch）：**
+
+| 操作意图 | 推荐工具 | 支持 |
+|---------|---------|------|
+| 在两个节点之间插入节点 | `insert_exec_node_between` | ✓ |
+| 在 exec 链末尾/中间追加节点 | `append_node_after_exec` | ✓ |
+| 用 Branch/条件包裹执行链 | `wrap_exec_chain_with_branch` | ✓ |
+
+调用 `suggest_best_edit_tool(intent="<用户需求>")` 可自动获取推荐工具。
+
+**For exec-chain edits, do NOT produce a patch-first plan if `insert_exec_node_between`, `append_node_after_exec`, or `wrap_exec_chain_with_branch` can express the change. Only downgrade to `apply_blueprint_patch` when structure tools are insufficient for the specific operation.**
+
+如果不适用高层工具，再验证 patch 级能力：
 
 1. **Can MCP create this node type?**
    - Known types: Branch, Sequence, PrintString, Delay, VariableGet/Set, InputAction, InputKey, CustomEvent ✓
    - Function calls: use `search_blueprint_nodes` + `inspect_blueprint_node` to verify
+   - Restricted types (MacroInstance / ComponentBoundEvent / Timeline): flag as blocker, use `strict_mode=True` when applying
    - Unknown types: flag as blocker
 2. **Can MCP set the required properties?**
    - InputAction needs `action_name` ✓
@@ -331,7 +389,8 @@ Format:
 Confirm? (y/n)
 ```
 
-After confirmation → tell the user to invoke `blueprint-edit` or proceed to it automatically.
+After confirmation → **继续执行 blueprint-edit，不要只输出 spec 然后停止。**
+除非用户明确说"先不做"或"我自己来"，否则应立即进入执行阶段。
 
 ### Planning Output Contract
 

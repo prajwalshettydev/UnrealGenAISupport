@@ -7,19 +7,38 @@ description: |
   After editing, blueprint-qa should run automatically.
 allowed-tools:
   - Read
+  # 高层结构编辑工具（优先使用，见 Step 2.0）
+  - mcp__unreal-handshake__insert_exec_node_between
+  - mcp__unreal-handshake__append_node_after_exec
+  - mcp__unreal-handshake__wrap_exec_chain_with_branch
+  - mcp__unreal-handshake__suggest_best_edit_tool
+  # 通用写入
   - mcp__unreal-handshake__apply_blueprint_spec
   - mcp__unreal-handshake__apply_blueprint_patch
   - mcp__unreal-handshake__create_blueprint_from_template
   - mcp__unreal-handshake__create_blueprint
-  - mcp__unreal-handshake__auto_layout_graph
+  - mcp__unreal-handshake__add_switch_case
+  - mcp__unreal-handshake__begin_transaction
+  - mcp__unreal-handshake__end_transaction
+  - mcp__unreal-handshake__cancel_transaction
+  - mcp__unreal-handshake__undo_last_operation
+  # 读取 / 验证
   - mcp__unreal-handshake__describe_blueprint
+  - mcp__unreal-handshake__list_blueprint_graphs
+  - mcp__unreal-handshake__get_node_details
   - mcp__unreal-handshake__compile_blueprint_with_errors
   - mcp__unreal-handshake__diff_blueprint
   - mcp__unreal-handshake__search_node_type
   - mcp__unreal-handshake__search_blueprint_nodes
   - mcp__unreal-handshake__inspect_blueprint_node
   - mcp__unreal-handshake__preflight_blueprint_patch
+  # 辅助
+  - mcp__unreal-handshake__get_runtime_status
+  - mcp__unreal-handshake__get_blueprint_working_set
+  - mcp__unreal-handshake__validate_patch_intent
+  - mcp__unreal-handshake__auto_layout_graph
   - mcp__unreal-handshake__save_all_dirty_packages
+  - mcp__unreal-handshake__analyze_blueprint_quality
 ---
 
 # Blueprint Edit — Guarded Executor
@@ -68,8 +87,23 @@ before = describe_blueprint(path, max_depth="pseudocode", compact=true, subgraph
 Only upgrade to `standard` + `subgraph_filter` when you need specific node GUIDs for patching.
 **NEVER** call `standard` on the full graph. **NEVER** scan all blueprints for a local change.
 
+### Step 2.0: 工具选择（MANDATORY，在 build patch 之前）
+
+先调用 `suggest_best_edit_tool(intent="<用户需求描述>")` 或按以下规则选择：
+
+| 操作类型 | 优先工具 |
+|---------|---------|
+| 在两个节点之间插入新节点 | `insert_exec_node_between` |
+| 在 exec 链末尾或中间追加节点 | `append_node_after_exec` |
+| 用 Branch 包裹执行链（加条件判断） | `wrap_exec_chain_with_branch` |
+| 其他操作（pin 值、变量、批量节点） | `apply_blueprint_patch` |
+
+**规则：只有当结构工具覆盖不了的操作，才降级到 `apply_blueprint_patch`。**
+高层工具内部自动处理 dry_run 预检、断边、连边，无需手动拼 patch。
+
 ### Step 2: Build Patch
 
+- For new Blueprint creation, check `${CLAUDE_SKILL_DIR}/skeleton-templates.md` for ready-made `apply_blueprint_spec` JSON templates (event-driven chain, trigger-response, state-driven branch)
 - Refer to `${CLAUDE_SKILL_DIR}/mcp-api-reference.md` for patch format
 - Refer to `${CLAUDE_SKILL_DIR}/patch-patterns.md` for common recipes
 - **For ANY node type not in the pin lookup table (CLAUDE.md)**:
@@ -79,7 +113,14 @@ Only upgrade to `standard` + `subgraph_filter` when you need specific node GUIDs
 - Use `ref_id` for new nodes, `canonical_id` or `instance_id` for existing (not display titles)
 - Build ONE `patch_json` covering ALL changes
 
-### Step 2.5: Preflight (MANDATORY — NO EXCEPTIONS)
+### Step 2.5: Preflight (MANDATORY — 例外见下)
+
+**For L2/L3 patches (structural or dangerous tier per safety-rules.md)**, optionally run `validate_patch_intent` first to catch stale-context failures before the RBW guard fires:
+```
+intent_check = validate_patch_intent(blueprint_path, function_id, patch_json)
+# If intent_check.stale_fingerprint == true → describe_blueprint(force_refresh=True) and rebuild patch
+# If intent_check.unresolvable_refs is non-empty → fix refs before proceeding
+```
 
 ```
 result = preflight_blueprint_patch(path, function_id, patch_json)
@@ -88,6 +129,10 @@ result = preflight_blueprint_patch(path, function_id, patch_json)
 - `valid == false` → read `issues`, fix patch, re-preflight (max 2 retries). Do NOT call apply.
 - `valid == true` → proceed to Step 3.
 - **NEVER skip. NEVER call `apply_blueprint_patch` without a preceding valid preflight in the same session.**
+
+**例外（跳过此步骤）**：以下工具内部已自动执行 dry_run 预检，无需额外 preflight：
+- `apply_blueprint_spec`（见文档末尾对比表）
+- `insert_exec_node_between` / `append_node_after_exec` / `wrap_exec_chain_with_branch`
 
 ### Step 3: Apply
 
@@ -115,8 +160,22 @@ diff = diff_blueprint(before, after)
 ```
 
 - Show user a concise diff summary
-- If compile fails: read errors → build fix patch → re-apply (max 2 retries)
+- If compile fails: 读 `structured_errors[].probable_patch_ops` 了解建议的修复操作，读 `post_compile_hint.recommended_next_actions` 获取下一步，读 `structured_errors[].node_guid` 或 `node_guid_candidates` 定位节点；build fix patch → re-apply (max 2 retries)
 - After 2 failed retries → show errors and ask user
+- For error code lookup and repair procedures, see `${CLAUDE_SKILL_DIR}/repair-recipes.md`
+
+**如果 `apply_blueprint_patch` 失败：**
+- response 中的 `post_failure_state.snapshot` 即为当前真实图状态，**直接读取**，无需再调 `describe_blueprint(force_refresh=True)`
+- `post_failure_hint.recommended_next_actions` 给出下一步枚举，按此执行
+- `guard_decisions` 字段说明哪些守卫规则触发（strict_mode 时）
+
+### Step 4.5: Quick Quality Check (optional)
+
+If the user has quality concerns, or `analyze_after_edit: true` was set in the spec:
+```
+qa = analyze_blueprint_quality(path, mode="quick")   # C1+C5+C6 only, fast
+```
+Report any C1 (empty stub) or C2 (orphan node) issues found. Do NOT auto-fix — that requires user confirmation.
 
 ### Step 5: Hand Off to QA
 

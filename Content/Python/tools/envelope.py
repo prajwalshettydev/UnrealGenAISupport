@@ -316,11 +316,16 @@ def _postprocess_describe(result_json, compact, max_depth, blueprint_path):
 
 
 def _compute_fingerprint(blueprint_path, graph_name, send_fn=None, graphs=None):
-    """Lightweight fingerprint from list_graphs node counts (no heavy node fetch).
+    """Content-level fingerprint using node GUID set hash when available.
+
+    Strategy (in priority order):
+    1. sha256(graph_name + sorted(node_guids))[:16] — detects add/remove/rewire
+    2. Fallback: graph_name:node_count — used when UE side doesn't return node_guids
 
     Pass `graphs` (already-fetched list) to avoid an extra socket round-trip.
     Pass `send_fn` to fetch graphs on demand (used for pre-describe cache check).
     """
+    import hashlib
     if graphs is None:
         if send_fn is None:
             return None
@@ -332,8 +337,62 @@ def _compute_fingerprint(blueprint_path, graph_name, send_fn=None, graphs=None):
         graphs = json.loads(graphs)
     if graph_name:
         graphs = [g for g in graphs if g["graph_name"] == graph_name]
-    parts = [f"{g.get('graph_name', '?')}:{g.get('node_count', '?')}" for g in graphs]
-    return "|".join(sorted(parts))
+
+    parts = []
+    fingerprint_strategy = "guid_hash"
+    for g in sorted(graphs, key=lambda x: x.get("graph_name", "")):
+        gname = g.get("graph_name", "?")
+        node_guids = g.get("node_guids", [])
+        if node_guids:
+            # Content-level hash: sensitive to add/remove/any structural change
+            sig = hashlib.sha256(
+                (gname + "|" + ",".join(sorted(node_guids))).encode("utf-8")
+            ).hexdigest()[:16]
+        else:
+            # Fallback: node_count only (weaker, but backwards-compatible)
+            fingerprint_strategy = "node_count_fallback"
+            sig = f"{gname}:{g.get('node_count', '?')}"
+        parts.append(sig)
+
+    fingerprint = "|".join(parts)
+    # Embed strategy as suffix so callers can detect fallback mode
+    return f"{fingerprint}|strategy:{fingerprint_strategy}"
+
+
+# ---------------------------------------------------------------------------
+# P2-T5: Locale Pin Alias Dictionary
+# Maps Chinese (and other locale) pin display names to stable internal PinNames.
+# Used in resolve_endpoint() to normalize pin names before graph lookup.
+# ---------------------------------------------------------------------------
+_PIN_LOCALE_ALIASES: dict = {
+    # Exec flow pins
+    "条件": "Condition",
+    "执行": "execute",
+    "然后": "then",
+    "否则": "else",
+    "完成": "Completed",
+    "循环体": "LoopBody",
+    "已完成": "Completed",
+    # Common data pins
+    "目标": "Target",
+    "返回值": "ReturnValue",
+    "持续时间": "Duration",
+    "对象": "Object",
+    "类": "Class",
+    "输入": "Input",
+    "输出": "Output",
+    "结果": "Result",
+    "值": "Value",
+    "索引": "Index",
+    "数组": "Array",
+    "布尔": "Boolean",
+    "整数": "Integer",
+    "浮点": "Float",
+    "字符串": "String",
+    "向量": "Vector",
+    "旋转体": "Rotator",
+    "变换": "Transform",
+}
 
 
 # Locale aliases used by patch resolution

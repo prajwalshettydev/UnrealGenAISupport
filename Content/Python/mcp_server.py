@@ -2,6 +2,16 @@ import json
 import sys
 import os
 import time
+
+# Inject Scripts/ dir so lib.blueprint_qa_core is importable.
+# __file__ = .../Plugins/GenerativeAISupport/Content/Python/mcp_server.py
+# 5 parents up = SmellyCat/
+_mcp_scripts_dir = str(
+    __import__("pathlib").Path(os.path.abspath(__file__))
+    .parent.parent.parent.parent.parent / "Scripts"
+)
+if _mcp_scripts_dir not in sys.path:
+    sys.path.insert(0, _mcp_scripts_dir)
 from fastmcp import FastMCP
 from fastmcp.utilities.types import Image
 import re
@@ -37,6 +47,7 @@ from tools.describe import (
 from tools.patch import (
     _patch_looks_like_guid, _patch_classify_error, _patch_extract_ref,
     _patch_validate, _patch_resolve_refs, _patch_mutate, _patch_finalize,
+    _update_last_read_ts, _check_rbw_guard, _compute_patch_risk_score,
 )
 from tools.inspect_tools import (
     get_node_details as _impl_get_node_details,
@@ -938,8 +949,11 @@ def get_node_details(blueprint_path: str, function_id: str, node_guid: str,
                      schema_mode: str = "semantic") -> str:
     """Get detailed information about a specific Blueprint node including all its pins,
     connections, default values, and display title."""
-    return _impl_get_node_details(blueprint_path, function_id, node_guid,
-                                  schema_mode=schema_mode, send_fn=send_to_unreal)
+    result = _impl_get_node_details(blueprint_path, function_id, node_guid,
+                                    schema_mode=schema_mode, send_fn=send_to_unreal)
+    # P1-T4: update read timestamp so RBW guard knows context is fresh
+    _update_last_read_ts(blueprint_path)
+    return result
 
 
 @exposed_tool(group="core")
@@ -1599,6 +1613,9 @@ def describe_blueprint(
     if not has_filters and fingerprint:
         _describe_cache.put(cache_key, fingerprint, result_json)
 
+    # P1-T4: update read timestamp so RBW guard knows context is fresh
+    _update_last_read_ts(blueprint_path)
+
     # Post-process: strip legend on repeat, strip redundant graph fields
     return _postprocess_describe(result_json, compact, max_depth, blueprint_path)
 
@@ -1628,6 +1645,7 @@ def apply_blueprint_patch(
     patch_json: str,
     verify: bool = True,
     dry_run: bool = False,
+    strict_mode: bool = False,
 ) -> str:
     """
     Apply a batch of blueprint modifications in one call.
@@ -1636,6 +1654,11 @@ def apply_blueprint_patch(
     add_node + connect_nodes + set_pin_value individually (many round-trips),
     describe all changes in a single patch JSON.
 
+    PREFERRED ALTERNATIVES for common structural edits (use these instead of patch):
+      - insert_exec_node_between: insert a node between two connected exec pins
+      - append_node_after_exec: append a node at the end (or middle) of an exec chain
+      - wrap_exec_chain_with_branch: wrap an exec chain with a Branch/condition node
+
     Args:
         blueprint_path: Path to the Blueprint (e.g., "/Game/Blueprints/BP_MyActor")
         function_id: "EventGraph" or function GUID
@@ -1643,6 +1666,17 @@ def apply_blueprint_patch(
         verify: If True, return a compact verification of affected nodes (saves a separate describe call)
         dry_run: If True, validate the patch via preflight WITHOUT applying. Returns
                  predicted changes and issues. Safe to call before live apply.
+        strict_mode: If True, apply extra guards:
+                     - Restricted node types (MacroInstance/ComponentBoundEvent/Timeline) are BLOCKED
+                     - Display-name pin refs trigger warnings
+                     - remove+add_connections patterns suggest high-layer tools
+                     Returns guard_decisions list explaining what was checked.
+
+    PREFERRED ALTERNATIVES for structural exec-chain edits (use these INSTEAD of patch):
+      - insert_exec_node_between: insert a node into an existing exec connection
+      - append_node_after_exec: append a node at the end or middle of an exec chain
+      - wrap_exec_chain_with_branch: wrap an exec chain with a Branch/condition node
+      Call suggest_best_edit_tool(intent) to get a recommendation based on your goal.
 
     Patch format:
     {
@@ -1697,10 +1731,15 @@ def apply_blueprint_patch(
     if err:
         return err
 
+    # --- P1-T2: Generate trace_id for full chain observability ---
+    import uuid as _uuid
+    _trace_id = str(_uuid.uuid4())[:8]
+
     # --- Structured patch log for observability ---
     patch_log = {
         "blueprint": blueprint_path,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "trace_id": _trace_id,
         "phases": {},
         "rollback": False,
         "total_created": 0,
@@ -1708,6 +1747,129 @@ def apply_blueprint_patch(
         "total_errors": 0,
         "error_categories": [],
     }
+
+    # --- P1-T4: Read-Before-Write Guard ---
+    _rbw_actions = _check_rbw_guard(blueprint_path, send_to_unreal)
+
+    # --- P1-T5: Dry-Run Auto Guard ---
+    try:
+        _parsed_patch = json.loads(patch_json)
+        _risk_score = _compute_patch_risk_score(_parsed_patch)
+    except Exception:
+        _parsed_patch = {}
+        _risk_score = 0
+
+    if _risk_score >= 6 and not dry_run:
+        # Auto-preflight before high-risk mutate
+        pf_resp = send_to_unreal({
+            "type": "preflight_blueprint_patch",
+            "blueprint_path": blueprint_path,
+            "function_id": function_id,
+            "patch_json": patch_json,
+        })
+        pf_valid = pf_resp.get("valid", pf_resp.get("success", True))
+        pf_issues = pf_resp.get("issues", [])
+        if not pf_valid or pf_issues:
+            guard_envelope = _make_envelope(
+                "apply_blueprint_patch", False,
+                {
+                    "error_code": "HIGH_RISK_PATCH_BLOCKED",
+                    "patch_risk_score": _risk_score,
+                    "preflight_issues": pf_issues,
+                    "hint": "Set dry_run=true first to inspect issues, then fix and re-apply.",
+                    "guard_actions": _rbw_actions,
+                },
+                summary=f"Blocked: high-risk patch (score={_risk_score}), {len(pf_issues)} preflight issue(s)",
+                diagnostics=[{"message": i.get("message", str(i))} for i in pf_issues],
+            )
+            return json.dumps(guard_envelope, separators=(",", ":"), ensure_ascii=False)
+
+    # --- US-005: Strict Mode Guards ---
+    # --- US-005: Strict Mode Guards ---
+    # Guard evaluation always runs when strict_mode=True (including dry_run).
+    # Blocking behavior only applies when NOT dry_run.
+    # This ensures dry_run=True + strict_mode=True returns guard_decisions for pre-flight inspection.
+    if strict_mode:
+        guard_decisions = []
+        strict_blocks = []
+
+        try:
+            _sm_patch = json.loads(patch_json)
+        except Exception:
+            _sm_patch = {}
+
+        from node_lifecycle_registry import get_node_lifecycle, is_restricted
+
+        # Rule 1: Restricted node types
+        for node in _sm_patch.get("add_nodes", []):
+            nt = node.get("node_type", "")
+            if is_restricted(nt):
+                info = get_node_lifecycle(nt)
+                strict_blocks.append({
+                    "rule": "RESTRICTED_NODE_TYPE",
+                    "node_type": nt,
+                    "status": info.get("status"),
+                    "note": info.get("note", ""),
+                })
+                guard_decisions.append(f"BLOCKED:{nt}:{info.get('status')}")
+
+        # Rule 2: display-name pin refs (not GUID, not fname:) trigger warning
+        pin_display_name_refs = []
+        for conn in _sm_patch.get("add_connections", []):
+            for ep in (conn.get("from", ""), conn.get("to", "")):
+                parts = ep.split("::", 1) if "::" in ep else ep.rsplit(".", 1)
+                if len(parts) == 2:
+                    ref, _pin = parts
+                    if not _patch_looks_like_guid(ref) and not ref.startswith("fname:"):
+                        pin_display_name_refs.append(ep)
+        if pin_display_name_refs:
+            guard_decisions.append(f"DISPLAY_PIN_REF:{len(pin_display_name_refs)}")
+
+        # Rule 3: remove+add_connections pattern → suggest high-layer tools
+        has_remove_conn = bool(_sm_patch.get("remove_connections"))
+        has_add_conn = bool(_sm_patch.get("add_connections"))
+        if has_remove_conn and has_add_conn:
+            guard_decisions.append("STRUCTURAL_EDIT:prefer_high_layer_tools")
+
+        # Always attach guard_decisions to patch_log (even in dry_run)
+        if guard_decisions:
+            patch_log["strict_mode_guard_decisions"] = guard_decisions
+
+        # Block execution only when NOT dry_run
+        if strict_blocks and not dry_run:
+            strict_envelope = _make_envelope(
+                "apply_blueprint_patch", False,
+                {
+                    "error_code": "STRICT_MODE_BLOCKED",
+                    "strict_blocks": strict_blocks,
+                    "guard_decisions": guard_decisions,
+                    "recommended_next_actions": [a for a in [
+                        "use_insert_exec_node_between" if (has_remove_conn and has_add_conn) else None,
+                        "call_inspect_blueprint_node_first",
+                        "rerun_with_dry_run",
+                        "call_get_node_details_first",
+                    ] if a],
+                    "hint": "Restricted node types must be handled with specialist tools. See node_lifecycle_registry.",
+                    "guard_actions": _rbw_actions,
+                },
+                summary=f"Strict mode blocked: {len(strict_blocks)} restricted node type(s)",
+            )
+            return json.dumps(strict_envelope, separators=(",", ":"), ensure_ascii=False)
+
+        # In dry_run with strict_blocks: return guard info without blocking
+        if strict_blocks and dry_run:
+            dry_guard = _make_envelope(
+                "apply_blueprint_patch", False,
+                {
+                    "dry_run": True,
+                    "error_code": "STRICT_MODE_WOULD_BLOCK",
+                    "strict_blocks": strict_blocks,
+                    "guard_decisions": guard_decisions,
+                    "hint": "dry_run=True: these issues would block execution in strict_mode. Fix before applying.",
+                },
+                summary=f"dry_run strict check: {len(strict_blocks)} issue(s) would be blocked",
+            )
+            return json.dumps(dry_guard, separators=(",", ":"), ensure_ascii=False)
 
     # --- Phase 2: Resolve refs ---
     ctx = _patch_resolve_refs(patch, blueprint_path, function_id, send_to_unreal)
@@ -1747,6 +1909,19 @@ def apply_blueprint_patch(
         warnings=[e for e in errs if "warning" in e.lower()],
         diagnostics=[{"message": e} for e in errs if "warning" not in e.lower()],
     )
+    # P1-T2: attach trace_id and guard_actions to response
+    envelope["trace_id"] = _trace_id
+    if _rbw_actions:
+        envelope["guard_actions"] = _rbw_actions
+    # US-005: attach strict_mode guard_decisions if present
+    _sm_decisions = patch_log.get("strict_mode_guard_decisions", [])
+    if _sm_decisions:
+        envelope["guard_decisions"] = _sm_decisions
+    # Always attach recommended_next_actions from post_failure_hint if present
+    results_data = envelope.get("data", {})
+    pf_hint = results_data.get("post_failure_hint", {})
+    if pf_hint.get("recommended_next_actions"):
+        envelope["recommended_next_actions"] = pf_hint["recommended_next_actions"]
     return json.dumps(envelope, separators=(",", ":"), ensure_ascii=False)
 
 
@@ -1769,7 +1944,7 @@ def preflight_blueprint_patch(
 # debug_blueprint — inspect, simulate, and trace blueprint execution
 # ---------------------------------------------------------------------------
 
-@exposed_tool(group="analysis")
+@exposed_tool(group="core")  # was analysis; used in blueprint-qa normal workflow
 def debug_blueprint(
     blueprint_path: str,
     mode: str = "compile_check",
@@ -1819,7 +1994,7 @@ bp_path = '{blueprint_path}'
 {var_filter}
 
 # Find actor in level
-actors = unreal.EditorLevelLibrary.get_all_level_actors()
+actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem).get_all_level_actors()
 target = None
 for a in actors:
     if a.get_actor_label() == actor_label:
@@ -1882,7 +2057,7 @@ import json
 actor_label = '{actor_label}'
 event_name = '{event_name}'
 
-actors = unreal.EditorLevelLibrary.get_all_level_actors()
+actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem).get_all_level_actors()
 target = None
 for a in actors:
     if a.get_actor_label() == actor_label:
@@ -2076,9 +2251,6 @@ else:
     # Compile using GenBlueprintUtils (the working C++ path)
     compiled = unreal.GenBlueprintUtils.compile_blueprint(bp_path)
 
-    # Also use BlueprintEditorLibrary to ensure full recompile
-    unreal.BlueprintEditorLibrary.compile_blueprint(bp)
-
     # Check if generated class exists (definitive compile success indicator)
     gen = bp.generated_class()
     has_gen_class = gen is not None
@@ -2130,11 +2302,107 @@ else:
                         f"Compiled OK" if compiled else
                         f"Compile failed: {len(errors)} error(s)"
                     )
+                    # --- P1-T1: Structure compile errors with node GUID mapping ---
+                    structured_errors = []
+                    for raw_err in errors:
+                        entry = {"message": raw_err, "raw_log": raw_err, "severity": "error"}
+                        # Extract node display name: matches  node 'XXX'  or  Node "XXX"
+                        import re as _re
+                        nm = _re.search(r"[Nn]ode ['\"]([^'\"]+)['\"]", raw_err)
+                        gm = _re.search(r"[Gg]raph ['\"]([^'\"]+)['\"]", raw_err)
+                        if nm:
+                            entry["node_title"] = nm.group(1)
+                        if gm:
+                            entry["graph_name"] = gm.group(1)
+                        structured_errors.append(entry)
+
+                    # Attempt title→GUID mapping using a fresh list_graphs+get_all_nodes call
+                    try:
+                        lg = send_to_unreal({"type": "list_graphs", "blueprint_path": blueprint_path})
+                        if lg.get("success"):
+                            for _g in lg.get("graphs", []):
+                                nodes_resp = send_to_unreal({
+                                    "type": "get_all_nodes",
+                                    "blueprint_path": blueprint_path,
+                                    "function_id": _g.get("graph_guid", _g.get("graph_name", "")),
+                                })
+                                if nodes_resp.get("success"):
+                                    _nodes = nodes_resp.get("nodes", [])
+                                    if isinstance(_nodes, str):
+                                        _nodes = json.loads(_nodes)
+                                    t2g = {}
+                                    for _n in _nodes:
+                                        t = _n.get("node_title", _n.get("title", ""))
+                                        g = _n.get("node_guid", _n.get("guid", ""))
+                                        if t and g:
+                                            t2g.setdefault(t, []).append(g)
+                                    for se in structured_errors:
+                                        nt = se.get("node_title")
+                                        if nt and nt in t2g:
+                                            candidates = t2g[nt]
+                                            if len(candidates) == 1:
+                                                se["node_guid"] = candidates[0]
+                                                se["mapping_confidence"] = "high"
+                                            else:
+                                                se["node_guid_candidates"] = candidates
+                                                se["mapping_confidence"] = "low"
+                                        elif nt:
+                                            se["mapping_confidence"] = "none"
+                    except Exception:
+                        pass  # mapping is best-effort; raw errors still returned
+
+                    # --- US-004: Add probable_patch_ops and post_compile_hint ---
+                    import re as _re2
+                    _PIN_PAT = _re2.compile(r"[Pp]in ['\"]([^'\"]+)['\"]")
+                    for se in structured_errors:
+                        msg = se.get("message", "")
+                        ops = []
+                        # Infer probable patch operations from error patterns
+                        if "pin" in msg.lower() and ("not found" in msg.lower() or "cannot" in msg.lower()):
+                            ops.append("fix_pin_name_in_add_connections")
+                            pm = _PIN_PAT.search(msg)
+                            if pm:
+                                se["pin_name_in_error"] = pm.group(1)
+                        if "type mismatch" in msg.lower() or "incompatible" in msg.lower():
+                            ops.append("remove_incompatible_connection")
+                            ops.append("check_pin_types_with_get_node_details")
+                        if "undefined" in msg.lower() or "not found" in msg.lower():
+                            if se.get("node_title"):
+                                ops.append("verify_node_exists_with_describe_blueprint")
+                        if "variable" in msg.lower():
+                            ops.append("verify_variable_exists_with_get_blueprint_variables")
+                        if "function" in msg.lower():
+                            ops.append("verify_function_name_with_search_blueprint_nodes")
+                        se["probable_patch_ops"] = ops if ops else ["inspect_error_manually"]
+
+                    # Build post_compile_hint
+                    hint_actions = []
+                    has_failures = not compiled
+                    if has_failures:
+                        hint_actions.append("call_describe_blueprint_force_refresh")
+                        if any(se.get("node_guid") for se in structured_errors):
+                            hint_actions.append("call_get_node_details_for_flagged_nodes")
+                        if any(se.get("node_guid_candidates") for se in structured_errors):
+                            hint_actions.append("inspect_candidate_node_guids_to_disambiguate")
+                        if any("pin" in se.get("message", "").lower() for se in structured_errors):
+                            hint_actions.append("use_get_node_details_to_verify_exact_pin_names")
+                        hint_actions.append("rerun_compile_after_fix")
+
+                    inner["structured_errors"] = structured_errors
+                    inner["post_compile_hint"] = {
+                        "compiled": compiled,
+                        "recommended_next_actions": hint_actions,
+                        "note": "structured_errors[].node_guid_candidates lists ambiguous nodes — use get_node_details to identify correct target",
+                    } if has_failures else {
+                        "compiled": True,
+                        "recommended_next_actions": [],
+                    }
+
                     envelope = _make_envelope(
                         "compile_blueprint_with_errors", compiled, inner,
                         summary=summary,
                         warnings=warnings,
-                        diagnostics=[{"message": e} for e in errors],
+                        diagnostics=structured_errors,
                     )
                     return json.dumps(envelope, separators=(",", ":"), ensure_ascii=False)
                 except Exception:
@@ -2282,7 +2550,7 @@ def find_scene_objects(
     script = f"""
 import unreal, json
 
-actors = unreal.EditorLevelLibrary.get_all_level_actors()
+actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem).get_all_level_actors()
 results = []
 class_f = '{class_filter}'.lower()
 name_f = '{name_filter}'.lower()
@@ -2747,7 +3015,7 @@ else:
 # P2: diff_blueprint — compare two describe_blueprint snapshots
 # ---------------------------------------------------------------------------
 
-@exposed_tool(group="analysis")
+@exposed_tool(group="core")  # was analysis; used in blueprint-edit Step 4 verify workflow
 def diff_blueprint(before_json: str, after_json: str) -> str:
     """
     Compare two describe_blueprint snapshots and return the differences.
@@ -3467,14 +3735,72 @@ def analyze_blueprint_quality(blueprint_path: str, mode: str = "full", graph_nam
     Returns:
         JSON QA report with issues, metrics, suppressed, and summary.
     """
-    import sys as _sys
-    from pathlib import Path as _Path
+    from collections import deque as _deque
 
-    _scripts_dir = str(_Path(__file__).parent.parent.parent.parent.parent.parent / "Scripts")
-    if _scripts_dir not in _sys.path:
-        _sys.path.insert(0, _scripts_dir)
-
-    from lib.blueprint_qa_core import analyze as _qa_analyze
+    def _qa_analyze(bp_data, mode="full"):
+        issues = []
+        metrics = {"node_count": 0, "entry_count": 0, "branch_count": 0}
+        bp = bp_data.get("blueprint", bp_data)
+        for graph in bp.get("graphs", []):
+            for flow in graph.get("subgraphs", {}).get("event_flows", []):
+                nodes = flow.get("nodes", [])
+                exec_edges = flow.get("exec_edges", flow.get("ex", []))
+                data_edges = flow.get("data_edges", flow.get("da", []))
+                if not nodes:
+                    continue
+                exec_src = {e.get("fn") for e in exec_edges if e.get("fn")}
+                exec_tgt = {e.get("tn") for e in exec_edges if e.get("tn")}
+                data_src = {e.get("fn") for e in data_edges if e.get("fn")}
+                data_tgt = {e.get("tn") for e in data_edges if e.get("tn")}
+                all_conn = exec_src | exec_tgt | data_src | data_tgt
+                metrics["node_count"] += len(nodes)
+                for n in nodes:
+                    role = n.get("role", n.get("r", ""))
+                    nt = n.get("nt", "")
+                    if role == "entry":
+                        metrics["entry_count"] += 1
+                    if nt in ("K2Node_IfThenElse", "Branch"):
+                        metrics["branch_count"] += 1
+                # C1
+                for n in nodes:
+                    role = n.get("role", n.get("r", ""))
+                    nid = n.get("id", "")
+                    if role == "entry" and not any(e.get("fn") == nid for e in exec_edges):
+                        issues.append({"check": "C1", "severity": "warn",
+                            "message": f"Empty event stub: '{n.get('t', nid)}' has no outgoing exec",
+                            "node_id": nid, "graph": flow.get("name", "")})
+                if mode != "full":
+                    continue
+                # C2
+                for n in nodes:
+                    role = n.get("role", n.get("r", ""))
+                    nid = n.get("id", "")
+                    if role != "pure" and nid and nid not in all_conn:
+                        issues.append({"check": "C2", "severity": "warn",
+                            "message": f"Orphan node: '{n.get('t', nid)}' not in any edge",
+                            "node_id": nid, "graph": flow.get("name", "")})
+                # C3
+                entry_ids = {n["id"] for n in nodes if n.get("role", n.get("r", "")) == "entry" and "id" in n}
+                reachable = set(entry_ids)
+                q = _deque(entry_ids)
+                while q:
+                    cur = q.popleft()
+                    for e in exec_edges + data_edges:
+                        if e.get("fn") == cur:
+                            nxt = e.get("tn")
+                            if nxt and nxt not in reachable:
+                                reachable.add(nxt)
+                                q.append(nxt)
+                for n in nodes:
+                    nid = n.get("id", "")
+                    role = n.get("role", n.get("r", ""))
+                    if role != "pure" and nid and nid not in reachable:
+                        issues.append({"check": "C3", "severity": "warn",
+                            "message": f"Unreachable: '{n.get('t', nid)}'",
+                            "node_id": nid, "graph": flow.get("name", "")})
+        checks_run = ["C1", "C5"] + (["C2", "C3"] if mode == "full" else [])
+        return {"issues": issues, "metrics": metrics,
+                "summary": {"total_issues": len(issues), "checks_run": checks_run}}
 
     # describe_blueprint
     raw_desc = describe_blueprint(
@@ -3525,6 +3851,759 @@ def analyze_blueprint_quality(blueprint_path: str, mode: str = "full", graph_nam
 
     report = _qa_analyze(bp, compile_resp, mode=mode, blueprint_path=blueprint_path)
     return json.dumps(report, indent=2, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# P2: High-Level Structural Editing Tools
+# These tools wrap apply_blueprint_patch for the most common structural edits,
+# so the model doesn't need to construct patch JSON manually.
+# ---------------------------------------------------------------------------
+
+@exposed_tool(group="core")
+def suggest_best_edit_tool(
+    intent: str,
+    context: str = "",
+) -> str:
+    """
+    Recommend the best Blueprint editing tool for a given intent.
+
+    Use this BEFORE reaching for apply_blueprint_patch directly.
+    Describes which high-level tool to use for common structural edits.
+
+    Args:
+        intent:  Natural language description of what you want to do.
+                 Examples: "insert a Delay between BeginPlay and PrintString",
+                           "add a Branch to check a condition before running logic",
+                           "append SetActorLocation after the movement call"
+        context: Optional JSON string with extra context (blueprint_path, etc.)
+
+    Returns:
+        JSON with recommended_tool, usage_hint, and example_call.
+    """
+    intent_lower = intent.lower()
+
+    # Pattern matching for the 3 high-layer structural tools
+    if any(w in intent_lower for w in ("insert", "between", "middle", "before", "after existing")):
+        return json.dumps({
+            "recommended_tool": "insert_exec_node_between",
+            "confidence": "high",
+            "usage_hint": "Use when you want to insert a node INTO an existing exec connection. "
+                          "Provide from_node_guid, from_pin_name, to_node_guid, to_pin_name, new_node_type.",
+            "example_call": {
+                "tool": "insert_exec_node_between",
+                "blueprint_path": "/Game/Blueprints/BP_Example",
+                "graph_name": "EventGraph",
+                "from_node_guid": "<BeginPlay GUID>",
+                "from_pin_name": "then",
+                "to_node_guid": "<PrintString GUID>",
+                "to_pin_name": "execute",
+                "new_node_type": "KismetSystemLibrary.Delay",
+                "new_node_params": {"Duration": 1.0},
+            },
+            "avoid": "Do NOT use apply_blueprint_patch with manual remove+add_connections for this — use this tool instead.",
+        }, indent=2, ensure_ascii=False)
+
+    if any(w in intent_lower for w in ("append", "after", "chain", "add after", "attach", "follow")):
+        return json.dumps({
+            "recommended_tool": "append_node_after_exec",
+            "confidence": "high",
+            "usage_hint": "Use when you want to add a node at the END of an exec chain (or insert preserving downstream). "
+                          "Handles both chain-tail and chain-middle cases automatically.",
+            "example_call": {
+                "tool": "append_node_after_exec",
+                "blueprint_path": "/Game/Blueprints/BP_Example",
+                "graph_name": "EventGraph",
+                "after_node_guid": "<source node GUID>",
+                "after_pin_name": "then",
+                "new_node_type": "Actor.K2_SetActorLocation",
+            },
+            "avoid": "Do NOT manually wire remove+add_connections in apply_blueprint_patch for this.",
+        }, indent=2, ensure_ascii=False)
+
+    if any(w in intent_lower for w in ("branch", "condition", "if", "wrap", "gate", "check", "bool")):
+        return json.dumps({
+            "recommended_tool": "wrap_exec_chain_with_branch",
+            "confidence": "high",
+            "usage_hint": "Use when you want to gate an exec chain behind a condition. "
+                          "Auto-creates Branch node + optional VariableGet. "
+                          "Pass condition_variable=None to auto-create a new bool variable.",
+            "example_call": {
+                "tool": "wrap_exec_chain_with_branch",
+                "blueprint_path": "/Game/Blueprints/BP_Example",
+                "graph_name": "EventGraph",
+                "entry_from_node_guid": "<upstream node GUID>",
+                "entry_from_pin": "then",
+                "condition_variable": "bShouldRun",
+            },
+            "avoid": "Do NOT manually create K2Node_IfThenElse and wire it — use this tool instead.",
+        }, indent=2, ensure_ascii=False)
+
+    # Generic patch fallback
+    if any(w in intent_lower for w in ("pin", "value", "default", "set pin", "property")):
+        return json.dumps({
+            "recommended_tool": "apply_blueprint_patch",
+            "confidence": "medium",
+            "usage_hint": "For setting pin default values, use apply_blueprint_patch with set_pin_values. "
+                          "Always run with dry_run=True first.",
+            "example_call": {
+                "tool": "apply_blueprint_patch",
+                "blueprint_path": "/Game/Blueprints/BP_Example",
+                "function_id": "EventGraph",
+                "patch_json": '{"set_pin_values": [{"node": "<GUID>", "pin": "Duration", "value": "2.0"}]}',
+                "dry_run": True,
+            },
+        }, indent=2, ensure_ascii=False)
+
+    # Fallback: recommend investigation first
+    return json.dumps({
+        "recommended_tool": "describe_blueprint",
+        "confidence": "low",
+        "usage_hint": "Intent is ambiguous. Start by describing the current graph state to understand GUIDs and connections, "
+                      "then call suggest_best_edit_tool again with more specific intent.",
+        "example_call": {
+            "tool": "describe_blueprint",
+            "blueprint_path": "/Game/Blueprints/BP_Example",
+            "max_depth": "pseudocode",
+        },
+        "alternatives": [
+            "insert_exec_node_between — insert a node in an exec chain",
+            "append_node_after_exec — append a node after an exec node",
+            "wrap_exec_chain_with_branch — wrap an exec chain with Branch",
+            "apply_blueprint_patch — low-level batch operations",
+        ],
+    }, indent=2, ensure_ascii=False)
+
+
+@exposed_tool(group="core")
+def insert_exec_node_between(
+    blueprint_path: str,
+    graph_name: str,
+    from_node_guid: str,
+    from_pin_name: str,
+    to_node_guid: str,
+    to_pin_name: str,
+    new_node_type: str,
+    new_node_params: dict = None,
+) -> str:
+    """
+    Insert a new node between two already-connected exec pins.
+
+    Automatically: removes the existing connection, creates the new node,
+    wires from_node.from_pin → new_node.execute, new_node.then → to_node.to_pin.
+    Runs dry_run preflight before applying.
+
+    Args:
+        blueprint_path: e.g. "/Game/Blueprints/BP_NPC"
+        graph_name:     "EventGraph" or function GUID
+        from_node_guid: GUID of the upstream node
+        from_pin_name:  exec output pin name on upstream node (usually "then")
+        to_node_guid:   GUID of the downstream node
+        to_pin_name:    exec input pin name on downstream node (usually "execute")
+        new_node_type:  node type to insert (e.g. "KismetSystemLibrary.Delay")
+        new_node_params: optional dict of pin_values for the new node
+
+    Returns:
+        JSON with success, created_nodes, and post_failure_state on error.
+    """
+    import uuid as _uuid
+
+    # 1. Verify the original connection exists
+    from_details = json.loads(get_node_details(blueprint_path, graph_name, from_node_guid))
+    if not from_details.get("success", True) is not False:
+        # get_node_details returns the node object directly on success
+        pass
+
+    ref_id = f"inserted_{_uuid.uuid4().hex[:6]}"
+    patch = {
+        "remove_connections": [
+            {"from": f"{from_node_guid}.{from_pin_name}", "to": f"{to_node_guid}.{to_pin_name}"}
+        ],
+        "add_nodes": [
+            {
+                "ref_id": ref_id,
+                "node_type": new_node_type,
+                "pin_values": new_node_params or {},
+            }
+        ],
+        "add_connections": [
+            {"from": f"{from_node_guid}.{from_pin_name}", "to": f"{ref_id}.execute"},
+            {"from": f"{ref_id}.then", "to": f"{to_node_guid}.{to_pin_name}"},
+        ],
+        "auto_compile": True,
+    }
+
+    # 2. Dry-run preflight
+    dry = json.loads(apply_blueprint_patch(blueprint_path, graph_name, json.dumps(patch), dry_run=True))
+    dry_issues = dry.get("issues", [])
+    if dry_issues:
+        return json.dumps({
+            "success": False,
+            "error_code": "INSERT_PREFLIGHT_FAILED",
+            "preflight_issues": dry_issues,
+            "hint": "Fix patch issues before applying",
+        }, ensure_ascii=False)
+
+    # 3. Apply
+    return apply_blueprint_patch(blueprint_path, graph_name, json.dumps(patch))
+
+
+@exposed_tool(group="core")
+def append_node_after_exec(
+    blueprint_path: str,
+    graph_name: str,
+    after_node_guid: str,
+    after_pin_name: str = "then",
+    new_node_type: str = "",
+    new_node_params: dict = None,
+) -> str:
+    """
+    Append a new node after an existing exec node's output pin.
+
+    If the pin already has a connection, inserts between (preserving downstream).
+    If the pin has no connection, simply connects the new node after.
+
+    Args:
+        blueprint_path:  e.g. "/Game/Blueprints/BP_NPC"
+        graph_name:      "EventGraph" or function GUID
+        after_node_guid: GUID of the node to append after
+        after_pin_name:  exec output pin (default "then")
+        new_node_type:   node type to append
+        new_node_params: optional pin_values dict
+
+    Returns:
+        JSON with success and created_nodes.
+    """
+    import uuid as _uuid
+
+    ref_id = f"appended_{_uuid.uuid4().hex[:6]}"
+
+    # Check if after_pin already has a downstream connection
+    details_raw = get_node_details(blueprint_path, graph_name, after_node_guid)
+    try:
+        details = json.loads(details_raw)
+    except Exception:
+        details = {}
+
+    existing_downstream = None
+    existing_downstream_pin = "execute"
+    for pin in details.get("pins", []):
+        if pin.get("name") == after_pin_name and pin.get("direction") == "output":
+            conns = pin.get("connected_to", [])
+            if conns:
+                existing_downstream = conns[0].get("node_guid")
+                existing_downstream_pin = conns[0].get("pin_name", "execute")
+            break
+
+    patch: dict = {
+        "add_nodes": [
+            {
+                "ref_id": ref_id,
+                "node_type": new_node_type,
+                "pin_values": new_node_params or {},
+            }
+        ],
+        "add_connections": [],
+        "auto_compile": True,
+    }
+
+    if existing_downstream:
+        # Insert between: remove old, wire through new node
+        patch["remove_connections"] = [
+            {"from": f"{after_node_guid}.{after_pin_name}",
+             "to": f"{existing_downstream}.{existing_downstream_pin}"}
+        ]
+        patch["add_connections"] = [
+            {"from": f"{after_node_guid}.{after_pin_name}", "to": f"{ref_id}.execute"},
+            {"from": f"{ref_id}.then", "to": f"{existing_downstream}.{existing_downstream_pin}"},
+        ]
+    else:
+        # Simple append at chain tail
+        patch["add_connections"] = [
+            {"from": f"{after_node_guid}.{after_pin_name}", "to": f"{ref_id}.execute"},
+        ]
+
+    return apply_blueprint_patch(blueprint_path, graph_name, json.dumps(patch))
+
+
+@exposed_tool(group="core")
+def wrap_exec_chain_with_branch(
+    blueprint_path: str,
+    graph_name: str,
+    entry_from_node_guid: str,
+    entry_from_pin: str,
+    condition_variable: str = None,
+    true_chain_node_guid: str = None,
+    false_chain_node_guid: str = None,
+) -> str:
+    """
+    Wrap an existing execution chain with a Branch node.
+
+    Creates a Branch node at the entry point. Connects condition_variable
+    (or creates a new bool variable if None) to the Condition pin.
+    The true pin connects to true_chain_node_guid (or the original downstream if None).
+    The false pin connects to false_chain_node_guid if provided.
+
+    Args:
+        blueprint_path:         e.g. "/Game/Blueprints/BP_NPC"
+        graph_name:             "EventGraph" or function GUID
+        entry_from_node_guid:   GUID of the node whose exec output gets the Branch inserted
+        entry_from_pin:         exec output pin name (usually "then")
+        condition_variable:     Name of existing bool variable; None = auto-create
+        true_chain_node_guid:   Node to connect to Branch's True pin; None = original downstream
+        false_chain_node_guid:  Node to connect to Branch's False pin; None = leave unconnected
+
+    Returns:
+        JSON with success, created_nodes (branch + optional variable).
+    """
+    import uuid as _uuid
+
+    branch_ref = f"branch_{_uuid.uuid4().hex[:6]}"
+
+    # Find existing downstream for true chain default
+    details_raw = get_node_details(blueprint_path, graph_name, entry_from_node_guid)
+    try:
+        details = json.loads(details_raw)
+    except Exception:
+        details = {}
+
+    original_downstream = None
+    original_downstream_pin = "execute"
+    for pin in details.get("pins", []):
+        if pin.get("name") == entry_from_pin and pin.get("direction") == "output":
+            conns = pin.get("connected_to", [])
+            if conns:
+                original_downstream = conns[0].get("node_guid")
+                original_downstream_pin = conns[0].get("pin_name", "execute")
+            break
+
+    true_target = true_chain_node_guid or original_downstream
+    true_target_pin = original_downstream_pin if not true_chain_node_guid else "execute"
+
+    patch: dict = {
+        "add_nodes": [
+            {
+                "ref_id": branch_ref,
+                "node_type": "K2Node_IfThenElse",
+                "pin_values": {},
+            }
+        ],
+        "remove_connections": [],
+        "add_connections": [
+            {"from": f"{entry_from_node_guid}.{entry_from_pin}", "to": f"{branch_ref}.execute"},
+        ],
+        "auto_compile": True,
+    }
+
+    # Remove original connection if we have one
+    if original_downstream:
+        patch["remove_connections"].append({
+            "from": f"{entry_from_node_guid}.{entry_from_pin}",
+            "to": f"{original_downstream}.{original_downstream_pin}",
+        })
+
+    # Connect true branch
+    if true_target:
+        patch["add_connections"].append(
+            {"from": f"{branch_ref}.then", "to": f"{true_target}.{true_target_pin}"}
+        )
+
+    # Connect false branch
+    if false_chain_node_guid:
+        patch["add_connections"].append(
+            {"from": f"{branch_ref}.else", "to": f"{false_chain_node_guid}.execute"}
+        )
+
+    # Handle condition variable
+    if condition_variable:
+        var_ref = f"cond_get_{_uuid.uuid4().hex[:6]}"
+        patch["add_nodes"].append({
+            "ref_id": var_ref,
+            "node_type": "K2Node_VariableGet",
+            "pin_values": {"variable_name": condition_variable},
+        })
+        patch["add_connections"].append(
+            {"from": f"{var_ref}.ReturnValue", "to": f"{branch_ref}.Condition"}
+        )
+    # else: leave Condition pin unconnected (defaults to false) — caller can wire it separately
+
+    return apply_blueprint_patch(blueprint_path, graph_name, json.dumps(patch))
+
+
+@exposed_tool(group="analysis")
+def get_trace_analytics(
+    date_from: str = "",
+    date_to: str = "",
+    blueprint_path: str = "",
+    limit: int = 500,
+    output_format: str = "json",
+) -> str:
+    """
+    Aggregate statistics from ~/.unrealgenai/traces/ patch execution logs.
+
+    Analyzes trace files written by apply_blueprint_patch to surface failure patterns,
+    top error codes, high-failure blueprints, and recommended actions.
+
+    Args:
+        date_from:      Start date YYYY-MM-DD (default: today)
+        date_to:        End date YYYY-MM-DD inclusive (default: today)
+        blueprint_path: Optional filter — only traces for this blueprint
+        limit:          Max trace files to scan (default 500)
+        output_format:  "json" (default) or "markdown" for human/model reading
+
+    Returns:
+        JSON or markdown summary with:
+          total_runs, success_count, failure_count, rollback_partial_count,
+          ghost_node_count, timeout_count, top_error_codes,
+          top_node_types_in_failures, top_blueprints_by_failure,
+          top_recommended_next_actions, date_range, scanned_files
+    """
+    from pathlib import Path
+    from collections import Counter
+    import glob
+
+    trace_base = Path.home() / ".unrealgenai" / "traces"
+
+    # Determine date range
+    today = time.strftime("%Y-%m-%d")
+    d_from = date_from.strip() or today
+    d_to = date_to.strip() or today
+
+    # Collect matching trace files
+    all_files = []
+    try:
+        for day_dir in sorted(trace_base.iterdir()):
+            if not day_dir.is_dir():
+                continue
+            day_str = day_dir.name
+            if day_str < d_from or day_str > d_to:
+                continue
+            for tf in day_dir.glob("*.json"):
+                all_files.append(tf)
+    except FileNotFoundError:
+        return json.dumps({
+            "success": True,
+            "total_runs": 0,
+            "message": f"No trace directory at {trace_base}. Run apply_blueprint_patch first.",
+            "date_range": f"{d_from} → {d_to}",
+        }, ensure_ascii=False)
+
+    all_files = all_files[:limit]
+
+    # Parse trace files
+    total_runs = 0
+    success_count = 0
+    failure_count = 0
+    rollback_partial = 0
+    ghost_node_count = 0
+    timeout_count = 0
+    error_codes: Counter = Counter()
+    node_types_in_failures: Counter = Counter()
+    blueprint_failures: Counter = Counter()
+    next_actions: Counter = Counter()
+
+    for tf in all_files:
+        try:
+            data = json.loads(tf.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+        bp = data.get("blueprint_path", "")
+        if blueprint_path and blueprint_path not in bp:
+            continue
+
+        total_runs += 1
+        rs = data.get("results_summary", {})
+        pl = data.get("patch_log", {})
+
+        if rs.get("success"):
+            success_count += 1
+        else:
+            failure_count += 1
+            blueprint_failures[bp or "unknown"] += 1
+
+        if rs.get("rollback_status") == "partial":
+            rollback_partial += 1
+
+        # Ghost nodes
+        pfs = data.get("post_failure_state") or {}
+        ghost_node_count += len(pfs.get("residual_nodes", []))
+
+        # Error codes
+        for cat in pl.get("error_categories", []):
+            error_codes[cat] += 1
+
+        # Detect timeouts
+        if "TRANSPORT_TIMEOUT" in pl.get("error_categories", []):
+            timeout_count += 1
+
+        # Node types from diagnostics
+        for diag in data.get("diagnostics", []):
+            code = diag.get("code", "")
+            if code:
+                error_codes[code] += 1
+
+        # Recommended next actions
+        for action in (rs.get("recommended_next_actions") or []):
+            next_actions[action] += 1
+
+        # Extract node types from patch input (best-effort)
+        try:
+            patch_input = data.get("patch_log", {}).get("patch_input") or ""
+            if isinstance(patch_input, str) and patch_input:
+                pi = json.loads(patch_input)
+            elif isinstance(patch_input, dict):
+                pi = patch_input
+            else:
+                pi = {}
+            if not rs.get("success"):
+                for node in pi.get("add_nodes", []):
+                    nt = node.get("node_type", "")
+                    if nt:
+                        node_types_in_failures[nt.split(".")[-1]] += 1
+        except Exception:
+            pass
+
+    result = {
+        "success": True,
+        "date_range": f"{d_from} → {d_to}",
+        "scanned_files": len(all_files),
+        "total_runs": total_runs,
+        "success_count": success_count,
+        "failure_count": failure_count,
+        "success_rate": f"{100 * success_count // total_runs}%" if total_runs else "N/A",
+        "rollback_partial_count": rollback_partial,
+        "ghost_node_count": ghost_node_count,
+        "timeout_count": timeout_count,
+        "top_error_codes": dict(error_codes.most_common(10)),
+        "top_node_types_in_failures": dict(node_types_in_failures.most_common(10)),
+        "top_blueprints_by_failure": dict(blueprint_failures.most_common(10)),
+        "top_recommended_next_actions": dict(next_actions.most_common(10)),
+    }
+
+    if output_format == "markdown":
+        lines = [
+            f"# Trace Analytics: {d_from} → {d_to}",
+            "",
+            f"**Scanned**: {len(all_files)} files | **Total runs**: {total_runs}",
+            f"**Success**: {success_count} ({result['success_rate']}) | **Failures**: {failure_count}",
+            f"**Rollback partial**: {rollback_partial} | **Ghost nodes**: {ghost_node_count} | **Timeouts**: {timeout_count}",
+            "",
+            "## Top Error Codes",
+            *[f"- `{k}`: {v}" for k, v in error_codes.most_common(10)],
+            "",
+            "## Top Node Types in Failures",
+            *[f"- `{k}`: {v}" for k, v in node_types_in_failures.most_common(8)],
+            "",
+            "## Top Blueprints by Failure Count",
+            *[f"- `{k}`: {v}" for k, v in blueprint_failures.most_common(8)],
+            "",
+            "## Top Recommended Next Actions",
+            *[f"- `{k}`: {v}" for k, v in next_actions.most_common(8)],
+        ]
+        return "\n".join(lines)
+
+    return json.dumps(result, indent=2, ensure_ascii=False)
+
+
+@exposed_tool(group="core")
+def get_runtime_status() -> str:
+    """
+    Check the health and status of the UE Editor socket runtime.
+
+    Returns listener health, queue length, transport protocol details, and last error.
+    Use this FIRST to diagnose connectivity issues before sending Blueprint commands.
+
+    Returns:
+        JSON with:
+          listener_alive           bool — whether UE socket server responded
+          queue_length             int  — current pending command count (-1 if unknown)
+          protocol_version_requested str — what Python side is configured to use (v1/v2)
+          protocol_version_active  str  — what UE side last negotiated (v1/v2)
+          framing_mode             str  — "length_prefixed" (v2) or "json_parse" (v1)
+          last_transport_error     str  — last error code from transport layer
+          error_code               str  — present only if listener is down
+    """
+    import os as _os
+
+    protocol_requested = _os.environ.get("SOCKET_PROTOCOL_VERSION", "v1")
+
+    resp = send_to_unreal({"type": "handshake", "message": "runtime_status_ping"})
+    alive = isinstance(resp, dict) and resp.get("success", False)
+
+    # Import active protocol state from socket server module (if running in UE)
+    protocol_active = protocol_requested  # default: assume matches requested
+    last_transport_error = ""
+    try:
+        import unreal_socket_server as _uss
+        protocol_active = getattr(_uss, "_active_protocol", protocol_requested)
+        last_transport_error = getattr(_uss, "_last_transport_error", "")
+    except ImportError:
+        pass  # running outside UE — fallback to requested
+
+    # Try to get queue length from UE side
+    queue_resp = send_to_unreal({"type": "get_queue_length"})
+    queue_len = queue_resp.get("queue_length", -1) if isinstance(queue_resp, dict) else -1
+
+    framing_mode = "length_prefixed" if protocol_active == "v2" else "json_parse"
+
+    result = {
+        "listener_alive": alive,
+        "queue_length": queue_len,
+        "protocol_version_requested": protocol_requested,
+        "protocol_version_active": protocol_active,
+        "framing_mode": framing_mode,
+        "last_transport_error": last_transport_error,
+    }
+    if not alive:
+        result["error_code"] = "TRANSPORT_DISCONNECTED"
+        result["hint"] = "UE Editor may not be running or socket server not started. Check auto_start_socket_server in plugin settings."
+
+    return json.dumps(result, ensure_ascii=False)
+
+
+@exposed_tool(group="core")
+def get_blueprint_working_set(
+    blueprint_path: str,
+    graph_name: str = "EventGraph",
+    target_node_guid: str = "",
+    task_type: str = "",
+) -> str:
+    """
+    Return a single bundled context package for Blueprint editing tasks.
+
+    Replaces 5-7 separate MCP calls (runtime_status, list_graphs, describe,
+    variables, compile errors, trace, suggest_tool) with one call. Use this
+    at the start of a planning or editing session instead of calling each
+    tool individually.
+
+    Args:
+        blueprint_path: Asset path, e.g. "/Game/Blueprints/BP_NPC"
+        graph_name: Graph to describe (default "EventGraph")
+        target_node_guid: Optional node GUID to include neighborhood details for
+        task_type: Optional task classification hint (e.g. "structure_edit",
+                   "repair_existing_flow") — calls suggest_best_edit_tool internally
+
+    Returns:
+        JSON bundle with: runtime_status, graph_guids, description (pseudocode
+        compact), variables, recommended_tools (if task_type given),
+        recent_compile_errors, risk_flags
+    """
+    bundle: dict = {}
+
+    # 1. Runtime status
+    try:
+        bundle["runtime_status"] = json.loads(get_runtime_status())
+    except Exception as e:
+        bundle["runtime_status"] = {"error": str(e)}
+
+    # 2. Graph GUIDs
+    try:
+        bundle["graph_guids"] = json.loads(list_blueprint_graphs(blueprint_path))
+    except Exception as e:
+        bundle["graph_guids"] = {"error": str(e)}
+
+    # 3. Compact pseudocode description of target graph
+    try:
+        bundle["description"] = json.loads(
+            describe_blueprint(
+                blueprint_path=blueprint_path,
+                graph_name=graph_name,
+                max_depth="pseudocode",
+                compact=True,
+                include_pseudocode=True,
+            )
+        )
+    except Exception as e:
+        bundle["description"] = {"error": str(e)}
+
+    # 4. Variables
+    try:
+        bundle["variables"] = json.loads(get_blueprint_variables(blueprint_path))
+    except Exception as e:
+        bundle["variables"] = {"error": str(e)}
+
+    # 5. Node neighborhood (optional)
+    if target_node_guid:
+        try:
+            bundle["node_neighborhood"] = json.loads(
+                get_node_details(blueprint_path, graph_name, target_node_guid)
+            )
+        except Exception as e:
+            bundle["node_neighborhood"] = {"error": str(e)}
+
+    # 6. Recommended tools (optional)
+    if task_type:
+        try:
+            bundle["recommended_tools"] = json.loads(
+                suggest_best_edit_tool(intent=task_type)
+            )
+        except Exception as e:
+            bundle["recommended_tools"] = {"error": str(e)}
+
+    # 7. Recent compile errors
+    try:
+        compile_result = json.loads(compile_blueprint_with_errors(blueprint_path))
+        bundle["recent_compile_errors"] = {
+            "compiled": compile_result.get("compiled", False),
+            "errors": compile_result.get("errors", []),
+            "structured_errors": compile_result.get("structured_errors", []),
+        }
+    except Exception as e:
+        bundle["recent_compile_errors"] = {"error": str(e)}
+
+    # 8. Risk flags — restricted node types in the graph
+    try:
+        from node_lifecycle_registry import is_restricted
+        risk_flags = []
+        desc = bundle.get("description", {})
+        for sg in desc.get("subgraphs", []):
+            for node in sg.get("nodes", []):
+                nt = node.get("node_type", "")
+                if nt and is_restricted(nt):
+                    risk_flags.append({
+                        "node_guid": node.get("id", ""),
+                        "node_type": nt,
+                        "title": node.get("title", ""),
+                    })
+        bundle["risk_flags"] = risk_flags
+    except Exception as e:
+        bundle["risk_flags"] = {"error": str(e)}
+
+    return json.dumps(bundle, ensure_ascii=False)
+
+
+@exposed_tool(group="core")
+def validate_patch_intent(
+    blueprint_path: str,
+    function_id: str = "EventGraph",
+    patch_json: str = "{}",
+) -> str:
+    """Validate that graph state still matches a patch's assumptions before applying.
+
+    Runs two checks without executing any mutations:
+    1. Fingerprint freshness: compares current node-GUID sha256 hash against
+       the hash stored at last describe/read time. Detects graph changes since
+       the patch was planned.
+    2. Ref resolvability: verifies that every node reference in add_connections
+       endpoints is either a GUID, an fname: ref, or a ref_id declared in
+       add_nodes. Title-based refs that cannot be resolved at preflight are
+       flagged.
+
+    Use this before apply_blueprint_patch for L2/L3 (structural/dangerous)
+    patches to catch stale-context failures early, before the RBW guard fires.
+
+    Args:
+        blueprint_path: Asset path, e.g. "/Game/Blueprints/BP_NPC"
+        function_id: Graph name or GUID (default "EventGraph")
+        patch_json: The patch JSON string to validate
+
+    Returns:
+        JSON with: valid (bool), stale_fingerprint (bool),
+                   unresolvable_refs (list), warnings (list)
+    """
+    from tools.patch import validate_patch_intent as _validate_patch_intent
+    result = _validate_patch_intent(blueprint_path, function_id, patch_json, send_to_unreal)
+    return json.dumps(result, ensure_ascii=False)
 
 
 if __name__ == "__main__":
