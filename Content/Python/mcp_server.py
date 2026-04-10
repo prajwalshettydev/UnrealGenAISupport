@@ -3517,7 +3517,14 @@ def check_ue_editor_running() -> str:
     Returns:
         JSON with: {"running": bool, "pid": int | null, "warning": str | null}
     """
-    import psutil
+    try:
+        import psutil
+    except ImportError:
+        return json.dumps({
+            "running": None,
+            "pid": None,
+            "warning": "psutil not installed — cannot detect UE process. Run: pip install psutil",
+        })
     ue_process_names = {"UnrealEditor", "UnrealEditor-Win64-Debug", "UE4Editor", "UE5Editor"}
     for proc in psutil.process_iter(["pid", "name"]):
         try:
