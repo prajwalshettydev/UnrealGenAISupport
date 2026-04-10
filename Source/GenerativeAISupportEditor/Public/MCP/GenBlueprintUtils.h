@@ -131,6 +131,113 @@ public:
 	static FString AddComponentWithEvents(const FString& BlueprintPath, const FString& ComponentName,
 	                               const FString& ComponentClassName);
 
+	// Undo the last editor transaction (calls GEditor->UndoTransaction)
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
+	static bool UndoTransaction();
+
+	// Begin a named transaction for atomic blueprint operations
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
+	static bool BeginBlueprintTransaction(const FString& TransactionName);
+
+	// End (commit) the current transaction
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
+	static bool EndBlueprintTransaction();
+
+	// Cancel (rollback) the current transaction — undoes all changes since Begin
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
+	static bool CancelBlueprintTransaction();
+
+	// Get all variables defined in a Blueprint (reads NewVariables directly)
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
+	static FString GetBlueprintVariables(const FString& BlueprintPath);
+
+	// Scan all Blueprint assets under /Game and return lightweight metadata
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
+	static FString ScanAllBlueprints();
+
+	// Save all dirty (unsaved) packages in the editor.
+	// Returns JSON: {"saved": [...], "failed": [...], "count": N}
+	// Call this after any MCP operation that modifies assets to prevent
+	// conflicts when git pull/merge runs on open files.
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
+	static FString SaveAllDirtyPackages();
+
+	/**
+	 * Add a new named case to a K2Node_SwitchString (Switch on String) node.
+	 *
+	 * This is a STRUCTURAL mutation — it modifies the node's dynamic pin layout.
+	 * set_editor_property("PinNames") alone does NOT work because ReconstructNode()
+	 * is not triggered, leaving exec pins unmaterialized. This function calls
+	 * ReconstructNode() explicitly so the new exec output pin is immediately usable
+	 * by connect_nodes / apply_blueprint_patch.
+	 *
+	 * Note: K2Node_SwitchString::AddPinToSwitchNode() auto-generates a pin name and
+	 * is intended for the editor "Add Pin" button — it does not accept a specific name.
+	 * Therefore this function uses PinNames.AddUnique() + ReconstructNode() directly,
+	 * which is the correct path for adding a named case programmatically.
+	 *
+	 * @param BlueprintPath  Asset path (e.g. "/Game/Blueprints/Core/BP_MyActor")
+	 * @param GraphId        "EventGraph", other graph name, or graph GUID string
+	 * @param NodeGuid       GUID of the K2Node_SwitchString node
+	 * @param CaseName       Case string to add (e.g. "StepOn")
+	 * @return JSON: {"success":bool, "case_added":str, "method":str, "pin_count":int}
+	 *         method values: "PinNames+ReconstructNode" | "already_exists"
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils|Structural Mutation")
+	static FString AddSwitchCase(const FString& BlueprintPath,
+	                              const FString& GraphId,
+	                              const FString& NodeGuid,
+	                              const FString& CaseName);
+
+	/**
+	 * Find any node in a Blueprint graph by its UObject FName and return its NodeGuid.
+	 *
+	 * Solves the "ForEachLoop body node not reachable via exec-chain traversal" problem:
+	 * the Python-side instance_id resolver only traverses exec-reachable nodes, so nodes
+	 * inside ForEachLoop bodies (K2Node_SwitchString, K2Node_BreakStruct, etc.) cannot be
+	 * found by it. This function iterates Graph->Nodes directly, bypassing exec-chain limits.
+	 *
+	 * Usage from Python:
+	 *   fname = node_obj.get_fname()   # e.g. "K2Node_BreakStruct_0"
+	 *   result = U.get_node_guid_by_fname(bp, "EventGraph", fname)
+	 *   guid = result["node_guid"]     # pass to connect_nodes or add_switch_case
+	 *
+	 * @param BlueprintPath  Asset path
+	 * @param GraphId        "EventGraph", other graph name, or GUID string
+	 * @param NodeFName      UObject FName of the target node (from node.get_fname())
+	 * @param NodeClassFilter Optional: only match if node class name contains this string
+	 * @return JSON: {"success":bool, "node_guid":str, "node_class":str, "node_name":str}
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils|Query")
+	static FString GetNodeGuidByFName(const FString& BlueprintPath,
+	                                   const FString& GraphId,
+	                                   const FString& NodeFName,
+	                                   const FString& NodeClassFilter = TEXT(""));
+
+	/**
+	 * Connect two Blueprint graph nodes identified by their UObject FNames.
+	 *
+	 * Solves the GUID instability problem: ConnectNodes uses StaticLoadObject which
+	 * may return a different blueprint version than the live in-editor object, causing
+	 * GUID mismatches. ConnectNodesByFName performs lookup by FName within the SAME
+	 * graph reference, avoiding GUIDs entirely.
+	 *
+	 * @param BlueprintPath  Asset path
+	 * @param GraphId        "EventGraph", other graph name, or GUID string
+	 * @param SrcFName       UObject FName of the source node (e.g. "K2Node_SwitchString_0")
+	 * @param SrcPin         Output pin name on source node (e.g. "StepOn")
+	 * @param TgtFName       UObject FName of the target node
+	 * @param TgtPin         Input pin name on target node (e.g. "execute")
+	 * @return JSON: {"success":bool, "error":str}
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils|Structural Mutation")
+	static FString ConnectNodesByFName(const FString& BlueprintPath,
+	                                    const FString& GraphId,
+	                                    const FString& SrcFName,
+	                                    const FString& SrcPin,
+	                                    const FString& TgtFName,
+	                                    const FString& TgtPin);
+
 private:
 	// Helper functions for internal use
 	static UBlueprint* LoadBlueprintAsset(const FString& BlueprintPath);

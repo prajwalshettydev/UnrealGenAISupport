@@ -4,8 +4,10 @@ from typing import Dict, Any, List, Tuple, Union
 
 from utils import unreal_conversions as uc
 from utils import logging as log
+from command_registry import registry
 
 
+@registry.command("modify_object", category="actor")
 def handle_modify_object(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a modify_object command
@@ -95,6 +97,7 @@ def handle_modify_object(command: Dict[str, Any]) -> Dict[str, Any]:
         log.log_error(f"Error modifying object: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}
 
+@registry.command("edit_component_property", category="actor")
 def handle_edit_component_property(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to edit a component property in a Blueprint or scene actor.
@@ -154,6 +157,7 @@ def handle_edit_component_property(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("add_component_with_events", category="actor", mutates_blueprint=True)
 def handle_add_component_with_events(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a command to add a component to a Blueprint with overlap events if applicable.
@@ -190,6 +194,7 @@ def handle_add_component_with_events(command: Dict[str, Any]) -> Dict[str, Any]:
         log.log_error(f"Error adding component with events: {str(e)}", include_traceback=True)
         return {"success": False, "error": str(e)}
 
+@registry.command("create_game_mode", category="actor")
 def handle_create_game_mode(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
         game_mode_path = command.get("game_mode_path")

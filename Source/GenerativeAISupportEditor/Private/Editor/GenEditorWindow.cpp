@@ -796,9 +796,9 @@ bool SGenEditorWindow::IsMCPServerRunning() const
         IFileManager::Get().Delete(*PidFilePath);
     }
     
-    // Fallback to the previous check method
-    return (IsClaudeConfigured() || IsCursorConfigured()) && 
-           FPlatformProcess::IsApplicationRunning(TEXT("python"));
+    // No fallback — PID file is the authoritative source.
+    // IsApplicationRunning("python") is unreliable (matches any Python process).
+    return false;
 }
 
 bool SGenEditorWindow::IsClaudeConfigured() const
@@ -817,7 +817,11 @@ bool SGenEditorWindow::IsClaudeConfigured() const
 
 FString SGenEditorWindow::GetClaudeConfigPath() const
 {
+#if PLATFORM_MAC
+    return FPaths::Combine(FPlatformProcess::UserHomeDir(), TEXT("Library/Application Support/Claude/claude_desktop_config.json"));
+#else
     return FPaths::Combine(FPlatformProcess::UserSettingsDir(), TEXT("Claude"), TEXT("claude_desktop_config.json"));
+#endif
 }
 
 void SGenEditorWindow::OpenClaudeConfig() const
@@ -862,19 +866,26 @@ FReply SGenEditorWindow::SetupClaudeConfig()
         return FReply::Handled();
     }
     
+    // Use uv (cross-platform) instead of bare python.
+    // Get the plugin Content/Python directory for --directory arg.
+    FString PluginPythonDir = FPaths::ConvertRelativePathToFull(
+        FPaths::Combine(Plugin->GetBaseDir(), TEXT("Content"), TEXT("Python"))
+    );
+    PluginPythonDir = PluginPythonDir.Replace(TEXT("\\"), TEXT("/"));
+
     FString ConfigJson = FString::Printf(TEXT("{\n")
         TEXT("  \"mcpServers\": {\n")
         TEXT("    \"unreal-handshake\": {\n")
-        TEXT("      \"command\": \"python\",\n")
-        TEXT("      \"args\": [\"%s\"],\n")
+        TEXT("      \"command\": \"uv\",\n")
+        TEXT("      \"args\": [\"run\", \"--directory\", \"%s\", \"--with\", \"fastmcp\", \"--with\", \"mss\", \"python\", \"%s\"],\n")
         TEXT("      \"env\": {\n")
         TEXT("        \"UNREAL_HOST\": \"localhost\",\n")
         TEXT("        \"UNREAL_PORT\": \"9877\"\n")
         TEXT("      }\n")
         TEXT("    }\n")
         TEXT("  }\n")
-        TEXT("}"), *PluginPythonPath);
-    
+        TEXT("}"), *PluginPythonDir, *PluginPythonPath);
+
     bool bSuccess = FFileHelper::SaveStringToFile(ConfigJson, *ClaudeConfigPath);
     
     if (bSuccess)
@@ -962,19 +973,25 @@ FReply SGenEditorWindow::SetupCursorConfig()
         return FReply::Handled();
     }
     
+    // Use uv (cross-platform) instead of bare python.
+    FString PluginPythonDir = FPaths::ConvertRelativePathToFull(
+        FPaths::Combine(Plugin->GetBaseDir(), TEXT("Content"), TEXT("Python"))
+    );
+    PluginPythonDir = PluginPythonDir.Replace(TEXT("\\"), TEXT("/"));
+
     FString ConfigJson = FString::Printf(TEXT("{\n")
         TEXT("  \"mcpServers\": {\n")
         TEXT("    \"unreal-handshake\": {\n")
-        TEXT("      \"command\": \"python\",\n")
-        TEXT("      \"args\": [\"%s\"],\n")
+        TEXT("      \"command\": \"uv\",\n")
+        TEXT("      \"args\": [\"run\", \"--directory\", \"%s\", \"--with\", \"fastmcp\", \"--with\", \"mss\", \"python\", \"%s\"],\n")
         TEXT("      \"env\": {\n")
         TEXT("        \"UNREAL_HOST\": \"localhost\",\n")
         TEXT("        \"UNREAL_PORT\": \"9877\"\n")
         TEXT("      }\n")
         TEXT("    }\n")
         TEXT("  }\n")
-        TEXT("}"), *PluginPythonPath);
-    
+        TEXT("}"), *PluginPythonDir, *PluginPythonPath);
+
     bool bSuccess = FFileHelper::SaveStringToFile(ConfigJson, *CursorConfigPath);
     
     if (bSuccess)

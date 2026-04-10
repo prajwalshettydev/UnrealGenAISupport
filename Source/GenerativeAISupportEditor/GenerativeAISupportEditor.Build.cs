@@ -36,6 +36,7 @@ public class GenerativeAISupportEditor : ModuleRules
 				"MaterialEditor",
 				"MaterialUtilities",
 				"BlueprintGraph",
+				"InputCore",
 				"UMGEditor",
 				"UMG",
 				"Settings",

@@ -119,6 +119,7 @@ bool FGenerativeAISupportEditorModule::HandleSettingsSaved()
 {
     UGenerativeAISupportSettings* Settings = GetMutableDefault<UGenerativeAISupportSettings>();
     Settings->SaveConfig();
+    Settings->UpdateDefaultConfigFile();
     
     return true;
 }

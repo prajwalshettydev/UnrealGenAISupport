@@ -9,7 +9,10 @@ import tempfile # Used to find the OS's temporary folder
 
 from utils import unreal_conversions as uc
 from utils import logging as log
+from command_registry import registry
 
+
+@registry.command("spawn", category="basic")
 def handle_spawn(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a spawn command
@@ -77,6 +80,7 @@ def handle_spawn(command: Dict[str, Any]) -> Dict[str, Any]:
 
 
 
+@registry.command("take_screenshot", category="basic")
 def handle_take_screenshot(command):
     """
     Takes a screenshot using the HighResShot console command with a deterministic filename.
@@ -95,7 +99,7 @@ def handle_take_screenshot(command):
         unreal.log(f"Executing screenshot command: {console_command}")
 
         # Execute the command in the editor world context
-        unreal.SystemLibrary.execute_console_command(unreal.EditorLevelLibrary.get_editor_world(), console_command)
+        unreal.SystemLibrary.execute_console_command(unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world(), console_command)
 
         # 3. Poll for the file's existence instead of using a fixed sleep time.
         # This is much more reliable than a fixed wait.
@@ -135,6 +139,7 @@ def handle_take_screenshot(command):
             except Exception as e_cleanup:
                 unreal.log_error(f"Failed to delete temporary screenshot file '{screenshot_path}': {e_cleanup}")
 
+@registry.command("create_material", category="basic", mutates_blueprint=True)
 def handle_create_material(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle a create_material command
@@ -173,10 +178,10 @@ def handle_create_material(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("get_all_scene_objects", category="basic")
 def handle_get_all_scene_objects(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
-        level = unreal.EditorLevelLibrary.get_level(unreal.EditorLevelLibrary.get_editor_world())
-        actors = unreal.GameplayStatics.get_all_actors_of_class(level, unreal.Actor)
+        actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem).get_all_level_actors()
         result = [
             {"name": actor.get_name(), "class": actor.get_class().get_name(), "location": [actor.get_actor_location().x, actor.get_actor_location().y, actor.get_actor_location().z]}
             for actor in actors
@@ -185,6 +190,7 @@ def handle_get_all_scene_objects(command: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@registry.command("create_project_folder", category="basic")
 def handle_create_project_folder(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
         folder_path = command.get("folder_path")
@@ -194,6 +200,7 @@ def handle_create_project_folder(command: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@registry.command("get_files_in_folder", category="basic")
 def handle_get_files_in_folder(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
         folder_path = f"/Game/{command.get('folder_path')}"
@@ -202,6 +209,18 @@ def handle_get_files_in_folder(command: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@registry.command("protocol_negotiate", category="basic")
+def handle_protocol_negotiate(command: dict) -> dict:
+    """Respond to protocol version negotiation from MCP client."""
+    import os
+    server_protocol = os.environ.get("SOCKET_PROTOCOL_VERSION", "v1")
+    client_supports = command.get("client_supports", ["v1"])
+    # Agree on v2 only if both sides support it
+    agreed = "v2" if ("v2" in client_supports and server_protocol == "v2") else "v1"
+    return {"success": True, "agreed_version": agreed}
+
+
+@registry.command("add_input_binding", category="basic")
 def handle_add_input_binding(command: Dict[str, Any]) -> Dict[str, Any]:
     try:
         action_name = command.get("action_name")

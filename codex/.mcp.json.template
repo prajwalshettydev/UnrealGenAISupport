@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "unreal-handshake": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "__PLUGIN_SOURCE_ROOT__/Content/Python",
+        "--with",
+        "fastmcp",
+        "--with",
+        "mss",
+        "python",
+        "__PLUGIN_SOURCE_ROOT__/Content/Python/mcp_server.py"
+      ],
+      "env": {
+        "UNREAL_HOST": "localhost",
+        "UNREAL_PORT": "9877"
+      }
+    }
+  }
+}

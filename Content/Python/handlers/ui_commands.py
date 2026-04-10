@@ -1,6 +1,7 @@
 import unreal
 from typing import Dict, Any
 from utils import logging as log
+from command_registry import registry
 import json # Import json for parsing C++ response
 
 # Lazy load the C++ utils class to avoid issues during Unreal init
@@ -17,6 +18,7 @@ def get_widget_gen_utils():
             raise  # Re-raise to signal failure
     return _widget_gen_utils
 
+@registry.command("add_widget_to_user_widget", category="ui", mutates_blueprint=True)
 def handle_add_widget_to_user_widget(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handles adding a widget component to a User Widget Blueprint.
@@ -45,6 +47,7 @@ def handle_add_widget_to_user_widget(command: Dict[str, Any]) -> Dict[str, Any]:
         log.log_error(f"Error in handle_add_widget_to_user_widget: {str(e)}", include_traceback=True)
         return {"success": False, "error": f"Python Handler Error: {str(e)}"}
 
+@registry.command("edit_widget_property", category="ui", mutates_blueprint=True)
 def handle_edit_widget_property(command: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handles editing a property of a widget inside a User Widget Blueprint.
