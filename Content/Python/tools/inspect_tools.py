@@ -4,6 +4,7 @@ Extracted from mcp_server.py — this is the single implementation.
 mcp_server.py @exposed_tool wrappers call these functions.
 """
 import json
+from typing import Literal
 
 from tools.envelope import (
     _normalize_schema_mode,
@@ -14,7 +15,7 @@ from tools.envelope import (
 
 
 def get_node_details(blueprint_path: str, function_id: str, node_guid: str,
-                     schema_mode: str = "semantic", send_fn=None) -> str:
+                     schema_mode: Literal["semantic", "verbose"] = "semantic", send_fn=None) -> str:
     """
     Get detailed information about a specific Blueprint node including all its pins,
     connections, default values, and display title.
@@ -68,7 +69,7 @@ def search_blueprint_nodes(
     blueprint_path: str = "",
     category_filter: str = "",
     max_results: int = 5,
-    schema_mode: str = "semantic",
+    schema_mode: Literal["semantic", "verbose"] = "semantic",
     send_fn=None,
 ) -> str:
     """
@@ -109,7 +110,7 @@ def search_blueprint_nodes(
 def inspect_blueprint_node(
     canonical_name: str,
     blueprint_path: str = "",
-    schema_mode: str = "semantic",
+    schema_mode: Literal["semantic", "verbose"] = "semantic",
     send_fn=None,
 ) -> str:
     """

@@ -2,6 +2,7 @@ import json
 import sys
 import os
 import time
+from typing import Literal
 
 # Inject Scripts/ dir so lib.blueprint_qa_core is importable.
 # __file__ = .../Plugins/GenerativeAISupport/Content/Python/mcp_server.py
@@ -946,7 +947,7 @@ def get_blueprint_node_guid(blueprint_path: str, graph_type: str = "EventGraph",
 
 @exposed_tool(group="core")
 def get_node_details(blueprint_path: str, function_id: str, node_guid: str,
-                     schema_mode: str = "semantic") -> str:
+                     schema_mode: Literal["semantic", "verbose"] = "semantic") -> str:
     """Get detailed information about a specific Blueprint node including all its pins,
     connections, default values, and display title."""
     result = _impl_get_node_details(blueprint_path, function_id, node_guid,
@@ -2942,7 +2943,7 @@ def search_blueprint_nodes(
     blueprint_path: str = "",
     category_filter: str = "",
     max_results: int = 5,
-    schema_mode: str = "semantic",
+    schema_mode: Literal["semantic", "verbose"] = "semantic",
 ) -> str:
     """Search ALL available Blueprint node types across the entire engine."""
     return _impl_search_blueprint_nodes(query, blueprint_path=blueprint_path,
@@ -2959,7 +2960,7 @@ def search_blueprint_nodes(
 def inspect_blueprint_node(
     canonical_name: str,
     blueprint_path: str = "",
-    schema_mode: str = "semantic",
+    schema_mode: Literal["semantic", "verbose"] = "semantic",
 ) -> str:
     """Get full pin schema and patch_hint for a specific Blueprint node type."""
     return _impl_inspect_blueprint_node(canonical_name, blueprint_path=blueprint_path,
@@ -3738,7 +3739,7 @@ def analyze_blueprint_quality(blueprint_path: str, mode: str = "full", graph_nam
     """
     from collections import deque as _deque
 
-    def _qa_analyze(bp_data, mode="full"):
+    def _qa_analyze(bp_data, compile_resp=None, mode="full", blueprint_path=""):
         issues = []
         metrics = {"node_count": 0, "entry_count": 0, "branch_count": 0}
         bp = bp_data.get("blueprint", bp_data)
@@ -3847,8 +3848,14 @@ def analyze_blueprint_quality(blueprint_path: str, mode: str = "full", graph_nam
             sym["variables"] = {v["name"]: v for v in raw_vars if isinstance(v, dict) and "name" in v}
             bp["symbol_table"] = sym
 
-    # compile — use compile_blueprint_with_errors so C6 gets structured errors array
-    compile_resp = json.loads(compile_blueprint_with_errors(blueprint_path))
+    # compile check (errors are included in the QA report)
+    try:
+        _compile_raw = compile_blueprint_with_errors(blueprint_path) or ""
+        _compile_outer = json.loads(_compile_raw) if _compile_raw.strip() else {}
+        _compile_inner = _compile_outer.get("result", "")
+        compile_resp = json.loads(_compile_inner) if isinstance(_compile_inner, str) and _compile_inner.strip() else _compile_outer
+    except Exception:
+        compile_resp = {}
 
     report = _qa_analyze(bp, compile_resp, mode=mode, blueprint_path=blueprint_path)
     return json.dumps(report, indent=2, ensure_ascii=False)
