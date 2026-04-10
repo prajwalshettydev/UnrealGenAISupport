@@ -1,3 +1,4 @@
+import collections
 import os
 import socket
 import json
@@ -18,8 +19,13 @@ from command_registry import registry
 from utils import unreal_conversions
 from job_manager import tick as _job_tick
 
+# P3-T2: Queue constants
+_QUEUE_MAX_SIZE = 50  # max pending commands; excess returns QUEUE_OVERFLOW
+_last_command_ms: float = 0.0  # tracks last command execution time (ms)
+
 # Global queues and state
-command_queue = []
+# P3-T2: use deque with maxlen for bounded queue
+command_queue: collections.deque = collections.deque()
 response_dict = {}
 command_status: Dict[int, str] = {}
 
@@ -294,7 +300,7 @@ def process_commands(delta_time=None):
     if not command_queue:
         return
 
-    command_id, command = command_queue.pop(0)
+    command_id, command = command_queue.popleft()
 
     # P0-3: Skip commands that timed out on the socket thread.
     with _cancel_lock:
@@ -317,66 +323,133 @@ def process_commands(delta_time=None):
         )
         return
 
-    log.log_info(f"Processing command on main thread: {command}")
+    # P1-T2: log trace_id so UE Output.log can be correlated with Python [PATCH_LOG]
+    _tid = command.get("trace_id", "")
+    if _tid:
+        log.log_info(f"[trace:{_tid}] Processing command: {command.get('type', '?')}")
+    else:
+        log.log_info(f"Processing command on main thread: {command}")
 
     try:
         response = dispatcher.dispatch(command)
+        # Echo trace_id back in response for caller correlation
+        if _tid and isinstance(response, dict):
+            response["trace_id"] = _tid
         _store_response(command_id, response)
     except Exception as e:
         log.log_error(f"Error processing command: {str(e)}", include_traceback=True)
         _store_response(command_id, {"success": False, "error": str(e)})
 
 
+# ---------------------------------------------------------------------------
+# Protocol constants (shared with tools/transport.py)
+# ---------------------------------------------------------------------------
+PROTOCOL_FRAME_MAGIC = b'\xab\xcd'          # v2 framing magic bytes
+PROTOCOL_HEADER_SIZE = 6                     # 2 magic + 4 length
+PROTOCOL_V1 = "v1"
+PROTOCOL_V2 = "v2"
+
+# Track active protocol for get_runtime_status
+_active_protocol: str = PROTOCOL_V1
+_last_transport_error: str = ""
+
+
+def _recv_exact_ue(conn, n: int) -> bytes:
+    """Read exactly n bytes from conn, raise on short read or timeout."""
+    buf = b""
+    while len(buf) < n:
+        try:
+            chunk = conn.recv(n - len(buf))
+        except socket.timeout:
+            raise TimeoutError(f"Timeout reading {n} bytes (got {len(buf)})")
+        if not chunk:
+            raise ConnectionError(f"Connection closed after {len(buf)}/{n} bytes")
+        buf += chunk
+    return buf
+
+
 def receive_all_data(conn, buffer_size=4096):
     """
-    Receive all data from socket until complete JSON is received
+    Receive all data from socket. Supports v1 (raw JSON) and v2 (framed) protocols.
 
-    Args:
-        conn: Socket connection
-        buffer_size: Initial buffer size for receiving data
+    v2 frame format: [2-byte magic 0xABCD][4-byte BE length][json payload]
+    v1: legacy raw JSON receive (detect by absence of magic header).
 
     Returns:
-        Decoded complete data
+        Decoded string on success, None on error.
+        Sets module-level _active_protocol and _last_transport_error.
     """
-    data = b""
-    while True:
+    global _active_protocol, _last_transport_error
+
+    # Peek at first 2 bytes to detect protocol version
+    try:
+        header_peek = conn.recv(2)
+    except socket.timeout:
+        log.log_warning("Socket timeout reading protocol header")
+        _last_transport_error = "TRANSPORT_TIMEOUT"
+        return None
+    except Exception as e:
+        log.log_error(f"Error reading protocol header: {e}")
+        _last_transport_error = str(e)
+        return None
+
+    if not header_peek:
+        return None
+
+    if header_peek == PROTOCOL_FRAME_MAGIC:
+        # ---- v2 framing path ----
+        _active_protocol = PROTOCOL_V2
         try:
-            # Receive chunk of data
-            chunk = conn.recv(buffer_size)
-            if not chunk:
-                break
-
-            data += chunk
-
-            # Try to parse as JSON to check if we received complete data
-            try:
-                json.loads(data.decode("utf-8"))
-                # If we get here, JSON is valid and complete
-                return data.decode("utf-8")
-            except json.JSONDecodeError as json_err:
-                # Check if the error indicates an unterminated string or incomplete JSON
-                if "Unterminated string" in str(json_err) or "Expecting" in str(
-                    json_err
-                ):
-                    # Need more data, continue receiving
-                    continue
-                else:
-                    # JSON is malformed in some other way, not just incomplete
-                    log.log_error(
-                        f"Malformed JSON received: {str(json_err)}",
-                        include_traceback=True,
-                    )
-                    return None
-
-        except socket.timeout:
-            # Socket timeout, return what we have so far
-            log.log_warning("Socket timeout while receiving data")
-            return data.decode("utf-8")
-        except Exception as e:
-            log.log_error(f"Error receiving data: {str(e)}", include_traceback=True)
+            length_bytes = _recv_exact_ue(conn, 4)
+            import struct as _struct
+            payload_length = _struct.unpack(">I", length_bytes)[0]
+            if payload_length == 0 or payload_length > 64 * 1024 * 1024:
+                _last_transport_error = "TRANSPORT_PROTOCOL_ERROR"
+                log.log_error(f"v2 frame: invalid payload length {payload_length}")
+                return None
+            payload = _recv_exact_ue(conn, payload_length)
+            result = payload.decode("utf-8")
+            _last_transport_error = ""
+            return result
+        except TimeoutError as e:
+            _last_transport_error = "TRANSPORT_TIMEOUT"
+            log.log_warning(f"v2 frame timeout: {e}")
             return None
-
-    return data.decode("utf-8")
+        except Exception as e:
+            _last_transport_error = "TRANSPORT_PROTOCOL_ERROR"
+            log.log_error(f"v2 frame error: {e}")
+            return None
+    else:
+        # ---- v1 legacy path ----
+        # header_peek holds the first 2 bytes; prepend to data and continue
+        _active_protocol = PROTOCOL_V1
+        data = header_peek
+        while True:
+            try:
+                chunk = conn.recv(buffer_size)
+                if not chunk:
+                    break
+                data += chunk
+                try:
+                    json.loads(data.decode("utf-8"))
+                    _last_transport_error = ""
+                    return data.decode("utf-8")
+                except json.JSONDecodeError as json_err:
+                    if "Unterminated string" in str(json_err) or "Expecting" in str(json_err):
+                        continue
+                    else:
+                        log.log_error(f"Malformed JSON: {json_err}", include_traceback=True)
+                        _last_transport_error = "TRANSPORT_PROTOCOL_ERROR"
+                        return None
+            except socket.timeout:
+                log.log_warning("Socket timeout while receiving v1 data")
+                _last_transport_error = "TRANSPORT_TIMEOUT"
+                return data.decode("utf-8") if data else None
+            except Exception as e:
+                log.log_error(f"Error receiving v1 data: {e}", include_traceback=True)
+                _last_transport_error = str(e)
+                return None
+        return data.decode("utf-8") if data else None
 
 
 def socket_server_thread():
@@ -409,19 +482,34 @@ def socket_server_thread():
                         response = dispatcher.dispatch(command)
                         conn.sendall(json.dumps(response).encode())
                     else:
-                        # For other commands, queue them for main thread execution
-                        command_id = command_counter
-                        command_counter += 1
-                        _set_command_status(command_id, COMMAND_STATUS_PENDING)
-                        command_queue.append((command_id, command))
+                        # P3-T2: Queue overflow protection
+                        if len(command_queue) >= _QUEUE_MAX_SIZE:
+                            overflow_resp = {
+                                "success": False,
+                                "error_code": "QUEUE_OVERFLOW",
+                                "error": f"Command queue full ({_QUEUE_MAX_SIZE} pending). Retry after current commands complete.",
+                                "queue_length": len(command_queue),
+                            }
+                            conn.sendall(json.dumps(overflow_resp).encode())
+                        else:
+                            # For other commands, queue them for main thread execution
+                            command_id = command_counter
+                            command_counter += 1
+                            _set_command_status(command_id, COMMAND_STATUS_PENDING)
+                            command_queue.append((command_id, command))
 
-                        response = _await_command_response(
-                            command_id,
-                            queue_timeout=10.0,
-                            poll_interval=0.1,
-                            running_timeout=_get_running_timeout_seconds(),
-                        )
-                        conn.sendall(json.dumps(response).encode())
+                            response = _await_command_response(
+                                command_id,
+                                queue_timeout=10.0,
+                                poll_interval=0.1,
+                                running_timeout=_get_running_timeout_seconds(),
+                            )
+                            # P3-T2: echo request_id back from command
+                            if isinstance(response, dict):
+                                req_id = command.get("request_id")
+                                if req_id:
+                                    response["request_id"] = req_id
+                            conn.sendall(json.dumps(response).encode())
                 except json.JSONDecodeError as json_err:
                     log.log_error(
                         f"Error parsing JSON: {str(json_err)}", include_traceback=True

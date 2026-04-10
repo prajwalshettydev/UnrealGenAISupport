@@ -29,6 +29,9 @@
 #include "Data/GenAIOrgs.h"
 #include "Interfaces/IPluginManager.h"
 #include "Secure/GenSecureKey.h"
+#include "Sockets.h"
+#include "SocketSubsystem.h"
+#include "IPAddress.h"
 
 // Static member initialization
 FGenEditorWindowManager* FGenEditorWindowManager::Singleton = nullptr;
@@ -754,9 +757,34 @@ bool SGenEditorWindow::IsUnrealSocketServerRunning() const
     {
         return false;
     }
-    
-    // TODO: Add actual socket connectivity check here
-    return true;
+
+    ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
+    if (!SocketSubsystem)
+    {
+        return false;
+    }
+
+    TSharedRef<FInternetAddr> Address = SocketSubsystem->CreateInternetAddr();
+    bool bParsedAddress = false;
+    Address->SetIp(TEXT("127.0.0.1"), bParsedAddress);
+    Address->SetPort(9877);
+    if (!bParsedAddress)
+    {
+        return false;
+    }
+
+    TUniquePtr<FSocket> Socket(SocketSubsystem->CreateSocket(NAME_Stream, TEXT("GenerativeAISupportSocketHealthCheck"), false));
+    if (!Socket)
+    {
+        return false;
+    }
+
+    Socket->SetNonBlocking(false);
+    Socket->SetReuseAddr(true);
+
+    const bool bConnected = Socket->Connect(*Address);
+    Socket->Close();
+    return bConnected;
 }
 
 bool SGenEditorWindow::IsMCPServerRunning() const

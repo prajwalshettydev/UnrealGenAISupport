@@ -41,7 +41,8 @@ public class GenerativeAISupportEditor : ModuleRules
 				"UMG",
 				"Settings",
 				"FunctionalTesting",     // For AutomationBlueprintFunctionLibrary 
-				"SourceControl"    // For Source Control integration
+				"SourceControl",   // For Source Control integration
+				"Sockets"
 			}
 		);
 	}
