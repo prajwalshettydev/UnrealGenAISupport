@@ -332,6 +332,37 @@ pip install fastmcp
 
 <img src="Docs/Settings.png" width="782"/>
 
+### Codex Plugin Install (Windows)
+
+If you want a Codex-native Blueprint entry point such as `$bp`, this repository now ships a Codex plugin distribution under [`codex/`](codex/).
+
+Install it from the plugin repository root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File Scripts/install_codex_plugin.ps1
+```
+
+Verify the install:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File Scripts/check_codex_plugin_install.ps1
+```
+
+Then start a **fresh Codex session** and use:
+
+- `$bp` for the universal Blueprint entry point
+- `$blueprint-plan` for planning and analysis
+- `$blueprint-edit` for guarded edits
+- `$blueprint-qa` for validation
+- `$blueprint-mcp-dev` for MCP toolchain work
+
+Claude and Codex now differ slightly on the user-facing entrypoint:
+
+- Claude Code uses `/bp`
+- Codex uses `$bp`
+
+See [`codex/docs/codex-plugin-install.md`](codex/docs/codex-plugin-install.md) for the install flow and [`Docs/dual-client-ue-mcp.md`](Docs/dual-client-ue-mcp.md) for dual-client runtime notes.
+
 
 ## Adding the plugin to your project:
 
