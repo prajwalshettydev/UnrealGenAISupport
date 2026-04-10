@@ -132,6 +132,98 @@ def handle_add_variable(command: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+@registry.command("add_event_dispatcher", category="blueprint", mutates_blueprint=True)
+def handle_add_event_dispatcher(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Add an Event Dispatcher to a Blueprint with custom parameter types.
+
+    Args:
+        command: The command dictionary containing:
+            - blueprint_path: Asset path e.g. "/Game/Blueprints/BP_NPCAIController"
+            - dispatcher_name: Name of the new dispatcher e.g. "OnAbnormalEventsV2"
+            - params: List of {"name": str, "type": str} — same type syntax as add_variable
+                      e.g. [{"name": "Events0", "type": "array:struct:RPAbnormalEvent"}]
+
+    Returns:
+        {"success": bool, "error"?: str}
+    """
+    try:
+        blueprint_path = command.get("blueprint_path")
+        dispatcher_name = command.get("dispatcher_name")
+        params = command.get("params", [])
+
+        if not blueprint_path or not dispatcher_name:
+            log.log_error("Missing required parameters for add_event_dispatcher")
+            return {"success": False, "error": "Missing required parameters"}
+
+        log.log_command("add_event_dispatcher",
+                        f"Blueprint: {blueprint_path}, Dispatcher: {dispatcher_name}, Params: {params}")
+
+        params_json = json.dumps(params)
+        success = unreal.GenBlueprintUtils.add_event_dispatcher(blueprint_path, dispatcher_name, params_json)
+
+        if success:
+            log.log_result("add_event_dispatcher", True,
+                           f"Added dispatcher {dispatcher_name} to {blueprint_path}")
+            return {"success": True}
+        else:
+            log.log_error(f"Failed to add event dispatcher {dispatcher_name} to {blueprint_path}")
+            return {"success": False, "error": f"Failed to add event dispatcher {dispatcher_name}"}
+
+    except Exception as e:
+        log.log_error(f"Error in add_event_dispatcher: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
+@registry.command("add_custom_event", category="blueprint", mutates_blueprint=True)
+def handle_add_custom_event(command: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Add a Custom Event node to a Blueprint EventGraph with typed parameters.
+
+    Args:
+        command: The command dictionary containing:
+            - blueprint_path: Asset path e.g. "/Game/Blueprints/Tests/BP_RPNPCExample"
+            - graph_name: Graph name, currently only "EventGraph" is supported
+            - event_name: Custom event name e.g. "AbnormalsV2"
+            - params: List of {"name": str, "type": str} using add_variable syntax
+
+    Returns:
+        {"success": bool, "node_guid"?: str, "graph_guid"?: str, "error"?: str}
+    """
+    try:
+        blueprint_path = command.get("blueprint_path")
+        graph_name = command.get("graph_name", "EventGraph")
+        event_name = command.get("event_name")
+        params = command.get("params", [])
+
+        if not blueprint_path or not event_name:
+            log.log_error("Missing required parameters for add_custom_event")
+            return {"success": False, "error": "Missing required parameters"}
+
+        if graph_name and graph_name != "EventGraph":
+            log.log_error(f"Unsupported graph_name for add_custom_event: {graph_name}")
+            return {"success": False, "error": "Only EventGraph is currently supported"}
+
+        log.log_command("add_custom_event",
+                        f"Blueprint: {blueprint_path}, Event: {event_name}, Params: {params}")
+
+        params_json = json.dumps(params)
+        result_raw = unreal.GenBlueprintUtils.add_custom_event(blueprint_path, event_name, params_json)
+        result = json.loads(result_raw) if result_raw else {"success": False, "error": "Empty result"}
+
+        if result.get("success"):
+            log.log_result("add_custom_event", True,
+                           f"Added custom event {event_name} to {blueprint_path}")
+        else:
+            log.log_error(f"Failed to add custom event {event_name} to {blueprint_path}: {result.get('error')}")
+
+        return result
+
+    except Exception as e:
+        log.log_error(f"Error in add_custom_event: {str(e)}", include_traceback=True)
+        return {"success": False, "error": str(e)}
+
+
 @registry.command("add_function", category="blueprint", mutates_blueprint=True)
 def handle_add_function(command: Dict[str, Any]) -> Dict[str, Any]:
     """

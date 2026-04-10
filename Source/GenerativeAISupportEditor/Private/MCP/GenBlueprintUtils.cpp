@@ -18,6 +18,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Editor.h"
+#include "K2Node_CustomEvent.h"
 #include "K2Node_FunctionResult.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
@@ -28,6 +29,143 @@
 #include "Engine/SimpleConstructionScript.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+
+namespace
+{
+	UClass* TryResolveClassByNameLocal(const FString& ClassName)
+	{
+		UClass* Class = FindFirstObject<UClass>(*ClassName);
+		if (!Class)
+		{
+			const FString EngineClassName = TEXT("/Script/Engine.") + ClassName;
+			Class = FindFirstObject<UClass>(*EngineClassName);
+		}
+
+		if (!Class)
+		{
+			const FString BlueprintClassName = TEXT("Blueprint'/Game/") + ClassName + TEXT(".") + ClassName + TEXT("_C'");
+			Class = LoadObject<UClass>(nullptr, *BlueprintClassName);
+		}
+
+		return Class;
+	}
+
+	bool TryResolveBlueprintPinType(const FString& TypeString, FEdGraphPinType& OutPinType, FString& OutError)
+	{
+		OutPinType = FEdGraphPinType();
+		OutError.Empty();
+
+		if (TypeString.Equals(TEXT("bool"), ESearchCase::IgnoreCase) ||
+			TypeString.Equals(TEXT("boolean"), ESearchCase::IgnoreCase))
+		{
+			OutPinType.PinCategory = UEdGraphSchema_K2::PC_Boolean;
+			return true;
+		}
+
+		if (TypeString.Equals(TEXT("byte"), ESearchCase::IgnoreCase))
+		{
+			OutPinType.PinCategory = UEdGraphSchema_K2::PC_Byte;
+			return true;
+		}
+
+		if (TypeString.Equals(TEXT("int"), ESearchCase::IgnoreCase))
+		{
+			OutPinType.PinCategory = UEdGraphSchema_K2::PC_Int;
+			return true;
+		}
+
+		if (TypeString.Equals(TEXT("float"), ESearchCase::IgnoreCase))
+		{
+			OutPinType.PinCategory = UEdGraphSchema_K2::PC_Float;
+			return true;
+		}
+
+		if (TypeString.Equals(TEXT("string"), ESearchCase::IgnoreCase))
+		{
+			OutPinType.PinCategory = UEdGraphSchema_K2::PC_String;
+			return true;
+		}
+
+		if (TypeString.Equals(TEXT("text"), ESearchCase::IgnoreCase))
+		{
+			OutPinType.PinCategory = UEdGraphSchema_K2::PC_Text;
+			return true;
+		}
+
+		if (TypeString.Equals(TEXT("name"), ESearchCase::IgnoreCase))
+		{
+			OutPinType.PinCategory = UEdGraphSchema_K2::PC_Name;
+			return true;
+		}
+
+		if (TypeString.Equals(TEXT("vector"), ESearchCase::IgnoreCase))
+		{
+			OutPinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+			OutPinType.PinSubCategoryObject = TBaseStructure<FVector>::Get();
+			return true;
+		}
+
+		if (TypeString.Equals(TEXT("rotator"), ESearchCase::IgnoreCase))
+		{
+			OutPinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+			OutPinType.PinSubCategoryObject = TBaseStructure<FRotator>::Get();
+			return true;
+		}
+
+		if (TypeString.Equals(TEXT("transform"), ESearchCase::IgnoreCase))
+		{
+			OutPinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+			OutPinType.PinSubCategoryObject = TBaseStructure<FTransform>::Get();
+			return true;
+		}
+
+		if (TypeString.Equals(TEXT("color"), ESearchCase::IgnoreCase))
+		{
+			OutPinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+			OutPinType.PinSubCategoryObject = TBaseStructure<FLinearColor>::Get();
+			return true;
+		}
+
+		if (TypeString.StartsWith(TEXT("struct:"), ESearchCase::IgnoreCase))
+		{
+			const FString StructName = TypeString.RightChop(7);
+			UScriptStruct* Struct = FindFirstObject<UScriptStruct>(*StructName, EFindFirstObjectOptions::NativeFirst);
+			if (!Struct)
+			{
+				OutError = FString::Printf(TEXT("struct not found: %s"), *StructName);
+				return false;
+			}
+
+			OutPinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+			OutPinType.PinSubCategoryObject = Struct;
+			return true;
+		}
+
+		if (TypeString.StartsWith(TEXT("array:"), ESearchCase::IgnoreCase))
+		{
+			const FString InnerType = TypeString.RightChop(6);
+			FEdGraphPinType InnerPinType;
+			if (!TryResolveBlueprintPinType(InnerType, InnerPinType, OutError))
+			{
+				return false;
+			}
+
+			OutPinType = InnerPinType;
+			OutPinType.ContainerType = EPinContainerType::Array;
+			return true;
+		}
+
+		if (UClass* Class = TryResolveClassByNameLocal(TypeString))
+		{
+			OutPinType.PinCategory = UEdGraphSchema_K2::PC_Object;
+			OutPinType.PinSubCategoryObject = Class;
+			return true;
+		}
+
+		OutError = FString::Printf(TEXT("unsupported type: %s"), *TypeString);
+		return false;
+	}
+}
 
 UBlueprint* UGenBlueprintUtils::CreateBlueprint(const FString& BlueprintName, const FString& ParentClassName,
                                                 const FString& SavePath)
@@ -233,6 +371,48 @@ bool UGenBlueprintUtils::AddVariable(const FString& BlueprintPath, const FString
 		PinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
 		PinType.PinSubCategoryObject = TBaseStructure<FLinearColor>::Get();
 	}
+	else if (VariableType.StartsWith(TEXT("struct:"), ESearchCase::IgnoreCase))
+	{
+		// struct:<StructName>  e.g. "struct:RPAbnormalEvent"
+		FString StructName = VariableType.RightChop(7);
+		UScriptStruct* Struct = FindFirstObject<UScriptStruct>(*StructName, EFindFirstObjectOptions::NativeFirst);
+		if (!Struct)
+		{
+			UE_LOG(LogTemp, Error, TEXT("AddVariable: struct not found: %s"), *StructName);
+			return false;
+		}
+		PinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+		PinType.PinSubCategoryObject = Struct;
+	}
+	else if (VariableType.StartsWith(TEXT("array:"), ESearchCase::IgnoreCase))
+	{
+		// array:<inner>  e.g. "array:string", "array:struct:RPAbnormalEvent"
+		FString Inner = VariableType.RightChop(6);
+		if (Inner.StartsWith(TEXT("struct:"), ESearchCase::IgnoreCase))
+		{
+			FString StructName = Inner.RightChop(7);
+			UScriptStruct* Struct = FindFirstObject<UScriptStruct>(*StructName, EFindFirstObjectOptions::NativeFirst);
+			if (!Struct)
+			{
+				UE_LOG(LogTemp, Error, TEXT("AddVariable: inner struct not found: %s"), *StructName);
+				return false;
+			}
+			PinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+			PinType.PinSubCategoryObject = Struct;
+		}
+		else if (Inner.Equals(TEXT("string"), ESearchCase::IgnoreCase))  { PinType.PinCategory = UEdGraphSchema_K2::PC_String; }
+		else if (Inner.Equals(TEXT("int"),    ESearchCase::IgnoreCase))   { PinType.PinCategory = UEdGraphSchema_K2::PC_Int; }
+		else if (Inner.Equals(TEXT("float"),  ESearchCase::IgnoreCase))   { PinType.PinCategory = UEdGraphSchema_K2::PC_Float; }
+		else if (Inner.Equals(TEXT("bool"),   ESearchCase::IgnoreCase) ||
+		         Inner.Equals(TEXT("boolean"), ESearchCase::IgnoreCase))  { PinType.PinCategory = UEdGraphSchema_K2::PC_Boolean; }
+		else if (Inner.Equals(TEXT("name"),   ESearchCase::IgnoreCase))   { PinType.PinCategory = UEdGraphSchema_K2::PC_Name; }
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("AddVariable: unsupported array inner type: %s"), *Inner);
+			return false;
+		}
+		PinType.ContainerType = EPinContainerType::Array;
+	}
 	else
 	{
 		// Try to find a class with this name
@@ -306,6 +486,192 @@ bool UGenBlueprintUtils::AddVariable(const FString& BlueprintPath, const FString
 	UE_LOG(LogTemp, Log, TEXT("Added variable %s of type %s to blueprint %s"), *VariableName, *VariableType,
 	       *BlueprintPath);
 	return true;
+}
+
+bool UGenBlueprintUtils::AddEventDispatcher(const FString& BlueprintPath,
+                                             const FString& DispatcherName,
+                                             const FString& ParamsJson)
+{
+	UBlueprint* Blueprint = LoadBlueprintAsset(BlueprintPath);
+	if (!Blueprint)
+	{
+		UE_LOG(LogTemp, Error, TEXT("AddEventDispatcher: could not load blueprint: %s"), *BlueprintPath);
+		return false;
+	}
+
+	UEdGraphSchema_K2 const* K2Schema = GetDefault<UEdGraphSchema_K2>();
+
+	// --- Create the delegate signature graph ---
+	FName SigGraphName = FName(*(DispatcherName + TEXT("__DelegateSignature")));
+	UEdGraph* SigGraph = FBlueprintEditorUtils::CreateNewGraph(
+		Blueprint,
+		SigGraphName,
+		UEdGraph::StaticClass(),
+		UEdGraphSchema_K2::StaticClass()
+	);
+	SigGraph->bEditable = false;
+	Blueprint->DelegateSignatureGraphs.Add(SigGraph);
+
+	// Find or create the function entry node in the signature graph
+	UK2Node_FunctionEntry* EntryNode = nullptr;
+	for (UEdGraphNode* Node : SigGraph->Nodes)
+	{
+		EntryNode = Cast<UK2Node_FunctionEntry>(Node);
+		if (EntryNode) break;
+	}
+	if (!EntryNode)
+	{
+		EntryNode = NewObject<UK2Node_FunctionEntry>(SigGraph);
+		EntryNode->FunctionReference.SetExternalMember(SigGraphName, UObject::StaticClass());
+		SigGraph->AddNode(EntryNode, false, false);
+		EntryNode->NodePosX = 0;
+		EntryNode->NodePosY = 0;
+		EntryNode->AllocateDefaultPins();
+	}
+
+	// --- Parse params and add pins to entry node ---
+	TArray<TSharedPtr<FJsonValue>> ParamsArray;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ParamsJson);
+	if (FJsonSerializer::Deserialize(Reader, ParamsArray))
+	{
+		for (const TSharedPtr<FJsonValue>& ParamVal : ParamsArray)
+		{
+			const TSharedPtr<FJsonObject>* ParamObj = nullptr;
+			if (!ParamVal->TryGetObject(ParamObj)) continue;
+
+			FString ParamName, ParamType;
+			(*ParamObj)->TryGetStringField(TEXT("name"), ParamName);
+			(*ParamObj)->TryGetStringField(TEXT("type"), ParamType);
+			if (ParamName.IsEmpty() || ParamType.IsEmpty()) continue;
+
+			FEdGraphPinType PinType;
+			FString ParseError;
+			if (TryResolveBlueprintPinType(ParamType, PinType, ParseError))
+			{
+				EntryNode->CreateUserDefinedPin(FName(*ParamName), PinType, EGPD_Output);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("AddEventDispatcher: unsupported param type '%s' for '%s', skipped"),
+				       *ParamType, *ParamName);
+			}
+		}
+	}
+
+	// --- Add the multicast delegate member variable ---
+	FEdGraphPinType DelegateType;
+	DelegateType.PinCategory = UEdGraphSchema_K2::PC_MCDelegate;
+	// PinSubCategoryObject points to the signature function found via the graph
+	if (UFunction* SigFunc = Blueprint->GeneratedClass
+		? Blueprint->GeneratedClass->FindFunctionByName(SigGraphName)
+		: nullptr)
+	{
+		DelegateType.PinSubCategoryObject = SigFunc;
+	}
+
+	FBlueprintEditorUtils::AddMemberVariable(Blueprint, FName(*DispatcherName), DelegateType);
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+
+	UE_LOG(LogTemp, Log, TEXT("AddEventDispatcher: created '%s' in %s"), *DispatcherName, *BlueprintPath);
+	return true;
+}
+
+FString UGenBlueprintUtils::AddCustomEvent(const FString& BlueprintPath,
+                                           const FString& EventName,
+                                           const FString& ParamsJson)
+{
+	UBlueprint* Blueprint = LoadBlueprintAsset(BlueprintPath);
+	if (!Blueprint)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Could not load blueprint\"}");
+	}
+
+	UEdGraph* EventGraph = Blueprint->UbergraphPages.Num() > 0 ? Blueprint->UbergraphPages[0] : nullptr;
+	if (!EventGraph)
+	{
+		EventGraph = FBlueprintEditorUtils::CreateNewGraph(Blueprint, FName(TEXT("EventGraph")),
+		                                                   UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
+		Blueprint->UbergraphPages.Add(EventGraph);
+	}
+
+	for (UEdGraphNode* Node : EventGraph->Nodes)
+	{
+		if (UK2Node_CustomEvent* ExistingEvent = Cast<UK2Node_CustomEvent>(Node))
+		{
+			if (ExistingEvent->CustomFunctionName == FName(*EventName))
+			{
+				return FString::Printf(
+					TEXT("{\"success\": true, \"created\": false, \"message\": \"Custom event already exists\", \"node_guid\": \"%s\", \"graph_guid\": \"%s\"}"),
+					*ExistingEvent->NodeGuid.ToString(),
+					*EventGraph->GraphGuid.ToString());
+			}
+		}
+	}
+
+	UK2Node_CustomEvent* EventNode = NewObject<UK2Node_CustomEvent>(EventGraph);
+	if (!EventNode)
+	{
+		return TEXT("{\"success\": false, \"error\": \"Failed to allocate custom event node\"}");
+	}
+
+	EventNode->CustomFunctionName = FName(*EventName);
+	EventNode->NodePosX = 0;
+	EventNode->NodePosY = EventGraph->Nodes.Num() * 220;
+	EventGraph->AddNode(EventNode, true, false);
+	EventNode->CreateNewGuid();
+	EventNode->PostPlacedNewNode();
+	EventNode->AllocateDefaultPins();
+
+	TArray<TSharedPtr<FJsonValue>> ParamsArray;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ParamsJson);
+	if (!FJsonSerializer::Deserialize(Reader, ParamsArray))
+	{
+		return TEXT("{\"success\": false, \"error\": \"Failed to parse params JSON\"}");
+	}
+
+	for (const TSharedPtr<FJsonValue>& ParamValue : ParamsArray)
+	{
+		const TSharedPtr<FJsonObject>* ParamObject = nullptr;
+		if (!ParamValue->TryGetObject(ParamObject))
+		{
+			continue;
+		}
+
+		FString ParamName;
+		FString ParamType;
+		(*ParamObject)->TryGetStringField(TEXT("name"), ParamName);
+		(*ParamObject)->TryGetStringField(TEXT("type"), ParamType);
+		if (ParamName.IsEmpty() || ParamType.IsEmpty())
+		{
+			continue;
+		}
+
+		FEdGraphPinType PinType;
+		FString ParseError;
+		if (!TryResolveBlueprintPinType(ParamType, PinType, ParseError))
+		{
+			return FString::Printf(
+				TEXT("{\"success\": false, \"error\": \"Unsupported param type '%s' for '%s': %s\"}"),
+				*ParamType,
+				*ParamName,
+				*ParseError);
+		}
+
+		EventNode->CreateUserDefinedPin(FName(*ParamName), PinType, EGPD_Output);
+	}
+
+	EventNode->ReconstructNode();
+	Blueprint->Modify();
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+	OpenBlueprintGraph(Blueprint, EventGraph);
+
+	return FString::Printf(
+		TEXT("{\"success\": true, \"created\": true, \"node_guid\": \"%s\", \"graph_guid\": \"%s\", \"event_name\": \"%s\"}"),
+		*EventNode->NodeGuid.ToString(),
+		*EventGraph->GraphGuid.ToString(),
+		*EventName);
 }
 
 FString UGenBlueprintUtils::AddFunction(const FString& BlueprintPath, const FString& FunctionName,

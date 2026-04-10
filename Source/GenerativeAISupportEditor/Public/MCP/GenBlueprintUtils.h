@@ -57,6 +57,34 @@ public:
 	                        const FString& Category);
 
 	/**
+	 * Add an Event Dispatcher to a Blueprint with custom parameter types.
+	 * Supports the same type syntax as AddVariable: "array:struct:<Name>", "struct:<Name>", etc.
+	 *
+	 * @param BlueprintPath  - Asset path e.g. "/Game/Blueprints/BP_NPCAIController"
+	 * @param DispatcherName - Name of the new dispatcher e.g. "OnAbnormalEventsV2"
+	 * @param ParamsJson     - JSON array of {"name": str, "type": str} objects
+	 * @return true if successful
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
+	static bool AddEventDispatcher(const FString& BlueprintPath,
+	                               const FString& DispatcherName,
+	                               const FString& ParamsJson);
+
+	/**
+	 * Add a Custom Event node to the EventGraph with custom parameter types.
+	 * Supports the same type syntax as AddVariable: "array:struct:<Name>", "struct:<Name>", etc.
+	 *
+	 * @param BlueprintPath - Asset path e.g. "/Game/Blueprints/BP_RPNPCExample"
+	 * @param EventName     - Name of the custom event e.g. "AbnormalsV2"
+	 * @param ParamsJson    - JSON array of {"name": str, "type": str} objects
+	 * @return JSON string with success, node_guid, graph_guid, and created/existing status
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Generative AI|Blueprint Utils")
+	static FString AddCustomEvent(const FString& BlueprintPath,
+	                              const FString& EventName,
+	                              const FString& ParamsJson);
+
+	/**
 	 * Add a function to a Blueprint
 	 * 
 	 * @param BlueprintPath - Path to the Blueprint asset
