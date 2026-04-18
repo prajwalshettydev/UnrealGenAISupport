@@ -1,5 +1,11 @@
-[![Discord](https://img.shields.io/badge/Discord-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/KBWmkCKv5U)
-[![License: MIT](https://img.shields.io/badge/License-MIT-007EC7?style=for-the-badge)](LICENSE)
+![Unreal Engine](https://img.shields.io/badge/Unreal%20Engine-5.4%20to%205.7+-313131?style=flat&logo=unrealengine&logoColor=white)
+![Fab Plugins](https://img.shields.io/badge/Fab%20Plugins-UE%205.1%20to%205.7+-0E8A16?style=flat&logo=unrealengine&logoColor=white)
+![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat&logo=c%2B%2B&logoColor=white)
+![Platform](https://img.shields.io/badge/Platform-Win64%20%7C%20Linux%20%7C%20Mac-0078D6?style=flat&logo=windows&logoColor=white)
+![AI Models](https://img.shields.io/badge/AI%20Models-200%2B-FF6F00?style=flat&logo=openai&logoColor=white)
+![MCP](https://img.shields.io/badge/MCP-Supported-8A2BE2?style=flat)
+[![License: MIT](https://img.shields.io/badge/License-MIT-007EC7?style=flat)](LICENSE)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Community-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/KBWmkCKv5U)
 
 ## Usage Examples:
 #### MCP Example:
@@ -17,17 +23,6 @@ A project called become human, where NPCs are OpenAI agentic instances. Built us
 Every month, hundreds of new AI models are released by various organizations, making it hard to keep up with the latest advancements.
 
 The "Unreal Engine Generative AI Support Plugin" allows you to focus on game development without worrying about the LLM/GenAI integration layer.
-
-<p align="center"><img src="Docs/Repo Card - Updated.png" width="512"/></p>
-
-Currently working on chinese LLMs support like Alibaba Qwen for both Chinese Mainland and International markets.
-
-This project aims to build a long-term support (LTS) plugin for various cutting-edge LLM/GenAI models and foster a
-community around it. It currently includes OpenAI's GPT, Deepseek R1, Claude Sonnet 4, Claude Opus 4, and GPT-4o-mini for Unreal Engine, with plans to add
-, real-time APIs, Gemini, MCP, and Grok 3 APIs soon. The plugin will focus exclusively on APIs useful for
-game development, evals and interactive experiences. All suggestions and contributions are welcome. The plugin can also be used for setting up new evals and ways to compare models in game battlefields.
-
-Compatible with Unreal Engine 5.4 to 5.7+
 
 ## Current Progress:
 
@@ -123,6 +118,8 @@ Local LLMs inside your Unreal Engine game - DeepSeek, Qwen, LLaMA, Gemma, Mistra
 - Testing across platforms and engine versions (available in pro plugins)
 
 ### Unreal MCP (Model Control Protocol):
+
+> **Other MCP options:** Epic Games is working on an official Unreal MCP integration for UE 5.8+. There's also [UnrealClaude](https://github.com/Natfii/UnrealClaude) (MIT) by Natfii - a standalone Unreal MCP implementation worth checking out. This plugin's MCP support targets UE 5.4-5.7+ and works alongside Claude Desktop, Claude Code, and Cursor.
 
 - Clients Support ✅
     - Claude Desktop App Support ✅
