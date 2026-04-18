@@ -66,7 +66,7 @@ Text-to-3D, Image-to-3D, Remesh, PBR Textures, Retexture, Auto-Rigging</p>
 </a>
 <p><b><a href="https://muddyterrain.com/unreal-ollama?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-llama-plugin">Gen AI Llama (Coming Soon on Fab!)</a></b><br/>
 <code>Ollama</code> <code>vLLM</code> <code>LM Studio</code> <code>GGUF</code> <code>Jan</code> <code>LocalAI</code> <code>GPT-oss</code> <code>LLaVA</code><br/>
-Local LLMs inside your Unreal Engine game - DeepSeek, Qwen, LLaMA, Gemma, Mistral - no API keys needed</p>
+Local LLMs inside your Unreal Engine game - no API keys needed</p>
 </td>
 </tr>
 </table>
