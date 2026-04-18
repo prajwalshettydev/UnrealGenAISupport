@@ -66,8 +66,7 @@ Text-to-3D, Image-to-3D, Remesh, PBR Textures, Retexture, Auto-Rigging</p>
 </a>
 <p><b><a href="https://muddyterrain.com/unreal-ollama?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-llama-plugin">Gen AI Llama (Coming Soon on Fab!)</a></b><br/>
 <code>Ollama</code> <code>vLLM</code> <code>LM Studio</code> <code>GGUF</code> <code>Jan</code> <code>LocalAI</code> <code>GPT-oss</code> <code>LLaVA</code><br/>
-Local LLMs inside your Unreal Engine game<br/>
-Run DeepSeek, Qwen, LLaMA, Gemma, Mistral offline - no API keys needed</p>
+Local LLMs inside your Unreal Engine game - DeepSeek, Qwen, LLaMA, Gemma, Mistral - no API keys needed</p>
 </td>
 </tr>
 </table>
@@ -122,6 +121,9 @@ Run DeepSeek, Qwen, LLaMA, Gemma, Mistral offline - no API keys needed</p>
 
 > **Other MCP options:** Epic Games is working on an official Unreal MCP integration for UE 5.8+. There's also [UnrealClaude](https://github.com/Natfii/UnrealClaude) (MIT) by Natfii - a standalone Unreal MCP implementation worth checking out. This plugin's MCP support targets UE 5.4-5.7+ and works alongside Claude Desktop, Claude Code, and Cursor. **Note:** MCP in this free plugin is not being actively developed - the features listed below reflect the current state.
 
+<details>
+<summary><b>MCP Feature Status</b> (✅ = Done, 🛠️ = In Progress, 🚧 = Planned)</summary>
+
 - Clients Support ✅
     - Claude Desktop App Support ✅
     - Claude Code CLI Support ✅
@@ -151,15 +153,7 @@ Run DeepSeek, Qwen, LLaMA, Gemma, Mistral offline - no API keys needed</p>
 - Others:
     - Project Cleanup 🛠️ 
 
-Where,
-- ✅ - Completed
-- ☑️ (Pro) - [Available in GenAI-Pro](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin)
-- ☑️ 🇨🇳 - [Available in "GenAI Pro China"](https://muddyterrain.com/t/genai-china-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-china-plugin)
-- ☑️ (3D) - [Available in "GenAI Model Generator"](https://muddyterrain.com/t/genai-model-generator-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=gen3d-plugin)
-- 🛠️ - In Progress
-- 🚧 - Planned
-- 🤝 - Need Contributors
-- ❌ - Won't Support For Now
+</details>
 
 ## Table of Contents
 
@@ -170,7 +164,7 @@ Where,
 - [Adding the plugin to your project](#adding-the-plugin-to-your-project)
     - [With Git](#with-git)
     - [With Perforce](#with-perforce)
-    - [With Unreal Marketplace](#with-unreal-marketplace)
+    - [With Fab (Unreal Marketplace)](#with-fab-unreal-marketplace)
 - [Fetching the Latest Plugin Changes](#fetching-the-latest-plugin-changes)
     - [With Git](#with-git-1)
     - [With Perforce](#with-perforce-1)
@@ -186,7 +180,6 @@ Where,
         - [1. Chat](#1-chat-2)
     - [Model Control Protocol (MCP)](#model-control-protocol-mcp)
 - [Known Issues](#known-issues)
-- [Config Window](#config-window)
 - [Contribution Guidelines](#contribution-guidelines)
     - [Setting up for Development](#setting-up-for-development)
     - [Project Structure](#project-structure)
@@ -333,8 +326,8 @@ pip install fastmcp
 
 Still in development..
 
-### With Unreal Marketplace:
-Coming soon, for free, in the Unreal Engine Marketplace.
+### With Fab (Unreal Marketplace):
+This free plugin is available via Git (above). For the pro plugins, check [Fab.com](https://muddyterrain.com/t/genai-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-plugin).
 
 ## Fetching the Latest Plugin Changes:
 
@@ -363,7 +356,7 @@ There is a example Unreal project that already implements the plugin. You can fi
 ### OpenAI:
 
 Currently the plugin supports Chat and Structured Outputs from OpenAI API. Both for C++ and Blueprints.
-Tested models are `gpt-4o`, `gpt-4o-mini`, `gpt-4.5`, `o1-mini`, `o1`, `o3-mini-high`.
+Tested models: `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`, `o4-mini`, `o3`, `o3-pro`, `o3-mini`.
 
 #### 1. Chat:
 
@@ -519,7 +512,7 @@ Points to note:
 
 ### Anthropic API:
 Currently the plugin supports Chat from Anthropic API. Both for C++ and Blueprints.
-Tested models are `claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-7-sonnet-latest`, `claude-3-5-sonnet`, `claude-3-5-haiku-latest`, `claude-3-opus-latest`.
+Tested models: `claude-4-latest`, `claude-3-7-sonnet-latest`, `claude-3-5-sonnet`, `claude-3-5-haiku-latest`.
 
 #### 1. Chat:
 ##### C++ Example:
@@ -625,10 +618,6 @@ python <your_project_directoy>/Plugins/GenerativeAISupport/Content/Python/mcp_se
 - Issues spawning certain nodes, especially with getters and setters
 - Doesn't open the right context window during scene and project files edit. 
 - Doesn't dock the window properly in the editor for blueprints.
-
-## Config Window:
-(Still wip)
-<img src="Docs/EditorWindow.png" width="782"/>
 
 ## Contribution Guidelines:
 
