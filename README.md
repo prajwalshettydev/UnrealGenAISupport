@@ -1,11 +1,11 @@
 ![Unreal Engine](https://img.shields.io/badge/Unreal%20Engine-5.4%20to%205.7+-313131?style=flat&logo=unrealengine&logoColor=white)
 ![Fab Plugins](https://img.shields.io/badge/Fab%20Plugins-UE%205.1%20to%205.7+-0E8A16?style=flat&logo=unrealengine&logoColor=white)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat&logo=c%2B%2B&logoColor=white)
-![Platform](https://img.shields.io/badge/Platform-Win64%20%7C%20Linux%20%7C%20Mac-0078D6?style=flat&logo=windows&logoColor=white)
+![Platform](https://img.shields.io/badge/Platform-Win64%20%7C%20Linux%20%7C%20Mac%20%7C%20Mobile%20%7C%20Consoles-0078D6?style=flat&logo=windows&logoColor=white)
 ![AI Models](https://img.shields.io/badge/AI%20Models-200%2B-FF6F00?style=flat&logo=openai&logoColor=white)
 ![MCP](https://img.shields.io/badge/MCP-Supported-8A2BE2?style=flat)
 [![License: MIT](https://img.shields.io/badge/License-MIT-007EC7?style=flat)](LICENSE)
-[![Discord](https://img.shields.io/badge/Discord-Join%20Community-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/KBWmkCKv5U)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Community-7289DA?style=flat&logo=discord&logoColor=white)](https://discord.com/invite/KBWmkCKv5U)
 
 ## Usage Examples:
 #### MCP Example:
@@ -64,9 +64,10 @@ Text-to-3D, Image-to-3D, Remesh, PBR Textures, Retexture, Auto-Rigging</p>
 <a href="https://muddyterrain.com/unreal-ollama?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-llama-plugin">
 <img src="https://res.cloudinary.com/dqq9t4hyy/image/upload/q_60/v1774520082/MainBanners_10_gniskq.webp" width="100%" alt="Gen AI Llama - Ollama vLLM LM Studio GGUF Local LLMs Unreal Engine"/>
 </a>
-<p><b>Gen AI Llama (Coming Soon on Fab!)</b><br/>
-<code>Ollama</code> <code>vLLM</code> <code>LM Studio</code> <code>GGUF</code> <code>Jan</code> <code>LocalAI</code><br/>
-Local LLMs inside your Unreal Engine game - DeepSeek, Qwen, LLaMA, Gemma, Mistral</p>
+<p><b><a href="https://muddyterrain.com/unreal-ollama?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-llama-plugin">Gen AI Llama (Coming Soon on Fab!)</a></b><br/>
+<code>Ollama</code> <code>vLLM</code> <code>LM Studio</code> <code>GGUF</code> <code>Jan</code> <code>LocalAI</code> <code>GPT-oss</code> <code>LLaVA</code><br/>
+Local LLMs inside your Unreal Engine game<br/>
+Run DeepSeek, Qwen, LLaMA, Gemma, Mistral offline - no API keys needed</p>
 </td>
 </tr>
 </table>
@@ -119,7 +120,7 @@ Local LLMs inside your Unreal Engine game - DeepSeek, Qwen, LLaMA, Gemma, Mistra
 
 ### Unreal MCP (Model Control Protocol):
 
-> **Other MCP options:** Epic Games is working on an official Unreal MCP integration for UE 5.8+. There's also [UnrealClaude](https://github.com/Natfii/UnrealClaude) (MIT) by Natfii - a standalone Unreal MCP implementation worth checking out. This plugin's MCP support targets UE 5.4-5.7+ and works alongside Claude Desktop, Claude Code, and Cursor.
+> **Other MCP options:** Epic Games is working on an official Unreal MCP integration for UE 5.8+. There's also [UnrealClaude](https://github.com/Natfii/UnrealClaude) (MIT) by Natfii - a standalone Unreal MCP implementation worth checking out. This plugin's MCP support targets UE 5.4-5.7+ and works alongside Claude Desktop, Claude Code, and Cursor. **Note:** MCP in this free plugin is not being actively developed - the features listed below reflect the current state.
 
 - Clients Support ✅
     - Claude Desktop App Support ✅
