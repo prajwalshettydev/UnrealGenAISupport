@@ -24,6 +24,9 @@ private:
 	void RegisterSettings();
 	void UnregisterSettings();
 	bool HandleSettingsSaved();
+	void EnsureInitialProjectSetup();
+	void EnsureDefaultSocketServerAutostart();
+	void EnsureCodexConfiguration();
 	void RegisterMenuExtension();
 	void UnregisterMenuExtension();
 	void OnEditorWindowMenuClicked();

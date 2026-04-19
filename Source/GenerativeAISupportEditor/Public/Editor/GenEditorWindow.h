@@ -61,6 +61,27 @@ private:
     /** Attempts to create/update Cursor configuration */
     FReply SetupCursorConfig();
 
+    /** Checks if Codex CLI is configured */
+    bool IsCodexConfigured() const;
+
+    /** Gets the project-scoped Codex config path */
+    FString GetProjectCodexConfigPath() const;
+
+    /** Gets the global Codex config path */
+    FString GetGlobalCodexConfigPath() const;
+
+    /** Gets the preferred Codex config path based on plugin install location */
+    FString GetPreferredCodexConfigPath() const;
+
+    /** Gets the preferred Codex config path for display */
+    FString GetCodexConfigPath() const;
+
+    /** Opens the Codex config file */
+    void OpenCodexConfig() const;
+
+    /** Attempts to create/update Codex configuration */
+    FReply SetupCodexConfig();
+
     /** Checks if a specific API key is set using the GenSecureKey system */
     bool IsAPIKeySet(EGenAIOrgs Org) const;
     
@@ -79,6 +100,8 @@ private:
     TSharedPtr<STextBlock> ClaudeDetailsText;
     TSharedPtr<STextBlock> CursorStatusText;
     TSharedPtr<STextBlock> CursorDetailsText;
+    TSharedPtr<STextBlock> CodexStatusText;
+    TSharedPtr<STextBlock> CodexDetailsText;
     TSharedPtr<SVerticalBox> APIStatusContainer;
 
     /** Timer handle for periodically refreshing status */

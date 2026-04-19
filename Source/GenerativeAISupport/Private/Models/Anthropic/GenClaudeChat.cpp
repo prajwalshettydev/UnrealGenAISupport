@@ -6,9 +6,14 @@
 #include "HttpModule.h"
 #include "Data/GenAIOrgs.h"
 #include "Data/OpenAI/GenOAIChatStructs.h"
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
 #include "Secure/GenSecureKey.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 #include "Utilities/GenUtils.h"
 
 

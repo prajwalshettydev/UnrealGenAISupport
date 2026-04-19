@@ -12,6 +12,8 @@ This plugin lets an LLM (like you, Claude) boss around Unreal Engine with MCP. A
 - **Inputs**: Use `add_input_binding` to set up the binding (e.g., "Jump", "SpaceBar"), then `add_node_to_blueprint` with "K2Node_InputAction" and `"action_name": "Jump"` in `node_properties`. Ensure `action_name` matches.
 - **Colliders**: Add via `add_component_with_events` (e.g., "MyBox", "BoxComponent")—returns `"begin_overlap_guid"` (BeginOverlap node) and `"end_overlap_guid"` (EndOverlap node).
 - **Materials**: Use `edit_component_property` with property_name as "Material", "SetMaterial", or "BaseMaterial" and value as a material path (e.g., "'/Game/Materials/M_MyMaterial'") to set on mesh components (slot 0 default)."
+- **Project Plugins**: Use `enable_plugin` to update the current project's `.uproject` plugin list. If it reports a restart requirement, follow with `restart_editor` or use `enable_plugin_and_restart`.
+- **Editor Restarts**: `restart_editor` is coordinated by the external MCP process, not by Unreal itself. If Unreal reports dirty maps/assets, it should return a confirmation-required message so you can ask the user before retrying with `force=True`.
 
 
 

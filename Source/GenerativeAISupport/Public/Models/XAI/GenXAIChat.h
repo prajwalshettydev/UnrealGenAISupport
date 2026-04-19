@@ -23,7 +23,7 @@ public:
     static void SendChatRequest(const FGenXAIChatSettings& ChatSettings, const FOnXAIChatCompletionResponse& OnComplete);
 
     // Blueprint-callable function
-    UPROPERTY(BlueprintAssignable)
+    UPROPERTY(BlueprintAssignable, Category = "GenAI|XAI")
     FGenXAIChatCompletionDelegate OnComplete;
 
     // Blueprint latent function

@@ -6,8 +6,13 @@
 #include "Http.h"
 #include "Data/GenAIOrgs.h"
 #include "Data/OpenAI/GenOAIChatStructs.h"
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "Engine/Engine.h" // For GEngine logging
 #include "Secure/GenSecureKey.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 #include "Utilities/GenGlobalDefinitions.h"
 
 void UGenOAIStructuredOpService::RequestStructuredOutput(const FGenOAIStructuredChatSettings& StructuredChatSettings, const FOnSchemaResponse& OnComplete)
@@ -174,6 +179,5 @@ void UGenOAIStructuredOpService::ProcessResponse(const FString& ResponseStr, con
         ResponseCallback(TEXT(""), TEXT("Failed to parse JSON"), false);
     }
 }
-
 
 

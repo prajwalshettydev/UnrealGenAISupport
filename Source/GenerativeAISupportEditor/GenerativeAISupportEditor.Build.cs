@@ -3,6 +3,7 @@
 // source tree or http://opensource.org/licenses/MIT.
 
 
+using System.IO;
 using UnrealBuildTool;
 
 public class GenerativeAISupportEditor : ModuleRules
@@ -19,9 +20,18 @@ public class GenerativeAISupportEditor : ModuleRules
 				"Engine",
 				"GenerativeAISupport",  // Depend on the runtime module
 				"Json",                 // Add JSON support for serialization
-				"JsonUtilities"  
+				"JsonUtilities"
 			}
 		);
+
+		string FabPrivatePath = Path.Combine(EngineDirectory, "Plugins", "Fab", "Source", "Fab", "Private");
+		bool bHasFabPrivateHeaders = Directory.Exists(FabPrivatePath);
+		PublicDefinitions.Add($"GENAI_WITH_FAB={(bHasFabPrivateHeaders ? 1 : 0)}");
+
+		if (bHasFabPrivateHeaders)
+		{
+			PrivateIncludePaths.Add(FabPrivatePath);
+		}
 
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
@@ -40,8 +50,15 @@ public class GenerativeAISupportEditor : ModuleRules
 				"UMG",
 				"Settings",
 				"FunctionalTesting",     // For AutomationBlueprintFunctionLibrary 
-				"SourceControl"    // For Source Control integration
+				"SourceControl",   // For Source Control integration
+				"HTTP",
+				"WebBrowser"
 			}
 		);
+
+		if (bHasFabPrivateHeaders)
+		{
+			PrivateDependencyModuleNames.Add("Fab");
+		}
 	}
 }

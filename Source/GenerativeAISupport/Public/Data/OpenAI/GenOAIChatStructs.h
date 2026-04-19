@@ -31,10 +31,10 @@ struct FMessage
 {
     GENERATED_BODY()
 
-    UPROPERTY(BlueprintReadWrite)
+    UPROPERTY(BlueprintReadWrite, Category = "GenAI|OpenAI")
     FString role;
 
-    UPROPERTY(BlueprintReadWrite)
+    UPROPERTY(BlueprintReadWrite, Category = "GenAI|OpenAI")
     FString content;
 };
 
@@ -43,7 +43,7 @@ struct FChoice
 {
     GENERATED_BODY()
 
-    UPROPERTY(BlueprintReadWrite)
+    UPROPERTY(BlueprintReadWrite, Category = "GenAI|OpenAI")
     FMessage message;
 };
 
@@ -52,10 +52,10 @@ struct FResponse
 {
     GENERATED_BODY()
 
-    UPROPERTY(BlueprintReadWrite)
+    UPROPERTY(BlueprintReadWrite, Category = "GenAI|OpenAI")
     TArray<FChoice> choices;
 
-    UPROPERTY(BlueprintReadWrite)
+    UPROPERTY(BlueprintReadWrite, Category = "GenAI|OpenAI")
     FString error;
 };
 

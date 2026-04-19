@@ -34,6 +34,141 @@
 FGenEditorWindowManager* FGenEditorWindowManager::Singleton = nullptr;
 const FName FGenEditorWindowManager::TabId = FName("GenEditorWindow");
 
+namespace
+{
+const TCHAR* UnrealHandshakeServerName = TEXT("unreal-handshake");
+const TCHAR* DefaultUnrealHost = TEXT("localhost");
+constexpr int32 DefaultUnrealPort = 9877;
+
+bool FileContainsServerName(const FString& FilePath)
+{
+    if (!FPaths::FileExists(FilePath))
+    {
+        return false;
+    }
+
+    FString ConfigContent;
+    return FFileHelper::LoadFileToString(ConfigContent, *FilePath) && ConfigContent.Contains(UnrealHandshakeServerName);
+}
+
+bool ResolvePluginMcpServerPath(FString& OutPluginPythonPath)
+{
+    TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("GenerativeAISupport"));
+    if (!Plugin.IsValid())
+    {
+        return false;
+    }
+
+    OutPluginPythonPath = FPaths::ConvertRelativePathToFull(
+        FPaths::Combine(Plugin->GetBaseDir(), TEXT("Content"), TEXT("Python"), TEXT("mcp_server.py"))
+    );
+    FPaths::NormalizeFilename(OutPluginPythonPath);
+    return true;
+}
+
+FString GetPreferredCodexConfigPathForPlugin()
+{
+    return FPaths::Combine(FPlatformProcess::UserHomeDir(), TEXT(".codex"), TEXT("config.toml"));
+}
+
+FString BuildDesktopMcpConfigJson(const FString& PluginPythonPath)
+{
+    return FString::Printf(TEXT("{\n")
+        TEXT("  \"mcpServers\": {\n")
+        TEXT("    \"%s\": {\n")
+        TEXT("      \"command\": \"python\",\n")
+        TEXT("      \"args\": [\"%s\"],\n")
+        TEXT("      \"env\": {\n")
+        TEXT("        \"UNREAL_HOST\": \"%s\",\n")
+        TEXT("        \"UNREAL_PORT\": \"%d\"\n")
+        TEXT("      }\n")
+        TEXT("    }\n")
+        TEXT("  }\n")
+        TEXT("}"),
+        UnrealHandshakeServerName,
+        *PluginPythonPath,
+        DefaultUnrealHost,
+        DefaultUnrealPort
+    );
+}
+
+FString BuildCodexMcpConfigBlock(const FString& PluginPythonPath)
+{
+    return FString::Printf(
+        TEXT("[mcp_servers.%s]\n")
+        TEXT("command = \"python\"\n")
+        TEXT("args = [\"%s\"]\n")
+        TEXT("env = { UNREAL_HOST = \"%s\", UNREAL_PORT = \"%d\" }\n"),
+        UnrealHandshakeServerName,
+        *PluginPythonPath,
+        DefaultUnrealHost,
+        DefaultUnrealPort
+    );
+}
+
+bool UpsertCodexMcpConfig(const FString& ConfigPath, const FString& NewBlock)
+{
+    FString ExistingConfig;
+    if (FPaths::FileExists(ConfigPath) && !FFileHelper::LoadFileToString(ExistingConfig, *ConfigPath))
+    {
+        return false;
+    }
+
+    const FString Header = FString::Printf(TEXT("[mcp_servers.%s]"), UnrealHandshakeServerName);
+    const int32 HeaderIndex = ExistingConfig.Find(Header, ESearchCase::CaseSensitive, ESearchDir::FromStart);
+    FString UpdatedConfig = ExistingConfig;
+
+    if (HeaderIndex != INDEX_NONE)
+    {
+        int32 BlockEndIndex = ExistingConfig.Len();
+        for (int32 Index = HeaderIndex + Header.Len(); Index < ExistingConfig.Len() - 1; ++Index)
+        {
+            if (ExistingConfig[Index] == TEXT('\n') && ExistingConfig[Index + 1] == TEXT('['))
+            {
+                BlockEndIndex = Index + 1;
+                break;
+            }
+        }
+
+        UpdatedConfig = ExistingConfig.Left(HeaderIndex);
+        if (!UpdatedConfig.IsEmpty() && !UpdatedConfig.EndsWith(TEXT("\n")))
+        {
+            UpdatedConfig.Append(TEXT("\n"));
+        }
+        if (!UpdatedConfig.IsEmpty() && !UpdatedConfig.EndsWith(TEXT("\n\n")))
+        {
+            UpdatedConfig.Append(TEXT("\n"));
+        }
+
+        UpdatedConfig.Append(NewBlock);
+
+        if (BlockEndIndex < ExistingConfig.Len())
+        {
+            FString Suffix = ExistingConfig.Mid(BlockEndIndex);
+            if (!Suffix.IsEmpty() && !Suffix.StartsWith(TEXT("\n")) && !UpdatedConfig.EndsWith(TEXT("\n")))
+            {
+                UpdatedConfig.Append(TEXT("\n"));
+            }
+            UpdatedConfig.Append(Suffix);
+        }
+    }
+    else
+    {
+        if (!UpdatedConfig.IsEmpty() && !UpdatedConfig.EndsWith(TEXT("\n")))
+        {
+            UpdatedConfig.Append(TEXT("\n"));
+        }
+        if (!UpdatedConfig.IsEmpty() && !UpdatedConfig.EndsWith(TEXT("\n\n")))
+        {
+            UpdatedConfig.Append(TEXT("\n"));
+        }
+        UpdatedConfig.Append(NewBlock);
+    }
+
+    return FFileHelper::SaveStringToFile(UpdatedConfig, *ConfigPath);
+}
+}
+
 FGenEditorWindowManager& FGenEditorWindowManager::Get()
 {
     if (!Singleton)
@@ -357,8 +492,9 @@ TSharedRef<SWidget> SGenEditorWindow::CreateMCPStatusSection()
                         const FText Message = NSLOCTEXT("GenerativeAISupport", "MCPServerSetupMessage", 
                             "To use MCP Server with AI tools, you need to set up at least one of the following:\n\n"
                             "- Set up Claude configuration\n"
-                            "- Set up Cursor configuration\n\n"
-                            "After setup, you'll need to restart Claude or Cursor to activate the MCP Server.");
+                            "- Set up Cursor configuration\n"
+                            "- Set up Codex CLI configuration\n\n"
+                            "After setup, restart the client you plan to use so it reloads the MCP configuration.");
                             
                         FMessageDialog::Open(EAppMsgType::Ok, Message, Title);
                         return FReply::Handled();
@@ -468,6 +604,58 @@ TSharedRef<SWidget> SGenEditorWindow::CreateMCPStatusSection()
                 })
                 .IsEnabled_Lambda([this]() {
                     return FPaths::FileExists(GetCursorConfigPath());
+                })
+            ]
+        ]
+        // Codex CLI Status
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(0, 2)
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0, 0, 10, 0)
+            [
+                SNew(STextBlock)
+                .Text(NSLOCTEXT("GenerativeAISupport", "CodexLabel", "Codex CLI"))
+                .MinDesiredWidth(150)
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0, 0, 10, 0)
+            [
+                SAssignNew(CodexStatusText, STextBlock)
+                .Text(NSLOCTEXT("GenerativeAISupport", "CheckingStatus", "Checking..."))
+                .MinDesiredWidth(100)
+            ]
+            + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            .VAlign(VAlign_Center)
+            .Padding(0, 0, 10, 0)
+            [
+                SAssignNew(CodexDetailsText, STextBlock)
+                .Text(NSLOCTEXT("GenerativeAISupport", "NoDetails", ""))
+                .MinDesiredWidth(150)
+                .ToolTipText_Lambda([this]() {
+                    return FText::FromString(GetCodexConfigPath());
+                })
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .HAlign(HAlign_Right)
+            [
+                SNew(SButton)
+                .Text(NSLOCTEXT("GenerativeAISupport", "OpenButton", "Open"))
+                .OnClicked_Lambda([this]() {
+                    OpenCodexConfig();
+                    return FReply::Handled();
+                })
+                .IsEnabled_Lambda([this]() {
+                    return FPaths::FileExists(GetCodexConfigPath());
                 })
             ]
         ]
@@ -607,6 +795,28 @@ TSharedRef<SWidget> SGenEditorWindow::CreateActionButtonsSection()
                 .OnClicked(this, &SGenEditorWindow::SetupCursorConfig)
             ]
         ]
+        // Setup Codex Config Button
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(0, 4)
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            [
+                SNew(STextBlock)
+                .Text(NSLOCTEXT("GenerativeAISupport", "CodexConfigLabel", "Create/Update Codex CLI Global Configuration"))
+                .ToolTipText(NSLOCTEXT("GenerativeAISupport", "CodexConfigTooltip", "Creates or updates ~/.codex/config.toml so Codex CLI can use this plugin as a system-level MCP server"))
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(10, 0, 0, 0)
+            [
+                SNew(SButton)
+                .Text(NSLOCTEXT("GenerativeAISupport", "SetupCodexButton", "Setup Codex"))
+                .OnClicked(this, &SGenEditorWindow::SetupCodexConfig)
+            ]
+        ]
     ];
 }
 
@@ -681,6 +891,24 @@ void SGenEditorWindow::RefreshStatus()
     FString CursorConfigPath = GetCursorConfigPath();
     FString CursorDetails = bCursorConfigured ? ShortenPath(CursorConfigPath) : TEXT("");
     CursorDetailsText->SetText(FText::FromString(CursorDetails));
+
+    // Check Codex configuration
+    bool bCodexConfigured = IsCodexConfigured();
+    CodexStatusText->SetText(
+        bCodexConfigured
+        ? NSLOCTEXT("GenerativeAISupport", "StatusConfigured", "Configured ✓")
+        : NSLOCTEXT("GenerativeAISupport", "StatusNotConfigured", "Not Configured ❌")
+    );
+    CodexStatusText->SetColorAndOpacity(
+        bCodexConfigured
+        ? FLinearColor(0.0f, 0.8f, 0.0f)
+        : NotConfiguredColor
+    );
+
+    // Set details about the Codex config
+    FString CodexConfigPath = GetCodexConfigPath();
+    FString CodexDetails = bCodexConfigured ? ShortenPath(CodexConfigPath) : TEXT("");
+    CodexDetailsText->SetText(FText::FromString(CodexDetails));
 
     // Refresh API keys status
     APIStatusContainer->ClearChildren();
@@ -797,22 +1025,13 @@ bool SGenEditorWindow::IsMCPServerRunning() const
     }
     
     // Fallback to the previous check method
-    return (IsClaudeConfigured() || IsCursorConfigured()) && 
-           FPlatformProcess::IsApplicationRunning(TEXT("python"));
+    return (IsClaudeConfigured() || IsCursorConfigured() || IsCodexConfigured()) &&
+           (FPlatformProcess::IsApplicationRunning(TEXT("python")) || FPlatformProcess::IsApplicationRunning(TEXT("python3")));
 }
 
 bool SGenEditorWindow::IsClaudeConfigured() const
 {
-    FString ClaudeConfigPath = GetClaudeConfigPath();
-    if (FPaths::FileExists(ClaudeConfigPath))
-    {
-        FString ConfigContent;
-        if (FFileHelper::LoadFileToString(ConfigContent, *ClaudeConfigPath))
-        {
-            return ConfigContent.Contains(TEXT("unreal-handshake"));
-        }
-    }
-    return false;
+    return FileContainsServerName(GetClaudeConfigPath());
 }
 
 FString SGenEditorWindow::GetClaudeConfigPath() const
@@ -848,32 +1067,13 @@ FReply SGenEditorWindow::SetupClaudeConfig()
     }
     
     FString PluginPythonPath;
-    TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("GenerativeAISupport"));
-    if (Plugin.IsValid())
-    {
-        PluginPythonPath = FPaths::ConvertRelativePathToFull(
-            FPaths::Combine(Plugin->GetBaseDir(), TEXT("Content"), TEXT("Python"), TEXT("mcp_server.py"))
-        );
-        PluginPythonPath = PluginPythonPath.Replace(TEXT("\\"), TEXT("/"));
-    }
-    else
+    if (!ResolvePluginMcpServerPath(PluginPythonPath))
     {
         FMessageDialog::Open(EAppMsgType::Ok, NSLOCTEXT("GenerativeAISupport", "PluginNotFound", "GenerativeAISupport plugin not found!"));
         return FReply::Handled();
     }
     
-    FString ConfigJson = FString::Printf(TEXT("{\n")
-        TEXT("  \"mcpServers\": {\n")
-        TEXT("    \"unreal-handshake\": {\n")
-        TEXT("      \"command\": \"python\",\n")
-        TEXT("      \"args\": [\"%s\"],\n")
-        TEXT("      \"env\": {\n")
-        TEXT("        \"UNREAL_HOST\": \"localhost\",\n")
-        TEXT("        \"UNREAL_PORT\": \"9877\"\n")
-        TEXT("      }\n")
-        TEXT("    }\n")
-        TEXT("  }\n")
-        TEXT("}"), *PluginPythonPath);
+    FString ConfigJson = BuildDesktopMcpConfigJson(PluginPythonPath);
     
     bool bSuccess = FFileHelper::SaveStringToFile(ConfigJson, *ClaudeConfigPath);
     
@@ -903,16 +1103,7 @@ FReply SGenEditorWindow::SetupClaudeConfig()
 
 bool SGenEditorWindow::IsCursorConfigured() const
 {
-    FString CursorConfigPath = GetCursorConfigPath();
-    if (FPaths::FileExists(CursorConfigPath))
-    {
-        FString ConfigContent;
-        if (FFileHelper::LoadFileToString(ConfigContent, *CursorConfigPath))
-        {
-            return ConfigContent.Contains(TEXT("unreal-handshake"));
-        }
-    }
-    return false;
+    return FileContainsServerName(GetCursorConfigPath());
 }
 
 FString SGenEditorWindow::GetCursorConfigPath() const
@@ -948,32 +1139,13 @@ FReply SGenEditorWindow::SetupCursorConfig()
     }
     
     FString PluginPythonPath;
-    TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("GenerativeAISupport"));
-    if (Plugin.IsValid())
-    {
-        PluginPythonPath = FPaths::ConvertRelativePathToFull(
-            FPaths::Combine(Plugin->GetBaseDir(), TEXT("Content"), TEXT("Python"), TEXT("mcp_server.py"))
-        );
-        PluginPythonPath = PluginPythonPath.Replace(TEXT("\\"), TEXT("/"));
-    }
-    else
+    if (!ResolvePluginMcpServerPath(PluginPythonPath))
     {
         FMessageDialog::Open(EAppMsgType::Ok, NSLOCTEXT("GenerativeAISupport", "PluginNotFound", "GenerativeAISupport plugin not found!"));
         return FReply::Handled();
     }
     
-    FString ConfigJson = FString::Printf(TEXT("{\n")
-        TEXT("  \"mcpServers\": {\n")
-        TEXT("    \"unreal-handshake\": {\n")
-        TEXT("      \"command\": \"python\",\n")
-        TEXT("      \"args\": [\"%s\"],\n")
-        TEXT("      \"env\": {\n")
-        TEXT("        \"UNREAL_HOST\": \"localhost\",\n")
-        TEXT("        \"UNREAL_PORT\": \"9877\"\n")
-        TEXT("      }\n")
-        TEXT("    }\n")
-        TEXT("  }\n")
-        TEXT("}"), *PluginPythonPath);
+    FString ConfigJson = BuildDesktopMcpConfigJson(PluginPythonPath);
     
     bool bSuccess = FFileHelper::SaveStringToFile(ConfigJson, *CursorConfigPath);
     
@@ -997,6 +1169,106 @@ FReply SGenEditorWindow::SetupCursorConfig()
         FSlateNotificationManager::Get().AddNotification(Info);
     }
     
+    RefreshStatus();
+    return FReply::Handled();
+}
+
+bool SGenEditorWindow::IsCodexConfigured() const
+{
+    return FileContainsServerName(GetProjectCodexConfigPath()) || FileContainsServerName(GetGlobalCodexConfigPath());
+}
+
+FString SGenEditorWindow::GetProjectCodexConfigPath() const
+{
+    return FPaths::Combine(FPaths::ProjectDir(), TEXT(".codex"), TEXT("config.toml"));
+}
+
+FString SGenEditorWindow::GetGlobalCodexConfigPath() const
+{
+    return FPaths::Combine(FPlatformProcess::UserHomeDir(), TEXT(".codex"), TEXT("config.toml"));
+}
+
+FString SGenEditorWindow::GetPreferredCodexConfigPath() const
+{
+    return GetPreferredCodexConfigPathForPlugin();
+}
+
+FString SGenEditorWindow::GetCodexConfigPath() const
+{
+    FString PreferredConfigPath = GetPreferredCodexConfigPath();
+    if (FPaths::FileExists(PreferredConfigPath))
+    {
+        return PreferredConfigPath;
+    }
+
+    FString FallbackConfigPath = PreferredConfigPath == GetProjectCodexConfigPath()
+        ? GetGlobalCodexConfigPath()
+        : GetProjectCodexConfigPath();
+
+    if (FPaths::FileExists(FallbackConfigPath))
+    {
+        return FallbackConfigPath;
+    }
+
+    return PreferredConfigPath;
+}
+
+void SGenEditorWindow::OpenCodexConfig() const
+{
+    FString CodexConfigPath = GetCodexConfigPath();
+    if (FPaths::FileExists(CodexConfigPath))
+    {
+        FPlatformProcess::LaunchFileInDefaultExternalApplication(*CodexConfigPath);
+    }
+    else
+    {
+        FString PreferredCodexConfigPath = GetPreferredCodexConfigPath();
+        FMessageDialog::Open(EAppMsgType::Ok, FText::Format(
+            NSLOCTEXT("GenerativeAISupport", "CodexFileNotFoundDetail", "Codex config file not found:\n{0}\n\nWe'll create or update the global Codex config in this location when you click 'Setup Codex'"),
+            FText::FromString(PreferredCodexConfigPath)
+        ));
+    }
+}
+
+FReply SGenEditorWindow::SetupCodexConfig()
+{
+    FString CodexConfigPath = GetPreferredCodexConfigPath();
+    FString CodexConfigDir = FPaths::GetPath(CodexConfigPath);
+
+    if (!FPaths::DirectoryExists(CodexConfigDir))
+    {
+        IFileManager::Get().MakeDirectory(*CodexConfigDir, true);
+    }
+
+    FString PluginPythonPath;
+    if (!ResolvePluginMcpServerPath(PluginPythonPath))
+    {
+        FMessageDialog::Open(EAppMsgType::Ok, NSLOCTEXT("GenerativeAISupport", "PluginNotFound", "GenerativeAISupport plugin not found!"));
+        return FReply::Handled();
+    }
+
+    const bool bSuccess = UpsertCodexMcpConfig(CodexConfigPath, BuildCodexMcpConfigBlock(PluginPythonPath));
+
+    if (bSuccess)
+    {
+        FNotificationInfo Info(FText::Format(
+            NSLOCTEXT("GenerativeAISupport", "CodexConfigSuccessDetail", "Codex global configuration updated successfully at:\n{0}"),
+            FText::FromString(CodexConfigPath)
+        ));
+        Info.ExpireDuration = 7.0f;
+        FSlateNotificationManager::Get().AddNotification(Info);
+        OpenCodexConfig();
+    }
+    else
+    {
+        FNotificationInfo Info(FText::Format(
+            NSLOCTEXT("GenerativeAISupport", "CodexConfigFailedDetail", "Failed to update Codex configuration at:\n{0}\nPlease check folder permissions."),
+            FText::FromString(CodexConfigPath)
+        ));
+        Info.ExpireDuration = 7.0f;
+        FSlateNotificationManager::Get().AddNotification(Info);
+    }
+
     RefreshStatus();
     return FReply::Handled();
 }
@@ -1059,4 +1331,3 @@ FString SGenEditorWindow::ShortenPath(const FString& Path) const
     
     return TEXT("...") + Path.Mid(SlashPos);
 }
-

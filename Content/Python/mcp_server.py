@@ -2,13 +2,36 @@ import socket
 import json
 import sys
 import os
-from fastmcp import FastMCP, Image
+import subprocess
+from fastmcp import FastMCP
+try:
+    from fastmcp import Image
+except ImportError:
+    from fastmcp.utilities.types import Image
 import re
 import mss
 import base64
+import time
 import tempfile # For creating a secure temporary file
 from io import BytesIO
 from pathlib import Path
+
+
+DEFAULT_UNREAL_HOST = "localhost"
+DEFAULT_UNREAL_PORT = 9877
+
+
+def get_unreal_host():
+    return os.getenv("UNREAL_HOST", DEFAULT_UNREAL_HOST)
+
+
+def get_unreal_port():
+    port_str = os.getenv("UNREAL_PORT", str(DEFAULT_UNREAL_PORT))
+    try:
+        return int(port_str)
+    except ValueError:
+        print(f"Invalid UNREAL_PORT '{port_str}', falling back to {DEFAULT_UNREAL_PORT}", file=sys.stderr)
+        return DEFAULT_UNREAL_PORT
 
 
 # THIS FILE WILL RUN OUTSIDE THE UNREAL ENGINE SCOPE, 
@@ -21,9 +44,10 @@ def write_pid_file():
         pid_dir = os.path.join(os.path.expanduser("~"), ".unrealgenai")
         os.makedirs(pid_dir, exist_ok=True)
         pid_path = os.path.join(pid_dir, "mcp_server.pid")
+        unreal_port = get_unreal_port()
 
         with open(pid_path, "w") as f:
-            f.write(f"{pid}\n9877")  # Store PID and port
+            f.write(f"{pid}\n{unreal_port}")  # Store PID and port
 
         # Register to delete the PID file on exit
         import atexit
@@ -52,10 +76,11 @@ mcp = FastMCP("UnrealHandshake")
 
 
 # Function to send a message to Unreal Engine via socket
-def send_to_unreal(command):
+def send_to_unreal(command, timeout_seconds: float = 5.0, suppress_errors: bool = False):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
-            s.connect(('localhost', 9877))  # Unreal listens on port 9877
+            s.settimeout(timeout_seconds)
+            s.connect((get_unreal_host(), get_unreal_port()))
 
             # Ensure proper JSON encoding
             json_str = json.dumps(command)
@@ -89,8 +114,198 @@ def send_to_unreal(command):
                 return {"success": False, "error": "No response received"}
 
         except Exception as e:
-            print(f"Error sending to Unreal: {e}", file=sys.stderr)
+            if not suppress_errors:
+                print(f"Error sending to Unreal: {e}", file=sys.stderr)
             return {"success": False, "error": str(e)}
+
+
+def poll_fab_operation(operation_id: str, timeout_seconds: float, poll_interval: float = 0.5) -> dict:
+    deadline = time.time() + max(timeout_seconds, 1.0)
+    last_response = {"success": True, "status": "pending", "operation_id": operation_id}
+
+    while time.time() < deadline:
+        response = send_to_unreal({"type": "get_fab_operation_status", "operation_id": operation_id})
+        if not isinstance(response, dict):
+            return {"success": False, "status": "error", "error": "Invalid Fab operation status response"}
+
+        last_response = response
+        status = response.get("status")
+        if status in ("completed", "error"):
+            return response
+
+        time.sleep(poll_interval)
+
+    return {
+        "success": False,
+        "status": "error",
+        "operation_id": operation_id,
+        "error": f"Fab operation timed out after {timeout_seconds} seconds"
+    }
+
+
+def _spawn_detached_process(command: list) -> subprocess.Popen:
+    popen_kwargs = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+
+    if os.name == "nt":
+        detached_process = 0x00000008
+        create_new_process_group = 0x00000200
+        popen_kwargs["creationflags"] = detached_process | create_new_process_group
+    else:
+        popen_kwargs["start_new_session"] = True
+
+    return subprocess.Popen(command, **popen_kwargs)
+
+
+def _launch_restart_launcher(editor_path: str, project_file_path: str, timeout_seconds: float) -> dict:
+    launcher_path = Path(__file__).parent / "restart_editor_launcher.py"
+    if not launcher_path.exists():
+        return {"success": False, "error": f"Restart launcher not found at {launcher_path}"}
+
+    command = [
+        sys.executable,
+        str(launcher_path),
+        "--editor-path", editor_path,
+        "--project-file-path", project_file_path,
+        "--host", get_unreal_host(),
+        "--port", str(get_unreal_port()),
+        "--wait-for-port-close-timeout", str(max(15.0, min(timeout_seconds, 60.0))),
+    ]
+
+    try:
+        process = _spawn_detached_process(command)
+        return {"success": True, "launcher_pid": process.pid, "launcher_path": str(launcher_path)}
+    except Exception as e:
+        return {"success": False, "error": f"Failed to start restart launcher: {str(e)}"}
+
+
+def _wait_for_editor_reconnect(previous_editor_pid: int, timeout_seconds: float, poll_interval: float = 1.0) -> dict:
+    deadline = time.time() + max(timeout_seconds, 1.0)
+    saw_disconnect = False
+    last_error = "Timed out waiting for Unreal Editor to reconnect."
+
+    while time.time() < deadline:
+        response = send_to_unreal(
+            {"type": "get_editor_context"},
+            timeout_seconds=min(1.0, timeout_seconds),
+            suppress_errors=True,
+        )
+
+        if response.get("success"):
+            current_editor_pid = response.get("editor_pid")
+            if previous_editor_pid and current_editor_pid and current_editor_pid != previous_editor_pid:
+                return response
+            if previous_editor_pid in (None, 0) and saw_disconnect:
+                return response
+        else:
+            saw_disconnect = True
+            last_error = response.get("error", last_error)
+
+        time.sleep(poll_interval)
+
+    return {"success": False, "error": last_error}
+
+
+def _format_dirty_packages(dirty_packages, limit: int = 5) -> str:
+    if not dirty_packages:
+        return ""
+
+    preview = ", ".join(dirty_packages[:limit])
+    if len(dirty_packages) > limit:
+        preview += f", and {len(dirty_packages) - limit} more"
+    return preview
+
+
+def _build_restart_confirmation_result(dirty_packages) -> dict:
+    return {
+        "success": False,
+        "confirmation_required": True,
+        "reason": "unsaved_changes",
+        "error": (
+            "Unreal Editor has unsaved assets or maps. Ask the user to confirm whether to restart without saving, "
+            "then retry with force=True."
+        ),
+        "dirty_packages": dirty_packages,
+        "dirty_package_count": len(dirty_packages),
+        "suggested_retry": "restart_editor(force=True)",
+    }
+
+
+def _format_restart_failure(result: dict) -> str:
+    dirty_packages = _format_dirty_packages(result.get("dirty_packages", []))
+    suffix = f" Dirty packages: {dirty_packages}." if dirty_packages else ""
+
+    if result.get("confirmation_required"):
+        suggested_retry = result.get("suggested_retry", "restart_editor(force=True)")
+        return (
+            f"Confirmation required before restart: {result.get('error', 'Unreal has unsaved changes.')}"
+            f" Ask the user whether to continue without saving, then retry with `{suggested_retry}`.{suffix}"
+        )
+
+    return f"Failed to restart editor: {result.get('error', 'Unknown error')}.{suffix}"
+
+
+def _restart_editor_impl(force: bool, wait_for_reconnect: bool, timeout_seconds: float, editor_path: str = "") -> dict:
+    context = send_to_unreal({"type": "get_editor_context"})
+    if not context.get("success"):
+        return context
+
+    project_file_path = context.get("project_file_path", "")
+    if not project_file_path:
+        return {"success": False, "error": "Unreal did not report a valid .uproject path."}
+
+    dirty_packages = context.get("dirty_packages", [])
+    if dirty_packages and not force:
+        return _build_restart_confirmation_result(dirty_packages)
+
+    resolved_editor_path = editor_path.strip() if editor_path else str(context.get("editor_path", "")).strip()
+    if not resolved_editor_path:
+        candidates = context.get("editor_path_candidates", [])
+        candidate_suffix = f" Candidates: {candidates}" if candidates else ""
+        return {
+            "success": False,
+            "error": f"Unable to resolve the Unreal Editor executable path.{candidate_suffix}",
+        }
+
+    launcher_result = _launch_restart_launcher(resolved_editor_path, project_file_path, timeout_seconds)
+    if not launcher_result.get("success"):
+        return launcher_result
+
+    restart_response = send_to_unreal({
+        "type": "request_editor_restart",
+        "force": force,
+        "delay_seconds": 1.5,
+    })
+    if not restart_response.get("success"):
+        restart_response["launcher_pid"] = launcher_result.get("launcher_pid")
+        return restart_response
+
+    result = {
+        "success": True,
+        "project_file_path": project_file_path,
+        "editor_path": resolved_editor_path,
+        "launcher_pid": launcher_result.get("launcher_pid"),
+        "message": restart_response.get("message", "Editor restart scheduled."),
+    }
+
+    if wait_for_reconnect:
+        reconnect_response = _wait_for_editor_reconnect(context.get("editor_pid"), timeout_seconds)
+        if reconnect_response.get("success"):
+            result["reconnected"] = True
+            result["new_editor_pid"] = reconnect_response.get("editor_pid")
+            result["message"] = "Editor restarted and reconnected successfully."
+        else:
+            result["success"] = False
+            result["reconnected"] = False
+            result["error"] = reconnect_response.get("error", "Timed out waiting for Unreal to reconnect.")
+    else:
+        result["reconnected"] = False
+        result["message"] = "Editor restart scheduled. Reconnect polling was skipped."
+
+    return result
 
 
 @mcp.tool()
@@ -926,6 +1141,99 @@ def is_potentially_destructive(script: str) -> bool:
     return False
 
 
+@mcp.tool()
+def enable_plugin(plugin_name: str, target_allow_list: list = None) -> str:
+    """
+    Enable a plugin in the current Unreal project's .uproject file.
+
+    Args:
+        plugin_name: The plugin name as Unreal expects it in the descriptor.
+        target_allow_list: Optional list such as ["Editor"].
+
+    Returns:
+        Message indicating success or failure.
+    """
+    response = send_to_unreal({
+        "type": "set_plugin_enabled",
+        "plugin_name": plugin_name,
+        "enabled": True,
+        "target_allow_list": target_allow_list,
+    })
+
+    if response.get("success"):
+        message = response.get("message", f"Enabled plugin '{plugin_name}'.")
+        if response.get("project_file_path"):
+            message += f" Project file: {response['project_file_path']}"
+        return message
+
+    return f"Failed to enable plugin '{plugin_name}': {response.get('error', 'Unknown error')}"
+
+
+@mcp.tool()
+def restart_editor(force: bool = False, wait_for_reconnect: bool = True,
+                   timeout_seconds: float = 180.0, editor_path: str = "") -> str:
+    """
+    Restart the current Unreal Editor session.
+
+    Args:
+        force: Restart even if Unreal reports unsaved assets or maps.
+        wait_for_reconnect: Poll until the restarted editor reconnects to the MCP socket.
+        timeout_seconds: Maximum time to wait for reconnect when wait_for_reconnect is True.
+        editor_path: Optional explicit Unreal Editor executable path override.
+
+    Returns:
+        Message indicating success or failure.
+    """
+    result = _restart_editor_impl(force, wait_for_reconnect, timeout_seconds, editor_path)
+    if result.get("success"):
+        launcher_pid = result.get("launcher_pid")
+        message = result.get("message", "Editor restart scheduled.")
+        if launcher_pid:
+            message += f" Launcher PID: {launcher_pid}."
+        return message
+
+    return _format_restart_failure(result)
+
+
+@mcp.tool()
+def enable_plugin_and_restart(plugin_name: str, force: bool = False, wait_for_reconnect: bool = True,
+                              timeout_seconds: float = 180.0, editor_path: str = "",
+                              target_allow_list: list = None) -> str:
+    """
+    Enable a plugin in the current project and restart Unreal Editor if the descriptor changed.
+
+    Args:
+        plugin_name: The plugin name as Unreal expects it in the descriptor.
+        force: Restart even if Unreal reports unsaved assets or maps.
+        wait_for_reconnect: Poll until the restarted editor reconnects to the MCP socket.
+        timeout_seconds: Maximum time to wait for reconnect when wait_for_reconnect is True.
+        editor_path: Optional explicit Unreal Editor executable path override.
+        target_allow_list: Optional list such as ["Editor"].
+
+    Returns:
+        Message indicating success or failure.
+    """
+    response = send_to_unreal({
+        "type": "set_plugin_enabled",
+        "plugin_name": plugin_name,
+        "enabled": True,
+        "target_allow_list": target_allow_list,
+    })
+
+    if not response.get("success"):
+        return f"Failed to enable plugin '{plugin_name}': {response.get('error', 'Unknown error')}"
+
+    enable_message = response.get("message", f"Enabled plugin '{plugin_name}'.")
+    if not response.get("restart_required"):
+        return enable_message
+
+    restart_result = _restart_editor_impl(force, wait_for_reconnect, timeout_seconds, editor_path)
+    if restart_result.get("success"):
+        return f"{enable_message} {restart_result.get('message', 'Editor restarted successfully.')}"
+
+    return f"{enable_message} {_format_restart_failure(restart_result)}"
+
+
 # Scene Control
 @mcp.tool()
 def get_all_scene_objects() -> str:
@@ -1097,11 +1405,179 @@ def add_input_binding(action_name: str, key: str) -> str:
     return response.get("message", f"Failed: {response.get('error')}")
 
 
+def _resolve_fab_search(query: str, max_results: int, timeout_seconds: float) -> dict:
+    start_response = send_to_unreal({
+        "type": "start_fab_search",
+        "query": query,
+        "max_results": max_results,
+        "timeout_seconds": timeout_seconds
+    })
+
+    if not isinstance(start_response, dict):
+        return {"success": False, "status": "error", "error": "Invalid Fab search start response"}
+
+    if start_response.get("status") in ("completed", "error"):
+        return start_response
+
+    operation_id = start_response.get("operation_id")
+    if not operation_id:
+        return {"success": False, "status": "error", "error": "Fab search did not return an operation_id"}
+
+    return poll_fab_operation(operation_id, timeout_seconds)
+
+
+def _resolve_fab_import(listing_id_or_url: str, timeout_seconds: float) -> dict:
+    start_response = send_to_unreal({
+        "type": "start_fab_add_to_project",
+        "listing_id_or_url": listing_id_or_url,
+        "timeout_seconds": timeout_seconds
+    })
+
+    if not isinstance(start_response, dict):
+        return {"success": False, "status": "error", "error": "Invalid Fab import start response"}
+
+    if start_response.get("status") in ("completed", "error"):
+        return start_response
+
+    operation_id = start_response.get("operation_id")
+    if not operation_id:
+        return {"success": False, "status": "error", "error": "Fab import did not return an operation_id"}
+
+    return poll_fab_operation(operation_id, timeout_seconds)
+
+
+def _extract_fab_results(search_response: dict) -> list:
+    results = search_response.get("results", [])
+    return results if isinstance(results, list) else []
+
+
+def _select_fab_result(results: list, preferred_listing_id_or_url: str = "", preferred_title_substring: str = ""):
+    listing_hint = (preferred_listing_id_or_url or "").strip().casefold()
+    if listing_hint:
+        for result in results:
+            listing_id = str(result.get("listing_id", "")).casefold()
+            listing_url = str(result.get("listing_url", "")).casefold()
+            if listing_hint == listing_id or listing_hint == listing_url:
+                return result, "preferred_listing"
+
+    title_hint = (preferred_title_substring or "").strip().casefold()
+    if title_hint:
+        for result in results:
+            title = str(result.get("title", "")).casefold()
+            if title_hint in title:
+                return result, "preferred_title"
+
+    return (results[0], "first_verified_result") if results else (None, "")
+
+
+@mcp.tool()
+def search_free_fab_assets(query: str, max_results: int = 10, timeout_seconds: float = 60.0) -> str:
+    """
+    Search Fab for free Unreal Engine content assets and return verified Add-to-Project results.
+
+    Args:
+        query: Search text to use on Fab.
+        max_results: Maximum number of verified free results to return.
+        timeout_seconds: Total time budget for the search plus listing verification flow.
+
+    Returns:
+        JSON string containing the final Fab search operation result.
+    """
+    return json.dumps(_resolve_fab_search(query, max_results, timeout_seconds))
+
+
+@mcp.tool()
+def add_free_fab_asset_to_project(listing_id_or_url: str, timeout_seconds: float = 180.0) -> str:
+    """
+    Add a free Fab asset to the current Unreal project using its listing id or listing URL.
+
+    Args:
+        listing_id_or_url: Fab listing id or listing URL from `search_free_fab_assets`.
+        timeout_seconds: Total time budget for the add-to-project workflow.
+
+    Returns:
+        JSON string containing the final Fab import operation result.
+    """
+    return json.dumps(_resolve_fab_import(listing_id_or_url, timeout_seconds))
+
+
+@mcp.tool()
+def search_and_add_free_fab_asset(
+    query: str,
+    preferred_listing_id_or_url: str = "",
+    preferred_title_substring: str = "",
+    max_results: int = 8,
+    search_timeout_seconds: float = 60.0,
+    import_timeout_seconds: float = 180.0
+) -> str:
+    """
+    Search Fab for a free content asset and immediately add a verified result to the current project.
+
+    Args:
+        query: Search text to use on Fab.
+        preferred_listing_id_or_url: Optional exact listing id or URL to pick from the verified search results.
+        preferred_title_substring: Optional case-insensitive title substring to prefer when selecting a result.
+        max_results: Maximum number of verified candidates to inspect from the search.
+        search_timeout_seconds: Total time budget for the search plus listing verification flow.
+        import_timeout_seconds: Total time budget for the add-to-project workflow.
+
+    Returns:
+        JSON string containing both the verified search results and the final import result.
+    """
+    search_response = _resolve_fab_search(query, max_results, search_timeout_seconds)
+    if not search_response.get("success"):
+        return json.dumps(search_response)
+
+    results = _extract_fab_results(search_response)
+    if not results:
+        return json.dumps({
+            "success": False,
+            "status": "error",
+            "query": query,
+            "error": "Fab search completed without any verified Add-to-Project results.",
+            "search_result": search_response
+        })
+
+    selected_result, selection_reason = _select_fab_result(
+        results,
+        preferred_listing_id_or_url=preferred_listing_id_or_url,
+        preferred_title_substring=preferred_title_substring
+    )
+    if selected_result is None:
+        return json.dumps({
+            "success": False,
+            "status": "error",
+            "query": query,
+            "error": "Unable to choose a Fab result to import from the verified search results.",
+            "search_result": search_response
+        })
+
+    listing_target = selected_result.get("listing_id") or selected_result.get("listing_url")
+    import_response = _resolve_fab_import(str(listing_target), import_timeout_seconds)
+
+    combined_response = {
+        "success": import_response.get("success", False),
+        "status": import_response.get("status", "error"),
+        "query": query,
+        "selection_reason": selection_reason,
+        "selected_result": selected_result,
+        "search_result": search_response,
+        "import_result": import_response
+    }
+    if import_response.get("import_path"):
+        combined_response["import_path"] = import_response["import_path"]
+    if not import_response.get("success"):
+        combined_response["error"] = import_response.get("error", "Fab import failed")
+
+    return json.dumps(combined_response)
+
+
 if __name__ == "__main__":
     import traceback
 
     try:
         print("Server starting...", file=sys.stderr)
+        print(f"Connecting to Unreal socket at {get_unreal_host()}:{get_unreal_port()}", file=sys.stderr)
         mcp.run()
     except Exception as e:
         print(f"Server crashed with error: {e}", file=sys.stderr)

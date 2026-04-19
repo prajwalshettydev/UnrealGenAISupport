@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "CoreMinimal.h"
+
 //in accordance with https://unrealcommunity.wiki/logging-lgpidy6i
 DECLARE_LOG_CATEGORY_EXTERN(LogGenAI, Log, All);
 DECLARE_LOG_CATEGORY_EXTERN(LogGenPerformance, Log, All);
@@ -27,7 +29,6 @@ UE_LOG(LogGenPerformance, Display, TEXT("%s took: %f ms"), Description, ElapsedT
 #define LOG_TIME_ELAPSED(StartTimePerf, Description) do {} while(0)
 #endif
 
-#include "CoreMinimal.h"
 #include "GenGlobalDefinitions.generated.h" // Include at the end
 
 // Disable logs by default

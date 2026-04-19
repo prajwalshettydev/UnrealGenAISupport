@@ -6,8 +6,8 @@ import time
 from typing import Dict, Any, Tuple, List, Optional
 
 # Import handlers
-from handlers import basic_commands, actor_commands, blueprint_commands, python_commands
-from handlers import ui_commands
+from handlers import basic_commands, actor_commands, blueprint_commands, plugin_commands, python_commands
+from handlers import fab_commands, ui_commands
 from utils import logging as log
 
 # Global queues and state
@@ -54,6 +54,11 @@ class CommandDispatcher:
             # Python and console
             "execute_python": python_commands.handle_execute_python,
             "execute_unreal_command": python_commands.handle_execute_unreal_command,
+
+            # Plugin and restart management
+            "get_editor_context": plugin_commands.handle_get_editor_context,
+            "set_plugin_enabled": plugin_commands.handle_set_plugin_enabled,
+            "request_editor_restart": plugin_commands.handle_request_editor_restart,
             
             # New
             "edit_component_property": actor_commands.handle_edit_component_property,
@@ -70,6 +75,11 @@ class CommandDispatcher:
             # --- NEW UI COMMANDS ---
             "add_widget_to_user_widget": ui_commands.handle_add_widget_to_user_widget,
             "edit_widget_property": ui_commands.handle_edit_widget_property,
+
+            # Fab
+            "start_fab_search": fab_commands.handle_start_fab_search,
+            "start_fab_add_to_project": fab_commands.handle_start_fab_add_to_project,
+            "get_fab_operation_status": fab_commands.handle_get_fab_operation_status,
         }
 
     def dispatch(self, command: Dict[str, Any]) -> Dict[str, Any]:
@@ -266,4 +276,3 @@ def initialize_server():
 
 # Auto-start the server when this module is imported
 initialize_server()
-

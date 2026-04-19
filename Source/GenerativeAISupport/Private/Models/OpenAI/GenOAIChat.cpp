@@ -8,6 +8,7 @@
 #include "Data/GenAIOrgs.h"
 #include "Data/OpenAI/GenOAIChatStructs.h"
 #include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Engine/Engine.h"  // For GEngine and screen logging

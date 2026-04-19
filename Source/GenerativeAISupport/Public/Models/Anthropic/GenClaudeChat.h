@@ -29,7 +29,7 @@ public:
 	static void SendChatRequest(const FGenClaudeChatSettings& ChatSettings, const FOnClaudeChatCompletionResponse& OnComplete);
 
 	// Blueprint async function
-	UPROPERTY(BlueprintAssignable)
+	UPROPERTY(BlueprintAssignable, Category = "GenAI|Claude")
 	FGenClaudeChatCompletionDelegate OnComplete;
 
 	// Blueprint latent function

@@ -27,7 +27,7 @@ public:
 	static void RequestStructuredOutput(const FGenOAIStructuredChatSettings& StructuredChatSettings, const FOnSchemaResponse& OnComplete);
 
 	// Blueprint async function
-	UPROPERTY(BlueprintAssignable)
+	UPROPERTY(BlueprintAssignable, Category = "GenAI|OpenAI")
 	FGenSchemaResponseDelegate OnComplete;
 
 	// Blueprint latent function

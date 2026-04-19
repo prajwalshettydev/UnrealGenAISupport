@@ -260,9 +260,10 @@ For test builds you can call the `GenSecureKey::SetGenAIApiKeyRuntime` either in
 ##### 1. Install any one of the below clients:
 * Claude Desktop App from [here](https://claude.anthropic.com/).
 * Claude Code CLI from [here](https://docs.anthropic.com/en/docs/claude-code).
+* Codex CLI from [here](https://developers.openai.com/codex/cli).
 * Cursor IDE from [here](https://www.cursor.com/).
 
-##### 2. Setup the mcp config json:
+##### 2. Setup the MCP config:
 ###### For Claude Desktop App:
 `claude_desktop_config.json` file in Claude Desktop App's installation directory. (might ask claude where its located for your platform!)
 The file will look something like this:
@@ -297,6 +298,15 @@ The file will look something like this:
     }
 }
 ```
+###### For Codex CLI:
+Project-scoped `.codex/config.toml` file in your Unreal project directory. The file will look something like this:
+```toml
+[mcp_servers.unreal-handshake]
+command = "python"
+args = ["<your_project_directoy_path>/Plugins/GenerativeAISupport/Content/Python/mcp_server.py"]
+env = { UNREAL_HOST = "localhost", UNREAL_PORT = "9877" }
+```
+You can also place this block in `~/.codex/config.toml`, but the plugin's `Setup Codex` button writes the project-scoped config automatically.
 ###### For Cursor IDE:
 `.cursor/mcp.json` file in your project directory. The file will look something like this:
 ```json
@@ -322,6 +332,15 @@ pip install fastmcp
 ##### 5. [OPTIONAL] Enable AutoStart MCP server on editor open
 
 <img src="Docs/Settings.png" width="782"/>
+
+### Recommended for Codex CLI
+
+If you want new Unreal Engine 5 projects to work with Codex CLI automatically, install this plugin as an engine plugin instead of copying it into each project's `Plugins/` folder.
+
+- Engine-level install: place `GenerativeAISupport` under your Unreal Engine `Engine/Plugins/` directory.
+- With the current defaults, the plugin enables the required editor scripting dependencies, defaults the Unreal socket server to auto-start, and bootstraps the preferred Codex MCP config on editor startup.
+- When the plugin is installed inside a project, it writes `.codex/config.toml` in that project.
+- When the plugin is installed at the engine level, it prefers the global Codex config at `~/.codex/config.toml`.
 
 
 ## Adding the plugin to your project:
@@ -622,7 +641,7 @@ That's it! You can now use the MCP features of the plugin.
 ```bash
 python <your_project_directoy>/Plugins/GenerativeAISupport/Content/Python/mcp_server.py
 ```
-##### 2. Run the MCP client by opening or restarting the Claude desktop app or Cursor IDE.
+##### 2. Run the MCP client by opening or restarting Claude Desktop / Cursor, or by launching `codex` from the project after trusting the generated `.codex/config.toml`.
 
 ##### 3. Open a new Unreal Engine project and run the below python script from the plugin's python directory.
 

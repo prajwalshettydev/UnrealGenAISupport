@@ -30,7 +30,7 @@ public:
     static TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> SendChatRequest(const FGenChatSettings& ChatSettings, const FOnChatCompletionResponse& OnComplete);
 
     // Blueprint-callable function
-    UPROPERTY(BlueprintAssignable)
+    UPROPERTY(BlueprintAssignable, Category = "GenAI|OpenAI")
     FGenChatCompletionDelegate OnComplete;
 
     // Blueprint latent function

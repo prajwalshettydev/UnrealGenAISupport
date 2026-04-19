@@ -47,7 +47,7 @@ public:
 	static void SendChatRequest(const FGenDSeekChatSettings& ChatSettings, const FOnDSeekChatCompletionResponse& OnComplete);
 
 	// Blueprint async function
-	UPROPERTY(BlueprintAssignable)
+	UPROPERTY(BlueprintAssignable, Category = "GenAI|DeepSeek")
 	FGenDSeekChatCompletionDelegate OnComplete;
 
 	// Blueprint latent function
