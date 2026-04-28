@@ -61,10 +61,10 @@ Worldwide support, Chat, Vision, Image Gen, TTS, Reasoning</p>
 Text-to-3D, Image-to-3D, Remesh, PBR Textures, Retexture, Auto-Rigging</p>
 </td>
 <td align="center" width="50%">
-<a href="https://muddyterrain.com/unreal-ollama?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-llama-plugin">
+<a href="https://muddyterrain.com/t/genai-llama-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-llama-plugin">
 <img src="https://res.cloudinary.com/dqq9t4hyy/image/upload/q_60/v1774520082/MainBanners_10_gniskq.webp" width="100%" alt="Gen AI Llama - Ollama vLLM LM Studio GGUF Local LLMs Unreal Engine"/>
 </a>
-<p><b><a href="https://muddyterrain.com/unreal-ollama?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-llama-plugin">Gen AI Llama (Coming Soon on Fab!)</a></b><br/>
+<p><b><a href="https://muddyterrain.com/t/genai-llama-fab?utm_source=github.com&utm_medium=repo-free&utm_campaign=genai-llama-plugin">Gen AI Llama</a></b><br/>
 <code>Ollama</code> <code>vLLM</code> <code>LM Studio</code> <code>GGUF</code> <code>Jan</code> <code>LocalAI</code> <code>GPT-oss</code> <code>LLaVA</code><br/>
 Local LLMs inside your Unreal Engine game - no API keys needed</p>
 </td>
