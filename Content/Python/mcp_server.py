@@ -129,6 +129,69 @@ def handshake_test(message: str) -> str:
         return f"Error communicating with Unreal: {str(e)}"
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# 60db.ai tools — direct chat + voice narration from inside MCP clients
+# (Claude Desktop, Cursor, etc.) routed through Unreal's Python socket.
+# ─────────────────────────────────────────────────────────────────────────
+
+@mcp.tool()
+def sixtydb_chat(prompt: str, model: str = "60db-tiny",
+                 max_tokens: int = 512, temperature: float = 0.7) -> str:
+    """Send a prompt to the 60db.ai chat-completions endpoint and return the
+    assistant text. Useful for cheap secondary reasoning without leaving the
+    Unreal MCP session."""
+    try:
+        response = send_to_unreal({
+            "type": "sixtydb_chat",
+            "prompt": prompt,
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        })
+        if response.get("success"):
+            return response.get("response", "")
+        return f"60db chat failed: {response.get('error', 'unknown error')}"
+    except Exception as e:
+        return f"Error communicating with Unreal: {str(e)}"
+
+
+@mcp.tool()
+def sixtydb_speak(text: str,
+                  voice_id: str = "fbb75ed2-975a-40c7-9e06-38e30524a9a1",
+                  speed: float = 1.0,
+                  stability: int = 50,
+                  similarity: int = 75,
+                  enhance: bool = True,
+                  play: bool = True) -> str:
+    """Synthesize speech via 60db.ai /tts-synthesize. When play=True the WAV
+    is written to a temp file inside the editor's Python process for ad-hoc
+    playback; otherwise just the byte count + metadata is returned. Defaults
+    to the 'Zara' voice (Indian female, 60db's documented default)."""
+    try:
+        response = send_to_unreal({
+            "type": "sixtydb_speak",
+            "text": text,
+            "voice_id": voice_id,
+            "speed": speed,
+            "stability": stability,
+            "similarity": similarity,
+            "enhance": enhance,
+            "play": play,
+            "output_format": "wav",
+        })
+        if not response.get("success"):
+            return f"60db TTS failed: {response.get('error', 'unknown error')}"
+        return json.dumps({
+            "byte_count":       response.get("byte_count"),
+            "sample_rate":      response.get("sample_rate"),
+            "duration_seconds": response.get("duration_seconds"),
+            "wav_path":         response.get("wav_path"),
+            "play_error":       response.get("play_error"),
+        }, indent=2)
+    except Exception as e:
+        return f"Error communicating with Unreal: {str(e)}"
+
+
 @mcp.tool()
 def execute_python_script(script: str) -> str:
     """

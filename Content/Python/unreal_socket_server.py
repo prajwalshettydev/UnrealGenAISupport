@@ -8,6 +8,7 @@ from typing import Dict, Any, Tuple, List, Optional
 # Import handlers
 from handlers import basic_commands, actor_commands, blueprint_commands, python_commands
 from handlers import ui_commands
+from handlers import sixtydb_commands
 from utils import logging as log
 
 # Global queues and state
@@ -70,6 +71,10 @@ class CommandDispatcher:
             # --- NEW UI COMMANDS ---
             "add_widget_to_user_widget": ui_commands.handle_add_widget_to_user_widget,
             "edit_widget_property": ui_commands.handle_edit_widget_property,
+
+            # --- 60db.ai (chat + voice) ---
+            "sixtydb_chat": sixtydb_commands.handle_sixtydb_chat,
+            "sixtydb_speak": sixtydb_commands.handle_sixtydb_speak,
         }
 
     def dispatch(self, command: Dict[str, Any]) -> Dict[str, Any]:
