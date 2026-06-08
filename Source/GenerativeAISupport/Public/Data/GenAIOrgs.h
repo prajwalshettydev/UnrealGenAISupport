@@ -16,6 +16,7 @@ enum class EGenAIOrgs : uint8
 	Meta        UMETA(DisplayName = "Meta"),
 	Google      UMETA(DisplayName = "Google"),
 	XAI         UMETA(DisplayName = "XAI"),
+	SixtyDB     UMETA(DisplayName = "60db.ai"),
 	Unknown     UMETA(DisplayName = "Unknown")
 };
 

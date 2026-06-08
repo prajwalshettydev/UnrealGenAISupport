@@ -42,6 +42,18 @@ FString UGenSecureKey::GetGenerativeAIApiKey(EGenAIOrgs Org)
 		case EGenAIOrgs::XAI:
 			EnvKey = TEXT("PS_XAIAPIKEY");
 			break;
+		case EGenAIOrgs::SixtyDB:
+			// Try the project's PS_-prefixed convention first, then fall back to
+			// the canonical SIXTYDB_API_KEY used by 60db.ai's own SDK examples.
+			{
+				FString FromPS = GetEnvironmentVariable(TEXT("PS_SIXTYDBAPIKEY"));
+				if (!FromPS.IsEmpty()) return FromPS;
+				FString FromCanonical = GetEnvironmentVariable(TEXT("SIXTYDB_API_KEY"));
+				if (!FromCanonical.IsEmpty()) return FromCanonical;
+			}
+			// Fall through to the stored-map lookup below.
+			EnvKey = TEXT("PS_SIXTYDBAPIKEY");
+			break;
 		default:
 			return TEXT("");
 		}
