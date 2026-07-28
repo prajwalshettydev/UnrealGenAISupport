@@ -16,6 +16,7 @@ enum class EGenAIOrgs : uint8
 	Meta        UMETA(DisplayName = "Meta"),
 	Google      UMETA(DisplayName = "Google"),
 	XAI         UMETA(DisplayName = "XAI"),
+	MiniMax     UMETA(DisplayName = "MiniMax"),
 	Unknown     UMETA(DisplayName = "Unknown")
 };
 
@@ -26,4 +27,13 @@ enum class EDeepSeekModels : uint8
 	Chat        UMETA(DisplayName = "deepseek-chat"),
 	Reasoner    UMETA(DisplayName = "deepseek-reasoner"),
 	Unknown     UMETA(DisplayName = "unknown")
+};
+
+// Enum for selecting MiniMax models
+UENUM(BlueprintType)
+enum class EMiniMaxModels : uint8
+{
+	MiniMax_M3    UMETA(DisplayName = "MiniMax-M3"),
+	MiniMax_M2_7  UMETA(DisplayName = "MiniMax-M2.7"),
+	Unknown       UMETA(DisplayName = "unknown")
 };
