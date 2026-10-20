@@ -7,6 +7,8 @@
 #include "Engine/CancellableAsyncAction.h"
 #include "GenMiniMaxChat.generated.h"
 
+class IHttpRequest;
+
 // Regular C++ delegate for native code
 DECLARE_DELEGATE_ThreeParams(FOnMiniMaxChatCompletionResponse, const FString&, const FString&, bool);
 
@@ -32,6 +34,11 @@ public:
 
 private:
     FGenMiniMaxChatSettings ChatSettings;
+
+    friend class FGenMiniMaxRequestTest;
+
+    // Build the actual HTTP request separately so automation can inspect it without sending.
+    static TSharedRef<IHttpRequest, ESPMode::ThreadSafe> CreateHttpRequest(const FGenMiniMaxChatSettings& ChatSettings, const FString& ApiKey);
 
     // Shared implementation
     static void MakeRequest(const FGenMiniMaxChatSettings& ChatSettings, const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback);

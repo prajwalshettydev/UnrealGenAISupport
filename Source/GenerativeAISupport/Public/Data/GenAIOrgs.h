@@ -33,7 +33,9 @@ enum class EDeepSeekModels : uint8
 UENUM(BlueprintType)
 enum class EMiniMaxModels : uint8
 {
-	MiniMax_M3    UMETA(DisplayName = "MiniMax-M3"),
-	MiniMax_M2_7  UMETA(DisplayName = "MiniMax-M2.7"),
-	Unknown       UMETA(DisplayName = "unknown")
+	// Keep existing numeric values so saved Blueprint selections retain their model.
+	MiniMax_M3_1_Flash = 3 UMETA(DisplayName = "MiniMax-M3.1-Flash"),
+	MiniMax_M3 = 0         UMETA(DisplayName = "MiniMax-M3"),
+	MiniMax_M2_7 = 1       UMETA(DisplayName = "MiniMax-M2.7", Hidden),
+	Unknown = 2           UMETA(DisplayName = "unknown", Hidden)
 };

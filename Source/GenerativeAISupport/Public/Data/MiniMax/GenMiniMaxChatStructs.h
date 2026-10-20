@@ -27,7 +27,7 @@ struct FGenMiniMaxChatSettings
 
     // Model selection using enum
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|MiniMax")
-    EMiniMaxModels Model = EMiniMaxModels::MiniMax_M3;
+    EMiniMaxModels Model = EMiniMaxModels::MiniMax_M3_1_Flash;
 
     // Maximum tokens to generate
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GenAI|MiniMax")

@@ -10,7 +10,25 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Utilities/GenGlobalDefinitions.h"
-#include "Utilities/GenUtils.h"
+
+namespace
+{
+const TCHAR* GetMiniMaxModelId(EMiniMaxModels Model)
+{
+	// API identifiers must not depend on localized editor-only enum metadata.
+	switch (Model)
+	{
+	case EMiniMaxModels::MiniMax_M3_1_Flash:
+		return TEXT("MiniMax-M3.1-Flash");
+	case EMiniMaxModels::MiniMax_M3:
+		return TEXT("MiniMax-M3");
+	case EMiniMaxModels::MiniMax_M2_7:
+		return TEXT("MiniMax-M2.7");
+	default:
+		return TEXT("unknown");
+	}
+}
+}
 
 void UGenMiniMaxChat::SendChatRequest(const FGenMiniMaxChatSettings& ChatSettings, const FOnMiniMaxChatCompletionResponse& OnComplete)
 {
@@ -39,20 +57,11 @@ void UGenMiniMaxChat::Activate()
 	});
 }
 
-void UGenMiniMaxChat::MakeRequest(const FGenMiniMaxChatSettings& ChatSettings,
-                                  const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
+TSharedRef<IHttpRequest, ESPMode::ThreadSafe> UGenMiniMaxChat::CreateHttpRequest(
+	const FGenMiniMaxChatSettings& ChatSettings, const FString& ApiKey)
 {
-	const FString ApiKey = UGenSecureKey::GetGenerativeAIApiKey(EGenAIOrgs::MiniMax);
-	if (ApiKey.IsEmpty())
-	{
-		ResponseCallback(TEXT(""), TEXT("MiniMax API key not set"), false);
-		return;
-	}
-
 	const TSharedPtr<FJsonObject> JsonPayload = MakeShareable(new FJsonObject());
-	JsonPayload->SetStringField(
-		TEXT("model"),
-		UGenUtils::GetEnumDisplayName(StaticEnum<EMiniMaxModels>(), static_cast<int32>(ChatSettings.Model)));
+	JsonPayload->SetStringField(TEXT("model"), GetMiniMaxModelId(ChatSettings.Model));
 	JsonPayload->SetNumberField(TEXT("max_tokens"), ChatSettings.MaxTokens);
 
 	TArray<TSharedPtr<FJsonValue>> MessagesArray;
@@ -75,7 +84,20 @@ void UGenMiniMaxChat::MakeRequest(const FGenMiniMaxChatSettings& ChatSettings,
 	HttpRequest->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
 	HttpRequest->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *ApiKey));
 	HttpRequest->SetContentAsString(PayloadString);
+	return HttpRequest;
+}
 
+void UGenMiniMaxChat::MakeRequest(const FGenMiniMaxChatSettings& ChatSettings,
+                                  const TFunction<void(const FString&, const FString&, bool)>& ResponseCallback)
+{
+	const FString ApiKey = UGenSecureKey::GetGenerativeAIApiKey(EGenAIOrgs::MiniMax);
+	if (ApiKey.IsEmpty())
+	{
+		ResponseCallback(TEXT(""), TEXT("MiniMax API key not set"), false);
+		return;
+	}
+
+	const TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = CreateHttpRequest(ChatSettings, ApiKey);
 	HttpRequest->OnProcessRequestComplete().BindLambda(
 		[ResponseCallback](FHttpRequestPtr Request, const FHttpResponsePtr& Response, const bool bSuccess)
 		{
