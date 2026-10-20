@@ -42,6 +42,9 @@ FString UGenSecureKey::GetGenerativeAIApiKey(EGenAIOrgs Org)
 		case EGenAIOrgs::XAI:
 			EnvKey = TEXT("PS_XAIAPIKEY");
 			break;
+		case EGenAIOrgs::MiniMax:
+			EnvKey = TEXT("PS_MINIMAXAPIKEY");
+			break;
 		default:
 			return TEXT("");
 		}
