@@ -12,6 +12,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Engine/Engine.h"  // For GEngine and screen logging
 #include "Utilities/GenGlobalDefinitions.h"
+#include "Utilities/GenHttpRetry.h"
 
 
 TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> UGenOAIChat::SendChatRequest(const FGenChatSettings& ChatSettings, const FOnChatCompletionResponse& OnComplete)
@@ -114,8 +115,10 @@ TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> UGenOAIChat::MakeRequest(const FGe
 	//UE_LOG(LogGenAIVerbose, Log, TEXT("Sending chat request... Payload: %s"), *PayloadString);
 
 	HttpRequest->OnProcessRequestComplete().BindLambda(
-		[ResponseCallback](FHttpRequestPtr Request, const FHttpResponsePtr& Response, const bool bSuccess)
+		[ResponseCallback, Attempt = MakeShared<int32>(1)](FHttpRequestPtr Request, const FHttpResponsePtr& Response, const bool bSuccess)
 		{
+			if (GenHttpRetry::RetryIfTransient(Request, Response, bSuccess, *Attempt)) return;
+
 			if (!bSuccess || !Response.IsValid())
 			{
 				ResponseCallback(TEXT(""), TEXT("Request failed"), false);

@@ -10,6 +10,7 @@
 #include "Interfaces/IHttpResponse.h"
 #include "Secure/GenSecureKey.h"
 #include "Utilities/GenUtils.h"
+#include "Utilities/GenHttpRetry.h"
 
 
 void UGenDSeekChat::SendChatRequest(const FGenDSeekChatSettings& ChatSettings,
@@ -90,8 +91,10 @@ void UGenDSeekChat::MakeRequest(const FGenDSeekChatSettings& ChatSettings,
 	UE_LOG(LogTemp, Log, TEXT("Payload: %s"), *PayloadString);
 
 	HttpRequest->OnProcessRequestComplete().BindLambda(
-		[ResponseCallback](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bSuccess)
+		[ResponseCallback, Attempt = MakeShared<int32>(1)](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bSuccess)
 		{
+			if (GenHttpRetry::RetryIfTransient(Request, Response, bSuccess, *Attempt)) return;
+
 			if (!bSuccess || !Response.IsValid())
 			{
 				FString ErrorMessage = Response.IsValid() ? Response->GetContentAsString() : TEXT("Request failed. No response received.");
