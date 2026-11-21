@@ -11,6 +11,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Engine/Engine.h"  // For GEngine and screen logging
 #include "Utilities/GenGlobalDefinitions.h"
+#include "Utilities/GenHttpRetry.h"
 
 void UGenXAIChat::SendChatRequest(const FGenXAIChatSettings& ChatSettings, const FOnXAIChatCompletionResponse& OnComplete)
 {
@@ -75,8 +76,10 @@ void UGenXAIChat::MakeRequest(const FGenXAIChatSettings& ChatSettings,
 	HttpRequest->SetContentAsString(PayloadString);
 
 	HttpRequest->OnProcessRequestComplete().BindLambda(
-		[ResponseCallback](FHttpRequestPtr Request, const FHttpResponsePtr& Response, const bool bSuccess)
+		[ResponseCallback, Attempt = MakeShared<int32>(1)](FHttpRequestPtr Request, const FHttpResponsePtr& Response, const bool bSuccess)
 		{
+			if (GenHttpRetry::RetryIfTransient(Request, Response, bSuccess, *Attempt)) return;
+
 			if (!bSuccess || !Response.IsValid())
 			{
 				ResponseCallback(TEXT(""), TEXT("Request failed"), false);
